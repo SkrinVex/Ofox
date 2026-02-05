@@ -16,3 +16,4 @@ local.properties
 .gradle
 .idea
 .config
+run.sh
