@@ -1,0 +1,147 @@
+package su.SkrinVex.ofox.data
+
+import android.content.Context
+import androidx.room.*
+
+@Database(
+    entities = [User::class, Post::class, Chat::class, Message::class, Discovery::class],
+    version = 1
+)
+abstract class AppDatabase : RoomDatabase() {
+    abstract fun userDao(): UserDao
+    abstract fun postDao(): PostDao
+    abstract fun chatDao(): ChatDao
+    abstract fun messageDao(): MessageDao
+    abstract fun discoveryDao(): DiscoveryDao
+
+    companion object {
+        @Volatile
+        private var INSTANCE: AppDatabase? = null
+
+        fun getDatabase(context: Context): AppDatabase {
+            return INSTANCE ?: synchronized(this) {
+                val instance = Room.databaseBuilder(
+                    context.applicationContext,
+                    AppDatabase::class.java,
+                    "ofox_database"
+                ).build()
+                INSTANCE = instance
+                instance
+            }
+        }
+    }
+}
+
+@Entity(tableName = "users")
+data class User(
+    @PrimaryKey(autoGenerate = true) val id: Int = 0,
+    val email: String,
+    val password: String,
+    val name: String,
+    val bio: String = ""
+)
+
+@Entity(tableName = "posts")
+data class Post(
+    @PrimaryKey(autoGenerate = true) val id: Int = 0,
+    val authorId: Int,
+    val authorName: String,
+    val content: String,
+    val likes: Int = 0,
+    val comments: Int = 0,
+    val shares: Int = 0,
+    val timestamp: Long,
+    val type: String = "TEXT",
+    val isLiked: Boolean = false
+)
+
+@Entity(tableName = "chats")
+data class Chat(
+    @PrimaryKey(autoGenerate = true) val id: Int = 0,
+    val name: String,
+    val lastMessage: String,
+    val timestamp: Long
+)
+
+@Entity(tableName = "messages")
+data class Message(
+    @PrimaryKey(autoGenerate = true) val id: Int = 0,
+    val chatId: Int,
+    val text: String,
+    val timestamp: Long,
+    val isFromMe: Boolean
+)
+
+@Entity(tableName = "discoveries")
+data class Discovery(
+    @PrimaryKey(autoGenerate = true) val id: Int = 0,
+    val title: String,
+    val description: String,
+    val category: String,
+    val participants: Int,
+    val colorHex: String,
+    val isJoined: Boolean = false
+)
+
+@Dao
+interface UserDao {
+    @Query("SELECT * FROM users WHERE email = :email AND password = :password LIMIT 1")
+    suspend fun login(email: String, password: String): User?
+
+    @Insert
+    suspend fun register(user: User): Long
+
+    @Query("SELECT * FROM users WHERE id = :id")
+    suspend fun getUser(id: Int): User?
+
+    @Update
+    suspend fun updateUser(user: User)
+}
+
+@Dao
+interface PostDao {
+    @Query("SELECT * FROM posts ORDER BY timestamp DESC")
+    suspend fun getAllPosts(): List<Post>
+
+    @Insert
+    suspend fun insertPost(post: Post)
+
+    @Query("UPDATE posts SET likes = :likes, isLiked = :isLiked WHERE id = :postId")
+    suspend fun updateLikes(postId: Int, likes: Int, isLiked: Boolean)
+
+    @Query("UPDATE posts SET shares = :shares WHERE id = :postId")
+    suspend fun updateShares(postId: Int, shares: Int)
+}
+
+@Dao
+interface ChatDao {
+    @Query("SELECT * FROM chats ORDER BY timestamp DESC")
+    suspend fun getAllChats(): List<Chat>
+
+    @Insert
+    suspend fun insertChat(chat: Chat): Long
+
+    @Query("UPDATE chats SET lastMessage = :message, timestamp = :timestamp WHERE id = :chatId")
+    suspend fun updateChat(chatId: Int, message: String, timestamp: Long)
+}
+
+@Dao
+interface MessageDao {
+    @Query("SELECT * FROM messages WHERE chatId = :chatId ORDER BY timestamp ASC")
+    suspend fun getMessages(chatId: Int): List<Message>
+
+    @Insert
+    suspend fun insertMessage(message: Message)
+}
+
+@Dao
+interface DiscoveryDao {
+    @Query("SELECT * FROM discoveries")
+    suspend fun getAllDiscoveries(): List<Discovery>
+
+    @Insert
+    suspend fun insertDiscovery(discovery: Discovery)
+
+    @Query("UPDATE discoveries SET isJoined = :isJoined, participants = :participants WHERE id = :id")
+    suspend fun updateJoinStatus(id: Int, isJoined: Boolean, participants: Int)
+}

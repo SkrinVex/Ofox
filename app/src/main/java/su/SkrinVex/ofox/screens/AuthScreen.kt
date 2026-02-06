@@ -18,18 +18,22 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import su.SkrinVex.ofox.data.Repository
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun AuthScreen(onAuthSuccess: () -> Unit) {
+fun AuthScreen(repository: Repository, onAuthSuccess: () -> Unit) {
     var isLogin by remember { mutableStateOf(true) }
     var email by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     var confirmPassword by remember { mutableStateOf("") }
+    var name by remember { mutableStateOf("") }
     var passwordVisible by remember { mutableStateOf(false) }
     var confirmPasswordVisible by remember { mutableStateOf(false) }
     var showError by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf("") }
+    val scope = rememberCoroutineScope()
 
     LaunchedEffect(showError) {
         if (showError) {
@@ -63,7 +67,6 @@ fun AuthScreen(onAuthSuccess: () -> Unit) {
         
         Spacer(modifier = Modifier.height(32.dp))
         
-        // Кастомные табы
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -102,14 +105,24 @@ fun AuthScreen(onAuthSuccess: () -> Unit) {
         
         Spacer(modifier = Modifier.height(24.dp))
         
+        if (!isLogin) {
+            OutlinedTextField(
+                value = name,
+                onValueChange = { name = it },
+                label = { Text("Имя") },
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(12.dp)
+            )
+            Spacer(modifier = Modifier.height(16.dp))
+        }
+        
         OutlinedTextField(
             value = email,
             onValueChange = { email = it },
             label = { Text("Email") },
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
             modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(12.dp),
-            isError = showError && email.isEmpty()
+            shape = RoundedCornerShape(12.dp)
         )
         
         Spacer(modifier = Modifier.height(16.dp))
@@ -124,13 +137,12 @@ fun AuthScreen(onAuthSuccess: () -> Unit) {
                 IconButton(onClick = { passwordVisible = !passwordVisible }) {
                     Icon(
                         imageVector = if (passwordVisible) Icons.Default.Visibility else Icons.Default.VisibilityOff,
-                        contentDescription = if (passwordVisible) "Скрыть пароль" else "Показать пароль"
+                        contentDescription = null
                     )
                 }
             },
             modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(12.dp),
-            isError = showError && password.isEmpty()
+            shape = RoundedCornerShape(12.dp)
         )
         
         if (!isLogin) {
@@ -146,13 +158,12 @@ fun AuthScreen(onAuthSuccess: () -> Unit) {
                     IconButton(onClick = { confirmPasswordVisible = !confirmPasswordVisible }) {
                         Icon(
                             imageVector = if (confirmPasswordVisible) Icons.Default.Visibility else Icons.Default.VisibilityOff,
-                            contentDescription = if (confirmPasswordVisible) "Скрыть пароль" else "Показать пароль"
+                            contentDescription = null
                         )
                     }
                 },
                 modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(12.dp),
-                isError = showError && (confirmPassword.isEmpty() || password != confirmPassword)
+                shape = RoundedCornerShape(12.dp)
             )
         }
         
@@ -177,24 +188,38 @@ fun AuthScreen(onAuthSuccess: () -> Unit) {
         
         Button(
             onClick = {
-                when {
-                    email.isEmpty() -> {
-                        errorMessage = "Введите email"
-                        showError = true
+                scope.launch {
+                    when {
+                        email.isEmpty() -> {
+                            errorMessage = "Введите email"
+                            showError = true
+                        }
+                        password.isEmpty() -> {
+                            errorMessage = "Введите пароль"
+                            showError = true
+                        }
+                        !isLogin && name.isEmpty() -> {
+                            errorMessage = "Введите имя"
+                            showError = true
+                        }
+                        !isLogin && password != confirmPassword -> {
+                            errorMessage = "Пароли не совпадают"
+                            showError = true
+                        }
+                        else -> {
+                            val result = if (isLogin) {
+                                repository.login(email, password)
+                            } else {
+                                repository.register(email, password, name)
+                            }
+                            if (result != null) {
+                                onAuthSuccess()
+                            } else {
+                                errorMessage = "Неверные данные"
+                                showError = true
+                            }
+                        }
                     }
-                    password.isEmpty() -> {
-                        errorMessage = "Введите пароль"
-                        showError = true
-                    }
-                    !isLogin && confirmPassword.isEmpty() -> {
-                        errorMessage = "Подтвердите пароль"
-                        showError = true
-                    }
-                    !isLogin && password != confirmPassword -> {
-                        errorMessage = "Пароли не совпадают"
-                        showError = true
-                    }
-                    else -> onAuthSuccess()
                 }
             },
             modifier = Modifier

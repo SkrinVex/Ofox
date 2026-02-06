@@ -21,14 +21,19 @@ import su.SkrinVex.ofox.screens.PostType
 @Composable
 fun CreativePostCard(
     post: CreativePost,
+    isLiked: Boolean = false,
     onLike: () -> Unit,
     onComment: () -> Unit,
     onShare: () -> Unit,
     onMoreClick: () -> Unit
 ) {
-    var isLiked by remember { mutableStateOf(false) }
+    var liked by remember { mutableStateOf(isLiked) }
     var likesCount by remember { mutableStateOf(post.likes) }
     var selectedPollOption by remember { mutableStateOf<String?>(null) }
+    
+    LaunchedEffect(isLiked) {
+        liked = isLiked
+    }
     
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -166,20 +171,19 @@ fun CreativePostCard(
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier.clickable {
-                        isLiked = !isLiked
-                        likesCount += if (isLiked) 1 else -1
+                        liked = !liked
                         onLike()
                     }
                 ) {
                     Icon(
-                        if (isLiked) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
+                        if (liked) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
                         contentDescription = "Лайк",
-                        tint = if (isLiked) Color.Red else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
+                        tint = if (liked) Color.Red else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
                         modifier = Modifier.size(20.dp)
                     )
                     Spacer(modifier = Modifier.width(4.dp))
                     Text(
-                        text = likesCount.toString(),
+                        text = post.likes.toString(),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
                     )

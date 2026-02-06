@@ -1,30 +1,31 @@
 package su.SkrinVex.ofox.screens
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
-import androidx.compose.runtime.Composable
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-
-data class ChatItem(val name: String, val lastMessage: String, val time: String)
+import androidx.navigation.NavController
+import kotlinx.coroutines.launch
+import su.SkrinVex.ofox.data.Repository
 
 @Composable
-fun ChatsScreen() {
-    val chats = listOf(
-        ChatItem("Алексей", "Привет! Как дела?", "14:30"),
-        ChatItem("Мария", "Увидимся завтра", "13:45"),
-        ChatItem("Группа разработчиков", "Новый релиз готов", "12:20"),
-        ChatItem("Дмитрий", "Спасибо за помощь!", "11:15"),
-        ChatItem("Анна", "Отправил файлы", "10:30")
-    )
+fun ChatsScreen(repository: Repository, navController: NavController) {
+    var chats by remember { mutableStateOf(listOf<su.SkrinVex.ofox.data.Chat>()) }
+    val scope = rememberCoroutineScope()
+
+    LaunchedEffect(Unit) {
+        chats = repository.getAllChats()
+    }
     
     Column(
         modifier = Modifier
@@ -45,7 +46,11 @@ fun ChatsScreen() {
         ) {
             items(chats) { chat ->
                 Card(
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable {
+                            navController.navigate("chat/${chat.id}")
+                        },
                     colors = CardDefaults.cardColors(
                         containerColor = MaterialTheme.colorScheme.surface
                     ),
@@ -88,7 +93,7 @@ fun ChatsScreen() {
                         }
                         
                         Text(
-                            text = chat.time,
+                            text = formatChatTime(chat.timestamp),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
                         )
@@ -96,5 +101,16 @@ fun ChatsScreen() {
                 }
             }
         }
+    }
+}
+
+fun formatChatTime(timestamp: Long): String {
+    val diff = System.currentTimeMillis() - timestamp
+    val hours = diff / (1000 * 60 * 60)
+    val minutes = diff / (1000 * 60)
+    return when {
+        minutes < 60 -> "${minutes}м"
+        hours < 24 -> "${hours}ч"
+        else -> "${hours / 24}д"
     }
 }

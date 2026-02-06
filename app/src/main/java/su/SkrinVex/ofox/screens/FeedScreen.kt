@@ -6,6 +6,9 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -18,26 +21,25 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-
-data class Discovery(
-    val title: String,
-    val description: String,
-    val category: String,
-    val participants: Int,
-    val color: Color
-)
+import androidx.compose.ui.window.Dialog
+import kotlinx.coroutines.launch
+import su.SkrinVex.ofox.data.Repository
+import java.text.SimpleDateFormat
+import java.util.*
 
 data class TrendingTopic(val name: String, val posts: Int)
 
 @Composable
-fun FeedScreen() {
-    val discoveries = listOf(
-        Discovery("Coding Challenge", "Решай задачи по программированию и соревнуйся с другими", "Программирование", 1247, Color(0xFF4CAF50)),
-        Discovery("Tech Meetup", "Встреча разработчиков в твоем городе", "События", 89, Color(0xFF2196F3)),
-        Discovery("Open Source", "Найди проект для вклада в открытый код", "Проекты", 567, Color(0xFFFF9800)),
-        Discovery("Менторство", "Стань ментором или найди наставника", "Обучение", 234, Color(0xFF9C27B0)),
-        Discovery("Стартап Идеи", "Обсуждение новых идей для стартапов", "Бизнес", 445, Color(0xFFE91E63))
-    )
+fun FeedScreen(repository: Repository) {
+    var discoveries by remember { mutableStateOf(listOf<su.SkrinVex.ofox.data.Discovery>()) }
+    var showCreateDialog by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+    val listState = rememberLazyListState()
+    val fabExpanded by remember {
+        derivedStateOf {
+            listState.firstVisibleItemIndex == 0
+        }
+    }
     
     val trendingTopics = listOf(
         TrendingTopic("Jetpack Compose", 156),
@@ -47,13 +49,19 @@ fun FeedScreen() {
         TrendingTopic("AI в мобильной разработке", 123)
     )
 
-    LazyColumn(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background),
-        contentPadding = PaddingValues(16.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
-    ) {
+    LaunchedEffect(Unit) {
+        discoveries = repository.getAllDiscoveries()
+    }
+
+    Box(modifier = Modifier.fillMaxSize()) {
+        LazyColumn(
+            state = listState,
+            modifier = Modifier
+                .fillMaxSize()
+                .background(MaterialTheme.colorScheme.background),
+            contentPadding = PaddingValues(16.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
         item {
             Text(
                 text = "Открытия",
@@ -135,42 +143,174 @@ fun FeedScreen() {
         items(discoveries) { discovery ->
             DiscoveryCard(
                 discovery = discovery,
-                onJoin = { }
+                onJoin = {
+                    scope.launch {
+                        repository.toggleJoinDiscovery(discovery)
+                        discoveries = repository.getAllDiscoveries()
+                    }
+                }
             )
         }
+    }
         
-        item {
-            Card(
-                colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.surfaceVariant
-                ),
-                shape = RoundedCornerShape(16.dp),
-                modifier = Modifier.clickable { }
+        ExtendedFloatingActionButton(
+            onClick = { showCreateDialog = true },
+            expanded = fabExpanded,
+            icon = { Icon(Icons.Default.Add, contentDescription = "Создать") },
+            text = { Text("Создать своё открытие") },
+            modifier = Modifier
+                .align(Alignment.BottomEnd)
+                .padding(16.dp),
+            containerColor = MaterialTheme.colorScheme.primary
+        )
+    }
+    
+    if (showCreateDialog) {
+        CreateDiscoveryDialog(
+            onDismiss = { showCreateDialog = false },
+            onCreate = { title, description, category, color ->
+                scope.launch {
+                    repository.createDiscovery(title, description, category, color)
+                    discoveries = repository.getAllDiscoveries()
+                    showCreateDialog = false
+                }
+            }
+        )
+    }
+}
+
+@Composable
+fun CreateDiscoveryDialog(
+    onDismiss: () -> Unit,
+    onCreate: (String, String, String, String) -> Unit
+) {
+    var title by remember { mutableStateOf("") }
+    var description by remember { mutableStateOf("") }
+    var selectedCategory by remember { mutableStateOf("Технологии") }
+    var selectedColor by remember { mutableStateOf("FF4CAF50") }
+    
+    val categories = listOf(
+        "Технологии" to "FF4CAF50",
+        "Наука" to "FF2196F3",
+        "Искусство" to "FFFF9800",
+        "Спорт" to "FFF44336",
+        "Образование" to "FF9C27B0",
+        "Бизнес" to "FF00BCD4"
+    )
+
+    Dialog(onDismissRequest = onDismiss) {
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .fillMaxHeight(0.85f)
+                .padding(16.dp),
+            shape = RoundedCornerShape(24.dp),
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.surface
+            )
+        ) {
+            Column(
+                modifier = Modifier.fillMaxSize()
             ) {
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .verticalScroll(rememberScrollState())
+                        .padding(24.dp)
+                ) {
+                Text(
+                    text = "Создать открытие",
+                    style = MaterialTheme.typography.headlineSmall,
+                    fontWeight = FontWeight.Bold
+                )
+                
+                Spacer(modifier = Modifier.height(16.dp))
+                
+                OutlinedTextField(
+                    value = title,
+                    onValueChange = { title = it },
+                    label = { Text("Название") },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(16.dp)
+                )
+                
+                Spacer(modifier = Modifier.height(12.dp))
+                
+                OutlinedTextField(
+                    value = description,
+                    onValueChange = { description = it },
+                    label = { Text("Описание") },
+                    modifier = Modifier.fillMaxWidth(),
+                    minLines = 3,
+                    shape = RoundedCornerShape(16.dp)
+                )
+                
+                Spacer(modifier = Modifier.height(12.dp))
+                
+                Text(
+                    text = "Категория",
+                    style = MaterialTheme.typography.titleSmall
+                )
+                
+                Spacer(modifier = Modifier.height(8.dp))
+                
+                Column(
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    categories.forEach { (category, color) ->
+                        FilterChip(
+                            selected = selectedCategory == category,
+                            onClick = { 
+                                selectedCategory = category
+                                selectedColor = color
+                            },
+                            label = { 
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(12.dp)
+                                            .clip(CircleShape)
+                                            .background(Color(android.graphics.Color.parseColor("#$color")))
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text(category)
+                                }
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = FilterChipDefaults.filterChipColors(
+                                selectedContainerColor = MaterialTheme.colorScheme.primary,
+                                selectedLabelColor = MaterialTheme.colorScheme.onPrimary
+                            )
+                        )
+                    }
+                }
+            }
+                
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(16.dp),
-                    verticalAlignment = Alignment.CenterVertically
+                        .padding(24.dp),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    Icon(
-                        Icons.Default.Add,
-                        contentDescription = "Создать",
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(32.dp)
-                    )
-                    Spacer(modifier = Modifier.width(16.dp))
-                    Column {
-                        Text(
-                            text = "Создать свое открытие",
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.SemiBold
-                        )
-                        Text(
-                            text = "Поделись интересной идеей с сообществом",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
-                        )
+                    OutlinedButton(
+                        onClick = onDismiss,
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Text("Отмена")
+                    }
+                    
+                    Button(
+                        onClick = { 
+                            if (title.isNotBlank() && description.isNotBlank()) {
+                                onCreate(title, description, selectedCategory, selectedColor)
+                            }
+                        },
+                        enabled = title.isNotBlank() && description.isNotBlank(),
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Text("Создать")
                     }
                 }
             }
@@ -180,10 +320,10 @@ fun FeedScreen() {
 
 @Composable
 fun DiscoveryCard(
-    discovery: Discovery,
+    discovery: su.SkrinVex.ofox.data.Discovery,
     onJoin: () -> Unit
 ) {
-    var isJoined by remember { mutableStateOf(false) }
+    var showDetails by remember { mutableStateOf(false) }
     
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -202,7 +342,7 @@ fun DiscoveryCard(
                     modifier = Modifier
                         .size(12.dp)
                         .clip(CircleShape)
-                        .background(discovery.color)
+                        .background(Color(android.graphics.Color.parseColor("#${discovery.colorHex}")))
                 )
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(
@@ -241,12 +381,9 @@ fun DiscoveryCard(
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 Button(
-                    onClick = {
-                        isJoined = !isJoined
-                        onJoin()
-                    },
+                    onClick = onJoin,
                     colors = ButtonDefaults.buttonColors(
-                        containerColor = if (isJoined) 
+                        containerColor = if (discovery.isJoined) 
                             MaterialTheme.colorScheme.surfaceVariant 
                         else 
                             MaterialTheme.colorScheme.primary
@@ -254,8 +391,8 @@ fun DiscoveryCard(
                     modifier = Modifier.weight(1f)
                 ) {
                     Text(
-                        text = if (isJoined) "Участвую" else "Присоединиться",
-                        color = if (isJoined) 
+                        text = if (discovery.isJoined) "Участвую" else "Присоединиться",
+                        color = if (discovery.isJoined) 
                             MaterialTheme.colorScheme.onSurfaceVariant 
                         else 
                             MaterialTheme.colorScheme.onPrimary
@@ -263,12 +400,125 @@ fun DiscoveryCard(
                 }
                 
                 OutlinedButton(
-                    onClick = { },
+                    onClick = { showDetails = true },
                     modifier = Modifier.weight(1f)
                 ) {
                     Text("Подробнее")
                 }
             }
         }
+    }
+
+    if (showDetails) {
+        DiscoveryDetailsDialog(
+            discovery = discovery,
+            onDismiss = { showDetails = false }
+        )
+    }
+}
+
+@Composable
+fun DiscoveryDetailsDialog(
+    discovery: su.SkrinVex.ofox.data.Discovery,
+    onDismiss: () -> Unit
+) {
+    val dateFormat = SimpleDateFormat("dd MMMM yyyy", Locale("ru"))
+    val createdDate = dateFormat.format(Date(System.currentTimeMillis() - (1..30).random() * 24 * 60 * 60 * 1000L))
+    
+    Dialog(onDismissRequest = onDismiss) {
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            shape = RoundedCornerShape(24.dp),
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.surface
+            )
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(24.dp)
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(16.dp)
+                            .clip(CircleShape)
+                            .background(Color(android.graphics.Color.parseColor("#${discovery.colorHex}")))
+                    )
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Text(
+                        text = discovery.title,
+                        style = MaterialTheme.typography.headlineSmall,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+                
+                Spacer(modifier = Modifier.height(16.dp))
+                
+                DetailRow(icon = Icons.Default.Category, label = "Категория", value = discovery.category)
+                DetailRow(icon = Icons.Default.People, label = "Участников", value = "${discovery.participants}")
+                DetailRow(icon = Icons.Default.CalendarToday, label = "Создано", value = createdDate)
+                DetailRow(icon = Icons.Default.Person, label = "Создатель", value = "Komari")
+                
+                Spacer(modifier = Modifier.height(16.dp))
+                
+                Text(
+                    text = "Описание",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold
+                )
+                
+                Spacer(modifier = Modifier.height(8.dp))
+                
+                Text(
+                    text = discovery.description,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f)
+                )
+                
+                Spacer(modifier = Modifier.height(24.dp))
+                
+                Button(
+                    onClick = onDismiss,
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Text("Закрыть")
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun DetailRow(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String, value: String) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(
+            icon,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.size(20.dp)
+        )
+        Spacer(modifier = Modifier.width(12.dp))
+        Text(
+            text = "$label:",
+            style = MaterialTheme.typography.bodyMedium,
+            fontWeight = FontWeight.Medium,
+            modifier = Modifier.width(100.dp)
+        )
+        Text(
+            text = value,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f)
+        )
     }
 }
