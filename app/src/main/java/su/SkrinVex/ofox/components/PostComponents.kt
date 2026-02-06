@@ -76,7 +76,7 @@ fun CreativePostCard(
                 else -> MaterialTheme.colorScheme.surface
             }
         ),
-        shape = RoundedCornerShape(16.dp)
+        shape = MaterialTheme.shapes.medium
     ) {
         Column(
             modifier = Modifier.padding(16.dp)

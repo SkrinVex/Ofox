@@ -156,7 +156,7 @@ fun HomeScreen(repository: Repository, navController: androidx.navigation.NavCon
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(16.dp),
-                shape = RoundedCornerShape(24.dp),
+                shape = MaterialTheme.shapes.medium,
                 colors = CardDefaults.cardColors(
                     containerColor = MaterialTheme.colorScheme.surface
                 )
@@ -189,7 +189,7 @@ fun HomeScreen(repository: Repository, navController: androidx.navigation.NavCon
                         OutlinedButton(
                             onClick = { showDeleteDialog = false },
                             modifier = Modifier.weight(1f),
-                            shape = RoundedCornerShape(12.dp)
+                            shape = MaterialTheme.shapes.medium
                         ) {
                             Text("Отмена")
                         }
@@ -206,7 +206,7 @@ fun HomeScreen(repository: Repository, navController: androidx.navigation.NavCon
                             colors = ButtonDefaults.buttonColors(
                                 containerColor = MaterialTheme.colorScheme.primary
                             ),
-                            shape = RoundedCornerShape(12.dp)
+                            shape = MaterialTheme.shapes.medium
                         ) {
                             Text("Удалить")
                         }
@@ -283,7 +283,7 @@ fun CreatePostDialog(
                 .fillMaxWidth()
                 .fillMaxHeight(0.9f)
                 .padding(16.dp),
-            shape = RoundedCornerShape(24.dp),
+            shape = MaterialTheme.shapes.medium,
             colors = CardDefaults.cardColors(
                 containerColor = MaterialTheme.colorScheme.surface
             )
@@ -359,7 +359,7 @@ fun CreatePostDialog(
                         onValueChange = { content = it },
                         label = { Text(placeholder) },
                         modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(16.dp)
+                        shape = MaterialTheme.shapes.medium
                     )
                     
                     Spacer(modifier = Modifier.height(12.dp))
@@ -379,7 +379,7 @@ fun CreatePostDialog(
                             },
                             label = { Text("Вариант ${index + 1}") },
                             modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(16.dp)
+                            shape = MaterialTheme.shapes.medium
                         )
                         Spacer(modifier = Modifier.height(8.dp))
                     }
@@ -399,7 +399,7 @@ fun CreatePostDialog(
                         label = { Text(placeholder) },
                         modifier = Modifier.fillMaxWidth(),
                         minLines = 4,
-                        shape = RoundedCornerShape(16.dp)
+                        shape = MaterialTheme.shapes.medium
                     )
                 }
                 
@@ -451,7 +451,7 @@ fun CreatePostDialog(
                     OutlinedButton(
                         onClick = onDismiss,
                         modifier = Modifier.weight(1f),
-                        shape = RoundedCornerShape(12.dp)
+                        shape = MaterialTheme.shapes.medium
                     ) {
                         Text("Отмена")
                     }
@@ -469,7 +469,7 @@ fun CreatePostDialog(
                         },
                         enabled = content.isNotBlank() && (selectedType != "POLL" || pollOptions.count { it.isNotBlank() } >= 2),
                         modifier = Modifier.weight(1f),
-                        shape = RoundedCornerShape(12.dp)
+                        shape = MaterialTheme.shapes.medium
                     ) {
                         Text("Опубликовать")
                     }

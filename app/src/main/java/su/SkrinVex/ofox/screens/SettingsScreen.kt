@@ -60,7 +60,7 @@ fun SettingsScreen(repository: Repository, navController: NavController, onLogou
                     colors = CardDefaults.cardColors(
                         containerColor = MaterialTheme.colorScheme.surface
                     ),
-                    shape = RoundedCornerShape(12.dp)
+                    shape = MaterialTheme.shapes.medium
                 ) {
                     Row(
                         modifier = Modifier
@@ -109,7 +109,7 @@ fun SettingsScreen(repository: Repository, navController: NavController, onLogou
                     colors = ButtonDefaults.buttonColors(
                         containerColor = MaterialTheme.colorScheme.primary
                     ),
-                    shape = RoundedCornerShape(12.dp)
+                    shape = MaterialTheme.shapes.medium
                 ) {
                     Text("Выйти из аккаунта")
                 }
@@ -123,7 +123,7 @@ fun SettingsScreen(repository: Repository, navController: NavController, onLogou
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(16.dp),
-                shape = RoundedCornerShape(24.dp),
+                shape = MaterialTheme.shapes.medium,
                 colors = CardDefaults.cardColors(
                     containerColor = MaterialTheme.colorScheme.surface
                 )
@@ -156,7 +156,7 @@ fun SettingsScreen(repository: Repository, navController: NavController, onLogou
                         OutlinedButton(
                             onClick = { showLogoutDialog = false },
                             modifier = Modifier.weight(1f),
-                            shape = RoundedCornerShape(12.dp)
+                            shape = MaterialTheme.shapes.medium
                         ) {
                             Text("Отмена")
                         }
@@ -170,7 +170,7 @@ fun SettingsScreen(repository: Repository, navController: NavController, onLogou
                             colors = ButtonDefaults.buttonColors(
                                 containerColor = MaterialTheme.colorScheme.primary
                             ),
-                            shape = RoundedCornerShape(12.dp)
+                            shape = MaterialTheme.shapes.medium
                         ) {
                             Text("Выйти")
                         }

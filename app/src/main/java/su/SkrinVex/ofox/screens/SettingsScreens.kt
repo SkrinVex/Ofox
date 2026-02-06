@@ -64,7 +64,7 @@ fun EditProfileScreen(repository: Repository, onBack: () -> Unit) {
                 onValueChange = { name = it },
                 label = { Text("Имя") },
                 modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(12.dp)
+                shape = MaterialTheme.shapes.medium
             )
 
             OutlinedTextField(
@@ -72,7 +72,7 @@ fun EditProfileScreen(repository: Repository, onBack: () -> Unit) {
                 onValueChange = { bio = it },
                 label = { Text("О себе") },
                 modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(12.dp),
+                shape = MaterialTheme.shapes.medium,
                 minLines = 3
             )
 
@@ -86,7 +86,7 @@ fun EditProfileScreen(repository: Repository, onBack: () -> Unit) {
                     }
                 },
                 modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(12.dp)
+                shape = MaterialTheme.shapes.medium
             ) {
                 Text("Сохранить")
             }
@@ -151,7 +151,7 @@ fun OldThemeScreen(onBack: () -> Unit) {
                         else
                             MaterialTheme.colorScheme.surface
                     ),
-                    shape = RoundedCornerShape(12.dp)
+                    shape = MaterialTheme.shapes.medium
                 ) {
                     Row(
                         modifier = Modifier
@@ -224,7 +224,7 @@ fun AboutScreen(onBack: () -> Unit) {
                 colors = CardDefaults.cardColors(
                     containerColor = MaterialTheme.colorScheme.surface
                 ),
-                shape = RoundedCornerShape(12.dp)
+                shape = MaterialTheme.shapes.medium
             ) {
                 Column(
                     modifier = Modifier.padding(16.dp)
@@ -249,7 +249,7 @@ fun AboutScreen(onBack: () -> Unit) {
                 colors = CardDefaults.cardColors(
                     containerColor = MaterialTheme.colorScheme.surface
                 ),
-                shape = RoundedCornerShape(12.dp)
+                shape = MaterialTheme.shapes.medium
             ) {
                 Column(
                     modifier = Modifier.padding(16.dp)
@@ -273,7 +273,7 @@ fun AboutScreen(onBack: () -> Unit) {
                 colors = CardDefaults.cardColors(
                     containerColor = MaterialTheme.colorScheme.surface
                 ),
-                shape = RoundedCornerShape(12.dp)
+                shape = MaterialTheme.shapes.medium
             ) {
                 Column(
                     modifier = Modifier.padding(16.dp)

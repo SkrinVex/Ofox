@@ -78,7 +78,7 @@ fun FeedScreen(repository: Repository, navController: androidx.navigation.NavCon
                 colors = CardDefaults.cardColors(
                     containerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.1f)
                 ),
-                shape = RoundedCornerShape(16.dp)
+                shape = MaterialTheme.shapes.medium
             ) {
                 Column(
                     modifier = Modifier.padding(16.dp)
@@ -241,7 +241,7 @@ fun CreateDiscoveryDialog(
                 .fillMaxWidth()
                 .fillMaxHeight(0.85f)
                 .padding(16.dp),
-            shape = RoundedCornerShape(24.dp),
+            shape = MaterialTheme.shapes.medium,
             colors = CardDefaults.cardColors(
                 containerColor = MaterialTheme.colorScheme.surface
             )
@@ -268,7 +268,7 @@ fun CreateDiscoveryDialog(
                     onValueChange = { title = it },
                     label = { Text("Название") },
                     modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(16.dp)
+                    shape = MaterialTheme.shapes.medium
                 )
                 
                 Spacer(modifier = Modifier.height(12.dp))
@@ -279,7 +279,7 @@ fun CreateDiscoveryDialog(
                     label = { Text("Описание") },
                     modifier = Modifier.fillMaxWidth(),
                     minLines = 3,
-                    shape = RoundedCornerShape(16.dp)
+                    shape = MaterialTheme.shapes.medium
                 )
                 
                 Spacer(modifier = Modifier.height(12.dp))
@@ -310,7 +310,7 @@ fun CreateDiscoveryDialog(
                                 else
                                     MaterialTheme.colorScheme.surfaceVariant
                             ),
-                            shape = RoundedCornerShape(16.dp)
+                            shape = MaterialTheme.shapes.medium
                         ) {
                             Column(
                                 modifier = Modifier
@@ -360,7 +360,7 @@ fun CreateDiscoveryDialog(
                     OutlinedButton(
                         onClick = onDismiss,
                         modifier = Modifier.weight(1f),
-                        shape = RoundedCornerShape(12.dp)
+                        shape = MaterialTheme.shapes.medium
                     ) {
                         Text("Отмена")
                     }
@@ -373,7 +373,7 @@ fun CreateDiscoveryDialog(
                         },
                         enabled = title.isNotBlank() && description.isNotBlank(),
                         modifier = Modifier.weight(1f),
-                        shape = RoundedCornerShape(12.dp)
+                        shape = MaterialTheme.shapes.medium
                     ) {
                         Text("Создать")
                     }
@@ -396,7 +396,7 @@ fun DiscoveryCard(
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surface
         ),
-        shape = RoundedCornerShape(16.dp)
+        shape = MaterialTheme.shapes.medium
     ) {
         Column(
             modifier = Modifier.padding(16.dp)
@@ -493,7 +493,7 @@ fun DiscoveryDetailsDialog(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(16.dp),
-            shape = RoundedCornerShape(24.dp),
+            shape = MaterialTheme.shapes.medium,
             colors = CardDefaults.cardColors(
                 containerColor = MaterialTheme.colorScheme.surface
             )
@@ -548,7 +548,7 @@ fun DiscoveryDetailsDialog(
                 Button(
                     onClick = onDismiss,
                     modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(12.dp)
+                    shape = MaterialTheme.shapes.medium
                 ) {
                     Text("Закрыть")
                 }

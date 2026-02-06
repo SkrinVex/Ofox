@@ -90,7 +90,12 @@ val LocalCustomization = compositionLocalOf {
 
 @Composable
 fun rememberCustomization(context: Context): AppCustomization {
-    return remember(context) {
+    val prefs = context.getSharedPreferences("ofox_prefs", Context.MODE_PRIVATE)
+    val themeName = prefs.getString("theme", "Оранжевый") ?: "Оранжевый"
+    val fontSizeName = prefs.getString("font_size", "NORMAL") ?: "NORMAL"
+    val cornerRadiusName = prefs.getString("corner_radius", "NORMAL") ?: "NORMAL"
+    
+    return remember(themeName, fontSizeName, cornerRadiusName) {
         CustomizationManager.getCustomization(context)
     }
 }

@@ -19,10 +19,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 
 @Composable
-fun CustomizationScreen(onBack: () -> Unit, onThemeClick: () -> Unit) {
-    val context = androidx.compose.ui.platform.LocalContext.current
-    var refreshKey by remember { mutableStateOf(0) }
-    
+fun CustomizationScreen(onBack: () -> Unit, onThemeClick: () -> Unit, onFontSizeClick: () -> Unit, onCornerRadiusClick: () -> Unit) {
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -57,14 +54,14 @@ fun CustomizationScreen(onBack: () -> Unit, onThemeClick: () -> Unit) {
                 title = "Размер шрифта",
                 description = "Настройте размер текста",
                 icon = Icons.Default.TextFields,
-                onClick = { }
+                onClick = onFontSizeClick
             )
             
             CustomizationCard(
                 title = "Форма элементов",
                 description = "Округлость карточек и кнопок",
                 icon = Icons.Default.RoundedCorner,
-                onClick = { }
+                onClick = onCornerRadiusClick
             )
         }
     }
@@ -80,7 +77,7 @@ fun CustomizationCard(
     Card(
         onClick = onClick,
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        shape = RoundedCornerShape(16.dp)
+        shape = MaterialTheme.shapes.medium
     ) {
         Row(
             modifier = Modifier
@@ -181,7 +178,7 @@ fun ThemeScreen(onBack: () -> Unit) {
                         else
                             MaterialTheme.colorScheme.surface
                     ),
-                    shape = RoundedCornerShape(16.dp),
+                    shape = MaterialTheme.shapes.medium,
                     border = if (selectedTheme == name)
                         androidx.compose.foundation.BorderStroke(2.dp, color)
                     else null
@@ -211,6 +208,173 @@ fun ThemeScreen(onBack: () -> Unit) {
                                 contentDescription = null,
                                 tint = color,
                                 modifier = Modifier.size(20.dp)
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+
+@Composable
+fun FontSizeScreen(onBack: () -> Unit) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val prefs = context.getSharedPreferences("ofox_prefs", android.content.Context.MODE_PRIVATE)
+    var selectedSize by remember { mutableStateOf(prefs.getString("font_size", "NORMAL") ?: "NORMAL") }
+    
+    val sizes = listOf(
+        su.SkrinVex.ofox.ui.theme.FontSize.SMALL,
+        su.SkrinVex.ofox.ui.theme.FontSize.NORMAL,
+        su.SkrinVex.ofox.ui.theme.FontSize.LARGE,
+        su.SkrinVex.ofox.ui.theme.FontSize.EXTRA_LARGE
+    )
+    
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background)
+            .padding(16.dp)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(bottom = 16.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            IconButton(onClick = onBack) {
+                Icon(Icons.Default.ArrowBack, "Назад")
+            }
+            Text(
+                "Размер шрифта",
+                style = MaterialTheme.typography.headlineMedium,
+                fontWeight = FontWeight.Bold
+            )
+        }
+        
+        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            sizes.forEach { size ->
+                Card(
+                    onClick = {
+                        selectedSize = size.name
+                        su.SkrinVex.ofox.ui.theme.CustomizationManager.saveFontSize(context, size)
+                        (context as? android.app.Activity)?.recreate()
+                    },
+                    colors = CardDefaults.cardColors(
+                        containerColor = if (selectedSize == size.name)
+                            MaterialTheme.colorScheme.primaryContainer
+                        else
+                            MaterialTheme.colorScheme.surface
+                    ),
+                    shape = MaterialTheme.shapes.medium
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(20.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                size.displayName,
+                                style = MaterialTheme.typography.titleMedium.copy(fontSize = MaterialTheme.typography.titleMedium.fontSize * size.scale),
+                                fontWeight = FontWeight.SemiBold
+                            )
+                            Text(
+                                "Пример текста",
+                                style = MaterialTheme.typography.bodyMedium.copy(fontSize = MaterialTheme.typography.bodyMedium.fontSize * size.scale),
+                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                            )
+                        }
+                        if (selectedSize == size.name) {
+                            Icon(
+                                Icons.Default.CheckCircle,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun CornerRadiusScreen(onBack: () -> Unit) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val prefs = context.getSharedPreferences("ofox_prefs", android.content.Context.MODE_PRIVATE)
+    var selectedRadius by remember { mutableStateOf(prefs.getString("corner_radius", "NORMAL") ?: "NORMAL") }
+    
+    val radii = listOf(
+        su.SkrinVex.ofox.ui.theme.CornerRadius.SHARP,
+        su.SkrinVex.ofox.ui.theme.CornerRadius.NORMAL,
+        su.SkrinVex.ofox.ui.theme.CornerRadius.ROUNDED,
+        su.SkrinVex.ofox.ui.theme.CornerRadius.EXTRA_ROUNDED
+    )
+    
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background)
+            .padding(16.dp)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(bottom = 16.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            IconButton(onClick = onBack) {
+                Icon(Icons.Default.ArrowBack, "Назад")
+            }
+            Text(
+                "Форма элементов",
+                style = MaterialTheme.typography.headlineMedium,
+                fontWeight = FontWeight.Bold
+            )
+        }
+        
+        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            radii.forEach { radius ->
+                Card(
+                    onClick = {
+                        selectedRadius = radius.name
+                        su.SkrinVex.ofox.ui.theme.CustomizationManager.saveCornerRadius(context, radius)
+                        (context as? android.app.Activity)?.recreate()
+                    },
+                    colors = CardDefaults.cardColors(
+                        containerColor = if (selectedRadius == radius.name)
+                            MaterialTheme.colorScheme.primaryContainer
+                        else
+                            MaterialTheme.colorScheme.surface
+                    ),
+                    shape = RoundedCornerShape(radius.value)
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(20.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                radius.displayName,
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                            Text(
+                                "Округлость: ${radius.value}",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                            )
+                        }
+                        if (selectedRadius == radius.name) {
+                            Icon(
+                                Icons.Default.CheckCircle,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary
                             )
                         }
                     }

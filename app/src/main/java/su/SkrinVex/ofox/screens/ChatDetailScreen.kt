@@ -115,7 +115,7 @@ fun ChatDetailScreen(repository: Repository, chatId: Int, onBack: () -> Unit) {
         ) {
             Surface(
                 modifier = Modifier.weight(1f),
-                shape = RoundedCornerShape(24.dp),
+                shape = MaterialTheme.shapes.medium,
                 color = MaterialTheme.colorScheme.surfaceVariant
             ) {
                 TextField(
@@ -134,7 +134,7 @@ fun ChatDetailScreen(repository: Repository, chatId: Int, onBack: () -> Unit) {
                         focusedIndicatorColor = Color.Transparent,
                         unfocusedIndicatorColor = Color.Transparent
                     ),
-                    shape = RoundedCornerShape(24.dp)
+                    shape = MaterialTheme.shapes.medium
                 )
             }
             Spacer(modifier = Modifier.width(8.dp))

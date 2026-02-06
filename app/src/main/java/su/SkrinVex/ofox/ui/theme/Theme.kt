@@ -20,6 +20,8 @@ fun OfoxTheme(
     val customization = rememberCustomization(context)
     
     val colorScheme = getColorSchemeFromColor(customization.primaryColor)
+    val typography = getScaledTypography(customization.fontSize.scale)
+    val shapes = getScaledShapes(customization.cornerRadius.value)
 
     val view = LocalView.current
     if (!view.isInEditMode) {
@@ -34,7 +36,8 @@ fun OfoxTheme(
     CompositionLocalProvider(LocalCustomization provides customization) {
         MaterialTheme(
             colorScheme = colorScheme,
-            typography = Typography,
+            typography = typography,
+            shapes = shapes,
             content = content
         )
     }

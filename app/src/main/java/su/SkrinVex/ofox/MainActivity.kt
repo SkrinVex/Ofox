@@ -119,11 +119,19 @@ class MainActivity : ComponentActivity() {
                             composable("customization") {
                                 CustomizationScreen(
                                     onBack = { navController.popBackStack() },
-                                    onThemeClick = { navController.navigate("theme") }
+                                    onThemeClick = { navController.navigate("theme") },
+                                    onFontSizeClick = { navController.navigate("font_size") },
+                                    onCornerRadiusClick = { navController.navigate("corner_radius") }
                                 )
                             }
                             composable("theme") {
                                 ThemeScreen { navController.popBackStack() }
+                            }
+                            composable("font_size") {
+                                FontSizeScreen { navController.popBackStack() }
+                            }
+                            composable("corner_radius") {
+                                CornerRadiusScreen { navController.popBackStack() }
                             }
                             composable("about") {
                                 AboutScreen { navController.popBackStack() }

@@ -72,7 +72,7 @@ fun AuthScreen(repository: Repository, onAuthSuccess: () -> Unit) {
                 .fillMaxWidth()
                 .background(
                     MaterialTheme.colorScheme.surfaceVariant,
-                    RoundedCornerShape(12.dp)
+                    MaterialTheme.shapes.medium
                 )
                 .padding(4.dp)
         ) {
@@ -84,7 +84,7 @@ fun AuthScreen(repository: Repository, onAuthSuccess: () -> Unit) {
                     contentColor = if (isLogin) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant
                 ),
                 elevation = ButtonDefaults.buttonElevation(0.dp),
-                shape = RoundedCornerShape(8.dp)
+                shape = MaterialTheme.shapes.medium
             ) {
                 Text("Вход")
             }
@@ -97,7 +97,7 @@ fun AuthScreen(repository: Repository, onAuthSuccess: () -> Unit) {
                     contentColor = if (!isLogin) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant
                 ),
                 elevation = ButtonDefaults.buttonElevation(0.dp),
-                shape = RoundedCornerShape(8.dp)
+                shape = MaterialTheme.shapes.medium
             ) {
                 Text("Регистрация")
             }
@@ -111,7 +111,7 @@ fun AuthScreen(repository: Repository, onAuthSuccess: () -> Unit) {
                 onValueChange = { name = it },
                 label = { Text("Имя") },
                 modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(12.dp)
+                shape = MaterialTheme.shapes.medium
             )
             Spacer(modifier = Modifier.height(16.dp))
         }
@@ -122,7 +122,7 @@ fun AuthScreen(repository: Repository, onAuthSuccess: () -> Unit) {
             label = { Text("Email") },
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
             modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(12.dp)
+            shape = MaterialTheme.shapes.medium
         )
         
         Spacer(modifier = Modifier.height(16.dp))
@@ -142,7 +142,7 @@ fun AuthScreen(repository: Repository, onAuthSuccess: () -> Unit) {
                 }
             },
             modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(12.dp)
+            shape = MaterialTheme.shapes.medium
         )
         
         if (!isLogin) {
@@ -163,7 +163,7 @@ fun AuthScreen(repository: Repository, onAuthSuccess: () -> Unit) {
                     }
                 },
                 modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(12.dp)
+                shape = MaterialTheme.shapes.medium
             )
         }
         
@@ -225,7 +225,7 @@ fun AuthScreen(repository: Repository, onAuthSuccess: () -> Unit) {
             modifier = Modifier
                 .fillMaxWidth()
                 .height(56.dp),
-            shape = RoundedCornerShape(12.dp)
+            shape = MaterialTheme.shapes.medium
         ) {
             Text(
                 text = if (isLogin) "Войти" else "Зарегистрироваться",
