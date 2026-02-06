@@ -132,6 +132,35 @@ fun FeedScreen(repository: Repository) {
         }
         
         item {
+            Spacer(modifier = Modifier.height(8.dp))
+        }
+        
+        item {
+            Text(
+                text = "Вы участвуете",
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.onBackground
+            )
+        }
+        
+        items(discoveries.filter { it.isJoined }) { discovery ->
+            DiscoveryCard(
+                discovery = discovery,
+                onJoin = {
+                    scope.launch {
+                        repository.toggleJoinDiscovery(discovery)
+                        discoveries = repository.getAllDiscoveries()
+                    }
+                }
+            )
+        }
+        
+        item {
+            Spacer(modifier = Modifier.height(8.dp))
+        }
+        
+        item {
             Text(
                 text = "Рекомендуем для тебя",
                 style = MaterialTheme.typography.titleLarge,
@@ -140,7 +169,7 @@ fun FeedScreen(repository: Repository) {
             )
         }
         
-        items(discoveries) { discovery ->
+        items(discoveries.filter { !it.isJoined }) { discovery ->
             DiscoveryCard(
                 discovery = discovery,
                 onJoin = {

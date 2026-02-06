@@ -5,7 +5,7 @@ import androidx.room.*
 
 @Database(
     entities = [User::class, Post::class, Chat::class, Message::class, Discovery::class],
-    version = 1
+    version = 2
 )
 abstract class AppDatabase : RoomDatabase() {
     abstract fun userDao(): UserDao
@@ -24,7 +24,9 @@ abstract class AppDatabase : RoomDatabase() {
                     context.applicationContext,
                     AppDatabase::class.java,
                     "ofox_database"
-                ).build()
+                )
+                .fallbackToDestructiveMigration()
+                .build()
                 INSTANCE = instance
                 instance
             }
@@ -52,7 +54,10 @@ data class Post(
     val shares: Int = 0,
     val timestamp: Long,
     val type: String = "TEXT",
-    val isLiked: Boolean = false
+    val isLiked: Boolean = false,
+    val pollOptions: String = "", // JSON array of options
+    val pollVotes: String = "", // JSON array of vote counts
+    val userVote: Int = -1 // -1 means not voted, otherwise index of voted option
 )
 
 @Entity(tableName = "chats")
@@ -103,6 +108,9 @@ interface PostDao {
     @Query("SELECT * FROM posts ORDER BY timestamp DESC")
     suspend fun getAllPosts(): List<Post>
 
+    @Query("SELECT * FROM posts WHERE id = :postId")
+    suspend fun getPostById(postId: Int): Post?
+
     @Insert
     suspend fun insertPost(post: Post)
 
@@ -111,6 +119,12 @@ interface PostDao {
 
     @Query("UPDATE posts SET shares = :shares WHERE id = :postId")
     suspend fun updateShares(postId: Int, shares: Int)
+
+    @Query("UPDATE posts SET pollVotes = :votes, userVote = :userVote WHERE id = :postId")
+    suspend fun updatePollVote(postId: Int, votes: String, userVote: Int)
+
+    @Query("DELETE FROM posts WHERE id = :postId")
+    suspend fun deletePost(postId: Int)
 }
 
 @Dao

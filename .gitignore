@@ -17,3 +17,4 @@ local.properties
 .idea
 .config
 run.sh
+app/.config

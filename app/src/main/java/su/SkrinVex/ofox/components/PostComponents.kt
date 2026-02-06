@@ -25,7 +25,8 @@ fun CreativePostCard(
     onLike: () -> Unit,
     onComment: () -> Unit,
     onShare: () -> Unit,
-    onMoreClick: () -> Unit
+    onMoreClick: () -> Unit,
+    onVote: (Int) -> Unit = {}
 ) {
     var liked by remember { mutableStateOf(isLiked) }
     var likesCount by remember { mutableStateOf(post.likes) }
@@ -127,36 +128,74 @@ fun CreativePostCard(
             )
             
             // Poll options (if poll)
-            if (post.type == PostType.POLL) {
+            if (post.type == PostType.POLL && post.pollOptions.isNotEmpty()) {
                 Spacer(modifier = Modifier.height(12.dp))
+                val totalVotes = post.pollVotes.sum()
+                val hasVoted = post.userVote >= 0
+                
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    listOf("Kotlin", "Java", "Flutter", "React Native").forEach { option ->
+                    post.pollOptions.forEachIndexed { index, option ->
+                        val votes = post.pollVotes.getOrNull(index) ?: 0
+                        val percentage = if (totalVotes > 0) (votes * 100f / totalVotes) else 0f
+                        val isSelected = post.userVote == index
+                        
                         Card(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .clickable { selectedPollOption = option },
+                                .clickable(enabled = !hasVoted) { onVote(index) },
                             colors = CardDefaults.cardColors(
-                                containerColor = if (selectedPollOption == option) 
+                                containerColor = if (isSelected) 
                                     MaterialTheme.colorScheme.primary.copy(alpha = 0.2f)
                                 else 
                                     MaterialTheme.colorScheme.surfaceVariant
                             )
                         ) {
-                            Row(
-                                modifier = Modifier.padding(12.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                RadioButton(
-                                    selected = selectedPollOption == option,
-                                    onClick = { selectedPollOption = option }
-                                )
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Text(
-                                    text = option,
-                                    style = MaterialTheme.typography.bodyMedium
-                                )
+                            Box(modifier = Modifier.fillMaxWidth()) {
+                                // Progress bar
+                                if (hasVoted) {
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxWidth(percentage / 100f)
+                                            .height(48.dp)
+                                            .background(
+                                                MaterialTheme.colorScheme.primary.copy(alpha = 0.3f),
+                                                RoundedCornerShape(12.dp)
+                                            )
+                                    )
+                                }
+                                
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(12.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Text(
+                                        text = option,
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                        modifier = Modifier.weight(1f)
+                                    )
+                                    if (hasVoted) {
+                                        Text(
+                                            text = "${percentage.toInt()}%",
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            fontWeight = FontWeight.Bold,
+                                            color = MaterialTheme.colorScheme.primary
+                                        )
+                                    }
+                                }
                             }
                         }
+                    }
+                    
+                    if (hasVoted) {
+                        Text(
+                            text = "$totalVotes ${if (totalVotes == 1) "голос" else if (totalVotes < 5) "голоса" else "голосов"}",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                        )
                     }
                 }
             }
@@ -285,15 +324,24 @@ fun ShareBottomSheet(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PostMenuBottomSheet(
+    isMyPost: Boolean,
     onDismiss: () -> Unit,
     onAction: (String) -> Unit
 ) {
-    val menuOptions = listOf(
-        "Скрыть пост" to Icons.Default.VisibilityOff,
-        "Пожаловаться" to Icons.Default.Report,
-        "Скопировать текст" to Icons.Default.ContentCopy,
-        "Не показывать от автора" to Icons.Default.Block
-    )
+    val menuOptions = if (isMyPost) {
+        listOf(
+            "Скрыть пост" to Icons.Default.VisibilityOff,
+            "Скопировать текст" to Icons.Default.ContentCopy,
+            "Удалить пост" to Icons.Default.Delete
+        )
+    } else {
+        listOf(
+            "Скрыть пост" to Icons.Default.VisibilityOff,
+            "Пожаловаться" to Icons.Default.Report,
+            "Скопировать текст" to Icons.Default.ContentCopy,
+            "Не показывать от автора" to Icons.Default.Block
+        )
+    }
     
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -313,19 +361,29 @@ fun PostMenuBottomSheet(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clickable { onAction(name) }
+                        .clickable { 
+                            onAction(name)
+                            onDismiss()
+                        }
                         .padding(vertical = 12.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Icon(
                         icon,
                         contentDescription = name,
-                        tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+                        tint = if (name == "Удалить пост") 
+                            MaterialTheme.colorScheme.primary
+                        else 
+                            MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
                     )
                     Spacer(modifier = Modifier.width(16.dp))
                     Text(
                         text = name,
-                        style = MaterialTheme.typography.bodyMedium
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = if (name == "Удалить пост")
+                            MaterialTheme.colorScheme.primary
+                        else
+                            MaterialTheme.colorScheme.onSurface
                     )
                 }
             }

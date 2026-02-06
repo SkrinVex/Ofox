@@ -31,7 +31,9 @@ fun HomeScreen(repository: Repository) {
     var showShareMenu by remember { mutableStateOf(false) }
     var showPostMenu by remember { mutableStateOf(false) }
     var showCreatePost by remember { mutableStateOf(false) }
+    var showDeleteDialog by remember { mutableStateOf(false) }
     var selectedPostId by remember { mutableStateOf(0) }
+    var selectedPost by remember { mutableStateOf<su.SkrinVex.ofox.data.Post?>(null) }
     var posts by remember { mutableStateOf(listOf<su.SkrinVex.ofox.data.Post>()) }
     var currentUser by remember { mutableStateOf<su.SkrinVex.ofox.data.User?>(null) }
     val scope = rememberCoroutineScope()
@@ -48,53 +50,6 @@ fun HomeScreen(repository: Repository) {
                 .fillMaxSize()
                 .background(MaterialTheme.colorScheme.background)
         ) {
-            Card(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(16.dp),
-                colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.1f)
-                ),
-                shape = RoundedCornerShape(16.dp)
-            ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(16.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .size(48.dp)
-                            .clip(CircleShape)
-                            .background(MaterialTheme.colorScheme.primary),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            text = currentUser?.name?.firstOrNull()?.toString() ?: "K",
-                            color = MaterialTheme.colorScheme.onPrimary,
-                            fontWeight = FontWeight.Bold,
-                            style = MaterialTheme.typography.titleLarge
-                        )
-                    }
-                    
-                    Spacer(modifier = Modifier.width(12.dp))
-                    
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = "Привет, ${currentUser?.name ?: "Komari"}! 👋",
-                            style = MaterialTheme.typography.titleMedium,
-                            color = MaterialTheme.colorScheme.onBackground,
-                            fontWeight = FontWeight.SemiBold
-                        )
-                        Text(
-                            text = "Что нового сегодня?",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f)
-                        )
-                    }
-                }
-            }
             
             LazyColumn(
                 state = listState,
@@ -110,7 +65,10 @@ fun HomeScreen(repository: Repository) {
                             post.comments,
                             post.shares,
                             formatTime(post.timestamp),
-                            PostType.valueOf(post.type)
+                            PostType.valueOf(post.type),
+                            post.pollOptions.split(",").filter { it.isNotEmpty() },
+                            post.pollVotes.split(",").mapNotNull { it.toIntOrNull() },
+                            post.userVote
                         ),
                         isLiked = post.isLiked,
                         onLike = {
@@ -125,8 +83,15 @@ fun HomeScreen(repository: Repository) {
                             showShareMenu = true 
                         },
                         onMoreClick = {
+                            selectedPost = post
                             selectedPostId = post.id
                             showPostMenu = true
+                        },
+                        onVote = { optionIndex ->
+                            scope.launch {
+                                repository.voteOnPoll(post.id, optionIndex)
+                                posts = repository.getAllPosts()
+                            }
                         }
                     )
                 }
@@ -161,17 +126,98 @@ fun HomeScreen(repository: Repository) {
     
     if (showPostMenu) {
         PostMenuBottomSheet(
+            isMyPost = selectedPost?.authorId == currentUser?.id,
             onDismiss = { showPostMenu = false },
-            onAction = { showPostMenu = false }
+            onAction = { action ->
+                when (action) {
+                    "Удалить пост" -> {
+                        showPostMenu = false
+                        showDeleteDialog = true
+                    }
+                    else -> showPostMenu = false
+                }
+            }
         )
+    }
+
+    if (showDeleteDialog) {
+        Dialog(onDismissRequest = { showDeleteDialog = false }) {
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp),
+                shape = RoundedCornerShape(24.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surface
+                )
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(24.dp)
+                ) {
+                    Text(
+                        text = "Удалить пост",
+                        style = MaterialTheme.typography.headlineSmall,
+                        fontWeight = FontWeight.Bold
+                    )
+                    
+                    Spacer(modifier = Modifier.height(16.dp))
+                    
+                    Text(
+                        text = "Вы уверены, что хотите удалить этот пост? Это действие нельзя отменить.",
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f)
+                    )
+                    
+                    Spacer(modifier = Modifier.height(24.dp))
+                    
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        OutlinedButton(
+                            onClick = { showDeleteDialog = false },
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(12.dp)
+                        ) {
+                            Text("Отмена")
+                        }
+                        
+                        Button(
+                            onClick = {
+                                scope.launch {
+                                    selectedPost?.let { repository.deletePost(it.id) }
+                                    posts = repository.getAllPosts()
+                                    showDeleteDialog = false
+                                }
+                            },
+                            modifier = Modifier.weight(1f),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = MaterialTheme.colorScheme.primary
+                            ),
+                            shape = RoundedCornerShape(12.dp)
+                        ) {
+                            Text("Удалить")
+                        }
+                    }
+                }
+            }
+        }
     }
 
     if (showCreatePost) {
         CreatePostDialog(
             onDismiss = { showCreatePost = false },
-            onCreate = { content, type ->
+            onCreate = { content, type, pollOptions ->
                 scope.launch {
-                    repository.createPost(content, type)
+                    if (type == "POLL" && pollOptions.isNotEmpty()) {
+                        val optionsJson = pollOptions.joinToString(",")
+                        val votesJson = pollOptions.joinToString(",") { "0" }
+                        repository.createPoll(content, optionsJson, votesJson)
+                    } else {
+                        repository.createPost(content, type)
+                    }
                     posts = repository.getAllPosts()
                     showCreatePost = false
                     listState.animateScrollToItem(0)
@@ -183,7 +229,7 @@ fun HomeScreen(repository: Repository) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun CreatePostDialog(onDismiss: () -> Unit, onCreate: (String, String) -> Unit) {
+fun CreatePostDialog(onDismiss: () -> Unit, onCreate: (String, String, List<String>) -> Unit) {
     var content by remember { mutableStateOf("") }
     var selectedType by remember { mutableStateOf("TEXT") }
     var pollOptions by remember { mutableStateOf(listOf("", "")) }
@@ -347,13 +393,15 @@ fun CreatePostDialog(onDismiss: () -> Unit, onCreate: (String, String) -> Unit) 
                     Button(
                         onClick = { 
                             if (content.isNotBlank()) {
-                                val finalContent = if (selectedType == "POLL") {
-                                    "$content\n\n" + pollOptions.filter { it.isNotBlank() }.joinToString("\n") { "• $it" }
-                                } else content
-                                onCreate(finalContent, selectedType)
+                                if (selectedType == "POLL") {
+                                    val validOptions = pollOptions.filter { it.isNotBlank() }
+                                    onCreate(content, selectedType, validOptions)
+                                } else {
+                                    onCreate(content, selectedType, emptyList())
+                                }
                             }
                         },
-                        enabled = content.isNotBlank(),
+                        enabled = content.isNotBlank() && (selectedType != "POLL" || pollOptions.count { it.isNotBlank() } >= 2),
                         modifier = Modifier.weight(1f),
                         shape = RoundedCornerShape(12.dp)
                     ) {
@@ -382,7 +430,10 @@ data class CreativePost(
     val comments: Int,
     val shares: Int,
     val time: String,
-    val type: PostType = PostType.TEXT
+    val type: PostType = PostType.TEXT,
+    val pollOptions: List<String> = emptyList(),
+    val pollVotes: List<Int> = emptyList(),
+    val userVote: Int = -1
 )
 
 enum class PostType { TEXT, POLL, QUOTE, MOOD }

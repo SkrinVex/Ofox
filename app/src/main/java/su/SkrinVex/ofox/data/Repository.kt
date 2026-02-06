@@ -55,6 +55,28 @@ class Repository(context: Context) {
         )
     }
 
+    suspend fun createPoll(question: String, options: String, votes: String) = withContext(Dispatchers.IO) {
+        val user = getCurrentUser() ?: return@withContext
+        db.postDao().insertPost(
+            Post(
+                authorId = user.id,
+                authorName = user.name,
+                content = question,
+                timestamp = System.currentTimeMillis(),
+                type = "POLL",
+                pollOptions = options,
+                pollVotes = votes
+            )
+        )
+    }
+
+    suspend fun voteOnPoll(postId: Int, optionIndex: Int) = withContext(Dispatchers.IO) {
+        val post = db.postDao().getPostById(postId) ?: return@withContext
+        val votes = post.pollVotes.split(",").map { it.toIntOrNull() ?: 0 }.toMutableList()
+        votes[optionIndex] = votes[optionIndex] + 1
+        db.postDao().updatePollVote(postId, votes.joinToString(","), optionIndex)
+    }
+
     suspend fun toggleLike(post: Post) = withContext(Dispatchers.IO) {
         val newLiked = !post.isLiked
         val newLikes = if (newLiked) post.likes + 1 else post.likes - 1
@@ -63,6 +85,10 @@ class Repository(context: Context) {
 
     suspend fun sharePost(post: Post) = withContext(Dispatchers.IO) {
         db.postDao().updateShares(post.id, post.shares + 1)
+    }
+
+    suspend fun deletePost(postId: Int) = withContext(Dispatchers.IO) {
+        db.postDao().deletePost(postId)
     }
 
     suspend fun getAllChats(): List<Chat> = withContext(Dispatchers.IO) {
@@ -109,7 +135,7 @@ class Repository(context: Context) {
         if (db.postDao().getAllPosts().isEmpty()) {
             val samplePosts = listOf(
                 Post(0, 1, "Komari", "🌟 Сегодня особенный день! Запустил новый проект и чувствую невероятный прилив энергии.", 42, 12, 8, System.currentTimeMillis() - 7200000, "MOOD"),
-                Post(0, 2, "Елена", "Что лучше для изучения Android разработки?", 28, 15, 3, System.currentTimeMillis() - 14400000, "POLL"),
+                Post(0, 2, "Елена", "Что лучше для изучения Android разработки?", 28, 15, 3, System.currentTimeMillis() - 14400000, "POLL", pollOptions = "Kotlin,Java,Flutter,React Native", pollVotes = "45,23,18,14", userVote = -1),
                 Post(0, 3, "Андрей", "\"Код - это поэзия, которую понимают машины\" - неизвестный автор", 35, 8, 12, System.currentTimeMillis() - 21600000, "QUOTE")
             )
             samplePosts.forEach { db.postDao().insertPost(it) }

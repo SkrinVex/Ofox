@@ -12,7 +12,7 @@ ksp {
     arg("room.generateKotlin", "false")
 }
 
-val keystorePropertiesFile = rootProject.file(".config/keystore.properties")
+val keystorePropertiesFile = file(".config/keystore.properties")
 val keystoreProperties = Properties()
 if (keystorePropertiesFile.exists()) {
     keystoreProperties.load(FileInputStream(keystorePropertiesFile))
@@ -37,7 +37,7 @@ android {
             if (keystorePropertiesFile.exists()) {
                 keyAlias = keystoreProperties["keyAlias"] as String
                 keyPassword = keystoreProperties["keyPassword"] as String
-                storeFile = file(".config/${keystoreProperties["storeFile"]}")
+                storeFile = file("${projectDir}/.config/${keystoreProperties["storeFile"]}")
                 storePassword = keystoreProperties["storePassword"] as String
             }
         }
