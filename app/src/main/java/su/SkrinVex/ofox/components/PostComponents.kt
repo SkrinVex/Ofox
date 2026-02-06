@@ -13,10 +13,39 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import su.SkrinVex.ofox.screens.CreativePost
 import su.SkrinVex.ofox.screens.PostType
+
+@Composable
+fun HashtagText(
+    text: String,
+    style: TextStyle,
+    color: Color,
+    hashtagColor: Color
+) {
+    val annotatedString = buildAnnotatedString {
+        val words = text.split(" ")
+        words.forEachIndexed { index, word ->
+            if (word.startsWith("#") && word.length > 1) {
+                withStyle(style = SpanStyle(color = hashtagColor, fontWeight = FontWeight.SemiBold)) {
+                    append(word)
+                }
+            } else {
+                withStyle(style = SpanStyle(color = color)) {
+                    append(word)
+                }
+            }
+            if (index < words.size - 1) append(" ")
+        }
+    }
+    Text(text = annotatedString, style = style)
+}
 
 @Composable
 fun CreativePostCard(
@@ -26,7 +55,8 @@ fun CreativePostCard(
     onComment: () -> Unit,
     onShare: () -> Unit,
     onMoreClick: () -> Unit,
-    onVote: (Int) -> Unit = {}
+    onVote: (Int) -> Unit = {},
+    onAuthorClick: () -> Unit = {}
 ) {
     var liked by remember { mutableStateOf(isLiked) }
     var likesCount by remember { mutableStateOf(post.likes) }
@@ -54,7 +84,9 @@ fun CreativePostCard(
             // Header
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable(onClick = onAuthorClick)
             ) {
                 Box(
                     modifier = Modifier
@@ -101,6 +133,17 @@ fun CreativePostCard(
                                 )
                             }
                         }
+                        if (post.discoveryId > 0) {
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Badge(
+                                containerColor = Color(android.graphics.Color.parseColor("#${post.discoveryColor}"))
+                            ) {
+                                Text(
+                                    text = "#${post.discoveryTitle}",
+                                    style = MaterialTheme.typography.labelSmall
+                                )
+                            }
+                        }
                     }
                     Text(
                         text = post.time,
@@ -120,11 +163,12 @@ fun CreativePostCard(
             
             Spacer(modifier = Modifier.height(12.dp))
             
-            // Content
-            Text(
+            // Content with hashtag highlighting
+            HashtagText(
                 text = post.content,
                 style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurface
+                color = MaterialTheme.colorScheme.onSurface,
+                hashtagColor = MaterialTheme.colorScheme.primary
             )
             
             // Poll options (if poll)

@@ -30,7 +30,7 @@ import java.util.*
 data class TrendingTopic(val name: String, val posts: Int)
 
 @Composable
-fun FeedScreen(repository: Repository) {
+fun FeedScreen(repository: Repository, navController: androidx.navigation.NavController? = null) {
     var discoveries by remember { mutableStateOf(listOf<su.SkrinVex.ofox.data.Discovery>()) }
     var showCreateDialog by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
@@ -152,6 +152,9 @@ fun FeedScreen(repository: Repository) {
                         repository.toggleJoinDiscovery(discovery)
                         discoveries = repository.getAllDiscoveries()
                     }
+                },
+                onDiscuss = {
+                    navController?.navigate("discovery_discussion/${discovery.id}")
                 }
             )
         }
@@ -177,6 +180,9 @@ fun FeedScreen(repository: Repository) {
                         repository.toggleJoinDiscovery(discovery)
                         discoveries = repository.getAllDiscoveries()
                     }
+                },
+                onDiscuss = {
+                    navController?.navigate("discovery_discussion/${discovery.id}")
                 }
             )
         }
@@ -350,7 +356,8 @@ fun CreateDiscoveryDialog(
 @Composable
 fun DiscoveryCard(
     discovery: su.SkrinVex.ofox.data.Discovery,
-    onJoin: () -> Unit
+    onJoin: () -> Unit,
+    onDiscuss: () -> Unit = {}
 ) {
     var showDetails by remember { mutableStateOf(false) }
     
@@ -409,23 +416,20 @@ fun DiscoveryCard(
             Row(
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                Button(
-                    onClick = onJoin,
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = if (discovery.isJoined) 
-                            MaterialTheme.colorScheme.surfaceVariant 
-                        else 
-                            MaterialTheme.colorScheme.primary
-                    ),
-                    modifier = Modifier.weight(1f)
-                ) {
-                    Text(
-                        text = if (discovery.isJoined) "Участвую" else "Присоединиться",
-                        color = if (discovery.isJoined) 
-                            MaterialTheme.colorScheme.onSurfaceVariant 
-                        else 
-                            MaterialTheme.colorScheme.onPrimary
-                    )
+                if (discovery.isJoined) {
+                    Button(
+                        onClick = onDiscuss,
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Text("Открыть")
+                    }
+                } else {
+                    Button(
+                        onClick = onJoin,
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Text("Присоединиться")
+                    }
                 }
                 
                 OutlinedButton(

@@ -16,6 +16,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
@@ -27,7 +28,7 @@ import su.SkrinVex.ofox.data.Repository
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun HomeScreen(repository: Repository) {
+fun HomeScreen(repository: Repository, navController: androidx.navigation.NavController? = null) {
     var showShareMenu by remember { mutableStateOf(false) }
     var showPostMenu by remember { mutableStateOf(false) }
     var showCreatePost by remember { mutableStateOf(false) }
@@ -68,7 +69,11 @@ fun HomeScreen(repository: Repository) {
                             PostType.valueOf(post.type),
                             post.pollOptions.split(",").filter { it.isNotEmpty() },
                             post.pollVotes.split(",").mapNotNull { it.toIntOrNull() },
-                            post.userVote
+                            post.userVote,
+                            post.authorId,
+                            post.discoveryId,
+                            post.discoveryTitle,
+                            post.discoveryColor
                         ),
                         isLiked = post.isLiked,
                         onLike = {
@@ -91,6 +96,11 @@ fun HomeScreen(repository: Repository) {
                             scope.launch {
                                 repository.voteOnPoll(post.id, optionIndex)
                                 posts = repository.getAllPosts()
+                            }
+                        },
+                        onAuthorClick = {
+                            if (post.authorId != currentUser?.id) {
+                                navController?.navigate("user_profile/${post.authorId}")
                             }
                         }
                     )
@@ -209,14 +219,21 @@ fun HomeScreen(repository: Repository) {
     if (showCreatePost) {
         CreatePostDialog(
             onDismiss = { showCreatePost = false },
-            onCreate = { content, type, pollOptions ->
+            repository = repository,
+            onCreate = { content, type, pollOptions, discovery ->
                 scope.launch {
                     if (type == "POLL" && pollOptions.isNotEmpty()) {
                         val optionsJson = pollOptions.joinToString(",")
                         val votesJson = pollOptions.joinToString(",") { "0" }
                         repository.createPoll(content, optionsJson, votesJson)
                     } else {
-                        repository.createPost(content, type)
+                        repository.createPost(
+                            content, 
+                            type,
+                            discovery?.id ?: 0,
+                            discovery?.title ?: "",
+                            discovery?.colorHex ?: ""
+                        )
                     }
                     posts = repository.getAllPosts()
                     showCreatePost = false
@@ -229,10 +246,21 @@ fun HomeScreen(repository: Repository) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun CreatePostDialog(onDismiss: () -> Unit, onCreate: (String, String, List<String>) -> Unit) {
+fun CreatePostDialog(
+    onDismiss: () -> Unit, 
+    onCreate: (String, String, List<String>, su.SkrinVex.ofox.data.Discovery?) -> Unit,
+    repository: Repository
+) {
     var content by remember { mutableStateOf("") }
     var selectedType by remember { mutableStateOf("TEXT") }
     var pollOptions by remember { mutableStateOf(listOf("", "")) }
+    var discoveries by remember { mutableStateOf(listOf<su.SkrinVex.ofox.data.Discovery>()) }
+    var selectedDiscovery by remember { mutableStateOf<su.SkrinVex.ofox.data.Discovery?>(null) }
+    val scope = rememberCoroutineScope()
+    
+    LaunchedEffect(Unit) {
+        discoveries = repository.getAllDiscoveries().filter { it.isJoined }
+    }
     
     val postTypes = listOf(
         "TEXT" to "Текст",
@@ -374,6 +402,44 @@ fun CreatePostDialog(onDismiss: () -> Unit, onCreate: (String, String, List<Stri
                         shape = RoundedCornerShape(16.dp)
                     )
                 }
+                
+                if (discoveries.isNotEmpty()) {
+                    Spacer(modifier = Modifier.height(16.dp))
+                    
+                    Text(
+                        text = "Открытие (необязательно)",
+                        style = MaterialTheme.typography.titleSmall
+                    )
+                    
+                    Spacer(modifier = Modifier.height(8.dp))
+                    
+                    discoveries.forEach { discovery ->
+                        FilterChip(
+                            selected = selectedDiscovery?.id == discovery.id,
+                            onClick = { 
+                                selectedDiscovery = if (selectedDiscovery?.id == discovery.id) null else discovery
+                            },
+                            label = { 
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(8.dp)
+                                            .clip(CircleShape)
+                                            .background(Color(android.graphics.Color.parseColor("#${discovery.colorHex}")))
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text(discovery.title)
+                                }
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = FilterChipDefaults.filterChipColors(
+                                selectedContainerColor = MaterialTheme.colorScheme.primary,
+                                selectedLabelColor = MaterialTheme.colorScheme.onPrimary
+                            )
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                    }
+                }
             }
                 
                 Row(
@@ -395,9 +461,9 @@ fun CreatePostDialog(onDismiss: () -> Unit, onCreate: (String, String, List<Stri
                             if (content.isNotBlank()) {
                                 if (selectedType == "POLL") {
                                     val validOptions = pollOptions.filter { it.isNotBlank() }
-                                    onCreate(content, selectedType, validOptions)
+                                    onCreate(content, selectedType, validOptions, selectedDiscovery)
                                 } else {
-                                    onCreate(content, selectedType, emptyList())
+                                    onCreate(content, selectedType, emptyList(), selectedDiscovery)
                                 }
                             }
                         },
@@ -433,7 +499,11 @@ data class CreativePost(
     val type: PostType = PostType.TEXT,
     val pollOptions: List<String> = emptyList(),
     val pollVotes: List<Int> = emptyList(),
-    val userVote: Int = -1
+    val userVote: Int = -1,
+    val authorId: Int = 0,
+    val discoveryId: Int = 0,
+    val discoveryTitle: String = "",
+    val discoveryColor: String = ""
 )
 
 enum class PostType { TEXT, POLL, QUOTE, MOOD }

@@ -96,7 +96,7 @@ class MainActivity : ComponentActivity() {
                             startDestination = Screen.Home.route,
                             modifier = Modifier.padding(innerPadding)
                         ) {
-                            composable(Screen.Home.route) { HomeScreen(repository) }
+                            composable(Screen.Home.route) { HomeScreen(repository, navController) }
                             composable(Screen.Chats.route) { ChatsScreen(repository, navController) }
                             composable("chat/{chatId}") { backStackEntry ->
                                 ChatDetailScreen(
@@ -105,7 +105,7 @@ class MainActivity : ComponentActivity() {
                                     onBack = { navController.popBackStack() }
                                 )
                             }
-                            composable(Screen.Feed.route) { FeedScreen(repository) }
+                            composable(Screen.Feed.route) { FeedScreen(repository, navController) }
                             composable(Screen.Settings.route) { 
                                 SettingsScreen(
                                     repository = repository,
@@ -121,6 +121,20 @@ class MainActivity : ComponentActivity() {
                             }
                             composable("about") {
                                 AboutScreen { navController.popBackStack() }
+                            }
+                            composable("user_profile/{userId}") { backStackEntry ->
+                                UserProfileScreen(
+                                    userId = backStackEntry.arguments?.getString("userId")?.toIntOrNull() ?: 0,
+                                    repository = repository,
+                                    onBack = { navController.popBackStack() }
+                                )
+                            }
+                            composable("discovery_discussion/{discoveryId}") { backStackEntry ->
+                                DiscoveryDiscussionScreen(
+                                    discoveryId = backStackEntry.arguments?.getString("discoveryId")?.toIntOrNull() ?: 0,
+                                    repository = repository,
+                                    onBack = { navController.popBackStack() }
+                                )
                             }
                         }
                     }

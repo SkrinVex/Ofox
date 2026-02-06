@@ -23,6 +23,7 @@ import su.SkrinVex.ofox.data.Repository
 @Composable
 fun ChatsScreen(repository: Repository, navController: NavController) {
     var chats by remember { mutableStateOf(listOf<su.SkrinVex.ofox.data.Chat>()) }
+    var showAddChatDialog by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
 
     LaunchedEffect(Unit) {
@@ -107,13 +108,136 @@ fun ChatsScreen(repository: Repository, navController: NavController) {
     }
         
         FloatingActionButton(
-            onClick = { /* TODO: Add new chat */ },
+            onClick = { showAddChatDialog = true },
             modifier = Modifier
                 .align(Alignment.BottomEnd)
                 .padding(16.dp),
             containerColor = MaterialTheme.colorScheme.primary
         ) {
             Icon(Icons.Default.Add, contentDescription = "Добавить чат")
+        }
+    }
+    
+    if (showAddChatDialog) {
+        AddChatDialog(
+            repository = repository,
+            onDismiss = { showAddChatDialog = false },
+            onChatAdded = {
+                scope.launch {
+                    chats = repository.getAllChats()
+                    showAddChatDialog = false
+                }
+            }
+        )
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun AddChatDialog(
+    repository: Repository,
+    onDismiss: () -> Unit,
+    onChatAdded: () -> Unit
+) {
+    var subscriptions by remember { mutableStateOf(listOf<su.SkrinVex.ofox.data.User>()) }
+    val scope = rememberCoroutineScope()
+    
+    LaunchedEffect(Unit) {
+        subscriptions = repository.getSubscriptions()
+    }
+    
+    androidx.compose.ui.window.Dialog(onDismissRequest = { }) {
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            shape = RoundedCornerShape(24.dp),
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.surface
+            )
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(24.dp)
+            ) {
+                Text(
+                    text = "Добавить чат",
+                    style = MaterialTheme.typography.headlineSmall,
+                    fontWeight = FontWeight.Bold
+                )
+                
+                Spacer(modifier = Modifier.height(16.dp))
+                
+                if (subscriptions.isEmpty()) {
+                    Text(
+                        text = "Подпишитесь на пользователей, чтобы начать общение",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+                    )
+                } else {
+                    Text(
+                        text = "Выберите пользователя:",
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                    
+                    Spacer(modifier = Modifier.height(12.dp))
+                    
+                    subscriptions.forEach { user ->
+                        Card(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    scope.launch {
+                                        repository.createChat(user.id, user.name)
+                                        onChatAdded()
+                                    }
+                                },
+                            colors = CardDefaults.cardColors(
+                                containerColor = MaterialTheme.colorScheme.surfaceVariant
+                            ),
+                            shape = RoundedCornerShape(12.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(12.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(40.dp)
+                                        .clip(CircleShape)
+                                        .background(MaterialTheme.colorScheme.primary),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        text = user.name.first().toString(),
+                                        color = MaterialTheme.colorScheme.onPrimary,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
+                                Spacer(modifier = Modifier.width(12.dp))
+                                Text(
+                                    text = user.name,
+                                    style = MaterialTheme.typography.bodyLarge
+                                )
+                            }
+                        }
+                        Spacer(modifier = Modifier.height(8.dp))
+                    }
+                }
+                
+                Spacer(modifier = Modifier.height(16.dp))
+                
+                OutlinedButton(
+                    onClick = onDismiss,
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Text("Отмена")
+                }
+            }
         }
     }
 }

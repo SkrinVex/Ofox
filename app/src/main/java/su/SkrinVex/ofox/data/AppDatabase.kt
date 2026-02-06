@@ -5,7 +5,7 @@ import androidx.room.*
 
 @Database(
     entities = [User::class, Post::class, Chat::class, Message::class, Discovery::class],
-    version = 2
+    version = 4
 )
 abstract class AppDatabase : RoomDatabase() {
     abstract fun userDao(): UserDao
@@ -57,7 +57,10 @@ data class Post(
     val isLiked: Boolean = false,
     val pollOptions: String = "", // JSON array of options
     val pollVotes: String = "", // JSON array of vote counts
-    val userVote: Int = -1 // -1 means not voted, otherwise index of voted option
+    val userVote: Int = -1, // -1 means not voted, otherwise index of voted option
+    val discoveryId: Int = 0,
+    val discoveryTitle: String = "",
+    val discoveryColor: String = ""
 )
 
 @Entity(tableName = "chats")
@@ -96,6 +99,9 @@ interface UserDao {
     @Insert
     suspend fun register(user: User): Long
 
+    @Insert(onConflict = androidx.room.OnConflictStrategy.IGNORE)
+    suspend fun insertUser(user: User)
+
     @Query("SELECT * FROM users WHERE id = :id")
     suspend fun getUser(id: Int): User?
 
@@ -110,6 +116,12 @@ interface PostDao {
 
     @Query("SELECT * FROM posts WHERE id = :postId")
     suspend fun getPostById(postId: Int): Post?
+
+    @Query("SELECT * FROM posts WHERE authorId = :userId ORDER BY timestamp DESC")
+    suspend fun getPostsByUser(userId: Int): List<Post>
+
+    @Query("SELECT * FROM posts WHERE discoveryId = :discoveryId ORDER BY timestamp DESC")
+    suspend fun getPostsByDiscovery(discoveryId: Int): List<Post>
 
     @Insert
     suspend fun insertPost(post: Post)
@@ -152,6 +164,9 @@ interface MessageDao {
 interface DiscoveryDao {
     @Query("SELECT * FROM discoveries")
     suspend fun getAllDiscoveries(): List<Discovery>
+
+    @Query("SELECT * FROM discoveries WHERE id = :id")
+    suspend fun getDiscoveryById(id: Int): Discovery?
 
     @Insert
     suspend fun insertDiscovery(discovery: Discovery)

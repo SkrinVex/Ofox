@@ -3,10 +3,35 @@ package su.SkrinVex.ofox.data
 import android.content.Context
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.launch
 
 class Repository(context: Context) {
     private val db = AppDatabase.getDatabase(context)
     private val prefs = context.getSharedPreferences("ofox_prefs", Context.MODE_PRIVATE)
+
+    init {
+        CoroutineScope(Dispatchers.IO).launch {
+            initSampleUsers()
+        }
+    }
+
+    private suspend fun initSampleUsers() {
+        val users = listOf(
+            User(id = 1, email = "komari@ofox.su", password = "123", name = "Komari", bio = "Разработчик OFOX"),
+            User(id = 2, email = "elena@ofox.su", password = "123", name = "Елена", bio = "Дизайнер и художник"),
+            User(id = 3, email = "ivan@ofox.su", password = "123", name = "Иван", bio = "Программист")
+        )
+        users.forEach { user ->
+            if (db.userDao().getUser(user.id) == null) {
+                try {
+                    db.userDao().insertUser(user)
+                } catch (e: Exception) {
+                    // User already exists
+                }
+            }
+        }
+    }
 
     suspend fun login(email: String, password: String): User? = withContext(Dispatchers.IO) {
         db.userDao().login(email, password)?.also {
@@ -30,6 +55,49 @@ class Repository(context: Context) {
         if (userId != -1) db.userDao().getUser(userId) else null
     }
 
+    suspend fun getUserById(userId: Int): User? = withContext(Dispatchers.IO) {
+        db.userDao().getUser(userId)
+    }
+
+    suspend fun getPostsByUser(userId: Int): List<Post> = withContext(Dispatchers.IO) {
+        db.postDao().getPostsByUser(userId)
+    }
+
+    suspend fun isSubscribed(userId: Int): Boolean = withContext(Dispatchers.IO) {
+        prefs.getStringSet("subscriptions", emptySet())?.contains(userId.toString()) ?: false
+    }
+
+    suspend fun getSubscribersCount(userId: Int): Int {
+        val baseCount = when(userId) {
+            1 -> 150
+            2 -> 473
+            3 -> 89
+            else -> 10
+        }
+        val key = "subs_count_$userId"
+        return prefs.getInt(key, baseCount)
+    }
+
+    suspend fun toggleSubscription(userId: Int) = withContext(Dispatchers.IO) {
+        val subs = prefs.getStringSet("subscriptions", emptySet())?.toMutableSet() ?: mutableSetOf()
+        val key = "subs_count_$userId"
+        val currentCount = getSubscribersCount(userId)
+        
+        if (subs.contains(userId.toString())) {
+            subs.remove(userId.toString())
+            prefs.edit().putInt(key, currentCount - 1).apply()
+        } else {
+            subs.add(userId.toString())
+            prefs.edit().putInt(key, currentCount + 1).apply()
+        }
+        prefs.edit().putStringSet("subscriptions", subs).apply()
+    }
+
+    suspend fun getSubscriptions(): List<User> = withContext(Dispatchers.IO) {
+        val subs = prefs.getStringSet("subscriptions", emptySet()) ?: emptySet()
+        subs.mapNotNull { db.userDao().getUser(it.toIntOrNull() ?: 0) }
+    }
+
     fun logout() {
         prefs.edit().clear().apply()
     }
@@ -42,7 +110,13 @@ class Repository(context: Context) {
         db.postDao().getAllPosts()
     }
 
-    suspend fun createPost(content: String, type: String = "TEXT") = withContext(Dispatchers.IO) {
+    suspend fun createPost(
+        content: String, 
+        type: String = "TEXT",
+        discoveryId: Int = 0,
+        discoveryTitle: String = "",
+        discoveryColor: String = ""
+    ) = withContext(Dispatchers.IO) {
         val user = getCurrentUser() ?: return@withContext
         db.postDao().insertPost(
             Post(
@@ -50,7 +124,10 @@ class Repository(context: Context) {
                 authorName = user.name,
                 content = content,
                 timestamp = System.currentTimeMillis(),
-                type = type
+                type = type,
+                discoveryId = discoveryId,
+                discoveryTitle = discoveryTitle,
+                discoveryColor = discoveryColor
             )
         )
     }
@@ -95,6 +172,17 @@ class Repository(context: Context) {
         db.chatDao().getAllChats()
     }
 
+    suspend fun createChat(userId: Int, userName: String) = withContext(Dispatchers.IO) {
+        db.chatDao().insertChat(
+            Chat(
+                id = 0,
+                name = userName,
+                lastMessage = "Начните общение",
+                timestamp = System.currentTimeMillis()
+            )
+        )
+    }
+
     suspend fun getMessages(chatId: Int): List<Message> = withContext(Dispatchers.IO) {
         db.messageDao().getMessages(chatId)
     }
@@ -109,6 +197,14 @@ class Repository(context: Context) {
 
     suspend fun getAllDiscoveries(): List<Discovery> = withContext(Dispatchers.IO) {
         db.discoveryDao().getAllDiscoveries()
+    }
+
+    suspend fun getDiscoveryById(id: Int): Discovery? = withContext(Dispatchers.IO) {
+        db.discoveryDao().getDiscoveryById(id)
+    }
+
+    suspend fun getUserContributionToDiscovery(discoveryId: Int): Int = withContext(Dispatchers.IO) {
+        db.postDao().getPostsByDiscovery(discoveryId).size
     }
 
     suspend fun toggleJoinDiscovery(discovery: Discovery) = withContext(Dispatchers.IO) {
