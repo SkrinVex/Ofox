@@ -116,6 +116,12 @@ class MainActivity : ComponentActivity() {
                             composable("edit_profile") {
                                 EditProfileScreen(repository) { navController.popBackStack() }
                             }
+                            composable("customization") {
+                                CustomizationScreen(
+                                    onBack = { navController.popBackStack() },
+                                    onThemeClick = { navController.navigate("theme") }
+                                )
+                            }
                             composable("theme") {
                                 ThemeScreen { navController.popBackStack() }
                             }

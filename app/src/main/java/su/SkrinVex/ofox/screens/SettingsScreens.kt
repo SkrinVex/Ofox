@@ -96,7 +96,7 @@ fun EditProfileScreen(repository: Repository, onBack: () -> Unit) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ThemeScreen(onBack: () -> Unit) {
+fun OldThemeScreen(onBack: () -> Unit) {
     val context = androidx.compose.ui.platform.LocalContext.current
     val prefs = context.getSharedPreferences("ofox_prefs", android.content.Context.MODE_PRIVATE)
     var selectedTheme by remember { mutableStateOf(prefs.getString("theme", "Orange") ?: "Orange") }

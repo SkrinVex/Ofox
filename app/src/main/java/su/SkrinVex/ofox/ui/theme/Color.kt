@@ -105,3 +105,19 @@ fun getColorScheme(themeName: String) = when(themeName) {
         error = Red
     )
 }
+
+fun getColorSchemeFromColor(primaryColor: Color) = darkColorScheme(
+    primary = primaryColor,
+    onPrimary = Black,
+    primaryContainer = primaryColor,
+    onPrimaryContainer = Color.White,
+    secondary = primaryColor,
+    onSecondary = Black,
+    background = Black,
+    onBackground = Color.White,
+    surface = DarkGray,
+    onSurface = Color.White,
+    surfaceVariant = MediumGray,
+    onSurfaceVariant = Color.White,
+    error = Red
+)

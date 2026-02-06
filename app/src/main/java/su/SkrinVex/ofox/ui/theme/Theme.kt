@@ -4,8 +4,7 @@ import android.app.Activity
 import android.content.Context
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.*
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
@@ -18,10 +17,9 @@ fun OfoxTheme(
     content: @Composable () -> Unit
 ) {
     val context = LocalContext.current
-    val prefs = context.getSharedPreferences("ofox_prefs", Context.MODE_PRIVATE)
-    val themeName = prefs.getString("theme", "Orange") ?: "Orange"
+    val customization = rememberCustomization(context)
     
-    val colorScheme = getColorScheme(themeName)
+    val colorScheme = getColorSchemeFromColor(customization.primaryColor)
 
     val view = LocalView.current
     if (!view.isInEditMode) {
@@ -33,9 +31,11 @@ fun OfoxTheme(
         }
     }
 
-    MaterialTheme(
-        colorScheme = colorScheme,
-        typography = Typography,
-        content = content
-    )
+    CompositionLocalProvider(LocalCustomization provides customization) {
+        MaterialTheme(
+            colorScheme = colorScheme,
+            typography = Typography,
+            content = content
+        )
+    }
 }

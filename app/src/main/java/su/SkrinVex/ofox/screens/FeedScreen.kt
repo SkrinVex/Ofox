@@ -5,6 +5,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
@@ -289,34 +291,62 @@ fun CreateDiscoveryDialog(
                 
                 Spacer(modifier = Modifier.height(8.dp))
                 
-                Column(
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                LazyVerticalGrid(
+                    columns = GridCells.Fixed(2),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                    modifier = Modifier.height(300.dp)
                 ) {
-                    categories.forEach { (category, color) ->
-                        FilterChip(
-                            selected = selectedCategory == category,
-                            onClick = { 
+                    items(categories.size) { index ->
+                        val (category, color) = categories[index]
+                        Card(
+                            onClick = {
                                 selectedCategory = category
                                 selectedColor = color
                             },
-                            label = { 
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Box(
-                                        modifier = Modifier
-                                            .size(12.dp)
-                                            .clip(CircleShape)
-                                            .background(Color(android.graphics.Color.parseColor("#$color")))
-                                    )
-                                    Spacer(modifier = Modifier.width(8.dp))
-                                    Text(category)
-                                }
-                            },
-                            modifier = Modifier.fillMaxWidth(),
-                            colors = FilterChipDefaults.filterChipColors(
-                                selectedContainerColor = MaterialTheme.colorScheme.primary,
-                                selectedLabelColor = MaterialTheme.colorScheme.onPrimary
-                            )
-                        )
+                            colors = CardDefaults.cardColors(
+                                containerColor = if (selectedCategory == category)
+                                    Color(android.graphics.Color.parseColor("#$color"))
+                                else
+                                    MaterialTheme.colorScheme.surfaceVariant
+                            ),
+                            shape = RoundedCornerShape(16.dp)
+                        ) {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(16.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally
+                            ) {
+                                Icon(
+                                    when(category) {
+                                        "Технологии" -> Icons.Default.Computer
+                                        "Наука" -> Icons.Default.Science
+                                        "Искусство" -> Icons.Default.Palette
+                                        "Спорт" -> Icons.Default.FitnessCenter
+                                        "Образование" -> Icons.Default.School
+                                        "Бизнес" -> Icons.Default.Business
+                                        else -> Icons.Default.Category
+                                    },
+                                    contentDescription = null,
+                                    tint = if (selectedCategory == category)
+                                        Color.White
+                                    else
+                                        Color(android.graphics.Color.parseColor("#$color")),
+                                    modifier = Modifier.size(32.dp)
+                                )
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Text(
+                                    category,
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = if (selectedCategory == category)
+                                        Color.White
+                                    else
+                                        MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
                     }
                 }
             }

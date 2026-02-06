@@ -28,7 +28,7 @@ fun SettingsScreen(repository: Repository, navController: NavController, onLogou
         SettingItem("Профиль", "Управление аккаунтом", Icons.Default.Person, "edit_profile"),
         SettingItem("Уведомления", "Настройка оповещений", Icons.Default.Notifications, null),
         SettingItem("Приватность", "Безопасность и конфиденциальность", Icons.Default.Security, null),
-        SettingItem("Цветовая палитра", "Выбор цветовой схемы", Icons.Default.Palette, "theme"),
+        SettingItem("Кастомизация", "Настройка внешнего вида", Icons.Default.Palette, "customization"),
         SettingItem("О приложении", "Версия и информация", Icons.Default.Info, "about")
     )
     
