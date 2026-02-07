@@ -5,7 +5,7 @@ import androidx.room.*
 
 @Database(
     entities = [User::class, Post::class, Chat::class, Message::class, Discovery::class],
-    version = 6
+    version = 7
 )
 abstract class AppDatabase : RoomDatabase() {
     abstract fun userDao(): UserDao
@@ -69,7 +69,9 @@ data class Chat(
     @PrimaryKey(autoGenerate = true) val id: Int = 0,
     val name: String,
     val lastMessage: String,
-    val timestamp: Long
+    val timestamp: Long,
+    val userId: Int = 0,
+    val userBadges: String = ""
 )
 
 @Entity(tableName = "messages")
@@ -78,7 +80,8 @@ data class Message(
     val chatId: Int,
     val text: String,
     val timestamp: Long,
-    val isFromMe: Boolean
+    val isFromMe: Boolean,
+    val senderId: Int = 0
 )
 
 @Entity(tableName = "discoveries")

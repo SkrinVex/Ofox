@@ -229,7 +229,10 @@ class MainActivity : ComponentActivity() {
                                 CornerRadiusScreen { navController.popBackStack() }
                             }
                             composable("about") {
-                                AboutScreen { navController.popBackStack() }
+                                AboutScreen(
+                                    repository = repository,
+                                    onBack = { navController.popBackStack() }
+                                )
                             }
                             composable("user_profile/{userId}") { backStackEntry ->
                                 UserProfileScreen(

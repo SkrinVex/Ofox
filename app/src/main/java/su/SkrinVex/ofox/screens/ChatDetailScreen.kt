@@ -21,6 +21,9 @@ import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import su.SkrinVex.ofox.data.Repository
+import su.SkrinVex.ofox.utils.formatTime
+import su.SkrinVex.ofox.components.UserBadges
+import su.SkrinVex.ofox.data.api.models.BadgeResponse
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -55,6 +58,23 @@ fun ChatDetailScreen(repository: Repository, chatId: Int, onBack: () -> Unit) {
             listState.animateScrollToItem(messages.size - 1)
         }
     }
+    
+    val badges = remember(chat) {
+        try {
+            if (chat?.userBadges?.isNotEmpty() == true) {
+                val jsonArray = org.json.JSONArray(chat!!.userBadges)
+                (0 until jsonArray.length()).map { i ->
+                    val obj = jsonArray.getJSONObject(i)
+                    BadgeResponse(
+                        badge_type = obj.getString("badge_type"),
+                        description = obj.getString("description")
+                    )
+                }
+            } else emptyList()
+        } catch (e: Exception) {
+            emptyList()
+        }
+    }
 
     Column(modifier = Modifier.fillMaxSize()) {
         Row(
@@ -80,11 +100,21 @@ fun ChatDetailScreen(repository: Repository, chatId: Int, onBack: () -> Unit) {
                 )
             }
             Spacer(modifier = Modifier.width(12.dp))
-            Text(
-                chat?.name ?: "Чат",
-                style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.SemiBold
-            )
+            Column {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Text(
+                        chat?.name ?: "Чат",
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    if (badges.isNotEmpty()) {
+                        UserBadges(badges)
+                    }
+                }
+            }
         }
         
         LazyColumn(
@@ -170,9 +200,9 @@ fun ChatDetailScreen(repository: Repository, chatId: Int, onBack: () -> Unit) {
 
 @Composable
 fun MessageBubble(message: su.SkrinVex.ofox.data.Message) {
-    Row(
+    Column(
         modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = if (message.isFromMe) Arrangement.End else Arrangement.Start
+        horizontalAlignment = if (message.isFromMe) Alignment.End else Alignment.Start
     ) {
         Card(
             colors = CardDefaults.cardColors(
@@ -189,14 +219,24 @@ fun MessageBubble(message: su.SkrinVex.ofox.data.Message) {
             ),
             modifier = Modifier.widthIn(max = 280.dp)
         ) {
-            Text(
-                text = message.text,
-                modifier = Modifier.padding(12.dp),
-                color = if (message.isFromMe) 
-                    MaterialTheme.colorScheme.onPrimary 
-                else 
-                    MaterialTheme.colorScheme.onSurface
-            )
+            Column(modifier = Modifier.padding(12.dp)) {
+                Text(
+                    text = message.text,
+                    color = if (message.isFromMe) 
+                        MaterialTheme.colorScheme.onPrimary 
+                    else 
+                        MaterialTheme.colorScheme.onSurface
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = formatTime(message.timestamp),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = if (message.isFromMe) 
+                        MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.7f)
+                    else 
+                        MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
+                )
+            }
         }
     }
 }

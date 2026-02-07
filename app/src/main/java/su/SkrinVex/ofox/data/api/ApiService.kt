@@ -80,4 +80,7 @@ interface ApiService {
     
     @GET("subscriptions/{userId}/subscribers/count")
     suspend fun getSubscribersCount(@Path("userId") userId: Int): Map<String, Int>
+    
+    @GET("app-info")
+    suspend fun getAppInfo(): AppInfoResponse
 }

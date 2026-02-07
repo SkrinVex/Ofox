@@ -70,7 +70,10 @@ data class ChatResponse(
     val id: Int,
     val name: String,
     val last_message: String,
-    val updated_at: String
+    val updated_at: String,
+    val other_user_id: Int,
+    val other_user_name: String,
+    val other_user_badges: List<BadgeResponse>? = null
 )
 
 data class CreateChatRequest(
@@ -83,8 +86,11 @@ data class MessageResponse(
     val chat_id: Int,
     val sender_id: Int,
     val sender_name: String,
+    val sender_badges: List<BadgeResponse>? = null,
     val text: String,
     val created_at: String
 )
 
 data class SendMessageRequest(val text: String)
+
+data class AppInfoResponse(val content: String)

@@ -136,7 +136,7 @@ class Repository(private val context: Context) {
         try {
             apiClient.clearToken()
             prefs.edit().clear().apply()
-            // НЕ очищаем БД - открытия должны остаться
+            db.clearAllTables()
         } catch (e: Exception) {
             android.util.Log.e("Repository", "Failed to logout", e)
         }
@@ -367,9 +367,14 @@ class Repository(private val context: Context) {
     suspend fun getAllChats(): List<Chat> = withContext(Dispatchers.IO) {
         try {
             val chats = apiClient.api.getChats().map { it.toChat() }
-            chats.forEach { db.chatDao().insertChat(it) }
+            android.util.Log.d("Repository", "Loaded ${chats.size} chats")
+            chats.forEach { chat ->
+                android.util.Log.d("Repository", "Chat: ${chat.name}, badges: ${chat.userBadges}")
+                db.chatDao().insertChat(chat)
+            }
             chats
         } catch (e: Exception) {
+            android.util.Log.e("Repository", "Failed to load chats from API", e)
             db.chatDao().getAllChats()
         }
     }
@@ -444,13 +449,39 @@ class Repository(private val context: Context) {
     suspend fun getSubscriptions(): List<User> = withContext(Dispatchers.IO) {
         emptyList()
     }
+    
+    suspend fun getAppInfo(): String = withContext(Dispatchers.IO) {
+        try {
+            apiClient.api.getAppInfo().content
+        } catch (e: Exception) {
+            android.util.Log.e("Repository", "Failed to load app info", e)
+            "# Информация недоступна\n\nНе удалось загрузить информацию о приложении. Проверьте подключение к интернету."
+        }
+    }
 
     suspend fun createChat(userId: Int, userName: String): Long? = withContext(Dispatchers.IO) {
         try {
             android.util.Log.d("Repository", "Creating chat with user $userId ($userName)")
             val response = apiClient.api.createChat(CreateChatRequest(userName, listOf(userId)))
             android.util.Log.d("Repository", "Chat created: $response")
-            val chat = Chat(response.id, userName, "Начните общение", System.currentTimeMillis())
+            
+            val userBadges = response.other_user_badges?.let { badges ->
+                org.json.JSONArray(badges.map { badge ->
+                    org.json.JSONObject().apply {
+                        put("badge_type", badge.badge_type)
+                        put("description", badge.description)
+                    }
+                }).toString()
+            } ?: ""
+            
+            val chat = Chat(
+                id = response.id,
+                name = response.other_user_name,
+                lastMessage = response.last_message,
+                timestamp = parseTimestamp(response.updated_at),
+                userId = response.other_user_id,
+                userBadges = userBadges
+            )
             db.chatDao().insertChat(chat)
             response.id.toLong()
         } catch (e: Exception) {
@@ -510,25 +541,43 @@ class Repository(private val context: Context) {
         return discovery
     }
 
-    private fun ChatResponse.toChat() = Chat(
-        id = id,
-        name = name,
-        lastMessage = last_message,
-        timestamp = parseTimestamp(updated_at)
-    )
+    private fun ChatResponse.toChat(): Chat {
+        android.util.Log.d("Repository", "Converting ChatResponse: id=$id, name=$name, other_user_name=$other_user_name, badges=${other_user_badges?.size ?: 0}")
+        return Chat(
+            id = id,
+            name = other_user_name,
+            lastMessage = last_message,
+            timestamp = parseTimestamp(updated_at),
+            userId = other_user_id,
+            userBadges = other_user_badges?.let { badges ->
+                val json = org.json.JSONArray(badges.map { badge ->
+                    org.json.JSONObject().apply {
+                        put("badge_type", badge.badge_type)
+                        put("description", badge.description)
+                    }
+                }).toString()
+                android.util.Log.d("Repository", "Badges JSON: $json")
+                json
+            } ?: ""
+        )
+    }
 
     private fun MessageResponse.toMessage(currentUserId: Int) = Message(
         id = id,
         chatId = chat_id,
         text = text,
         timestamp = parseTimestamp(created_at),
-        isFromMe = sender_id == currentUserId
+        isFromMe = sender_id == currentUserId,
+        senderId = sender_id
     )
 
     private fun parseTimestamp(dateStr: String): Long {
         return try {
-            SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", Locale.getDefault()).parse(dateStr)?.time ?: System.currentTimeMillis()
+            val format = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", Locale.getDefault())
+            format.timeZone = java.util.TimeZone.getTimeZone("UTC")
+            format.parse(dateStr)?.time ?: System.currentTimeMillis()
         } catch (e: Exception) {
+            android.util.Log.e("Repository", "Failed to parse timestamp: $dateStr", e)
             System.currentTimeMillis()
         }
     }

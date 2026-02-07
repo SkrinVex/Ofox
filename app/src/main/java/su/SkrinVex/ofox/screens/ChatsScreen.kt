@@ -21,6 +21,9 @@ import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
 import kotlinx.coroutines.launch
 import su.SkrinVex.ofox.data.Repository
+import su.SkrinVex.ofox.data.api.models.BadgeResponse
+import su.SkrinVex.ofox.components.UserBadges
+import su.SkrinVex.ofox.utils.formatTime
 
 @Composable
 fun ChatsScreen(repository: Repository, navController: NavController) {
@@ -79,6 +82,21 @@ fun ChatsScreen(repository: Repository, navController: NavController) {
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 items(chats) { chat ->
+                val badges = try {
+                    if (chat.userBadges.isNotEmpty()) {
+                        val jsonArray = org.json.JSONArray(chat.userBadges)
+                        (0 until jsonArray.length()).map { i ->
+                            val obj = jsonArray.getJSONObject(i)
+                            BadgeResponse(
+                                badge_type = obj.getString("badge_type"),
+                                description = obj.getString("description")
+                            )
+                        }
+                    } else emptyList()
+                } catch (e: Exception) {
+                    emptyList()
+                }
+                
                 Card(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -113,12 +131,20 @@ fun ChatsScreen(repository: Repository, navController: NavController) {
                         Spacer(modifier = Modifier.width(12.dp))
                         
                         Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = chat.name,
-                                style = MaterialTheme.typography.titleMedium,
-                                color = MaterialTheme.colorScheme.onSurface,
-                                fontWeight = FontWeight.SemiBold
-                            )
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                Text(
+                                    text = chat.name,
+                                    style = MaterialTheme.typography.titleMedium,
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                                if (badges.isNotEmpty()) {
+                                    UserBadges(badges)
+                                }
+                            }
                             Text(
                                 text = chat.lastMessage,
                                 style = MaterialTheme.typography.bodyMedium,
@@ -127,7 +153,7 @@ fun ChatsScreen(repository: Repository, navController: NavController) {
                         }
                         
                         Text(
-                            text = formatChatTime(chat.timestamp),
+                            text = formatTime(chat.timestamp),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
                         )
@@ -175,8 +201,10 @@ fun AddChatDialog(
     val scope = rememberCoroutineScope()
     
     LaunchedEffect(Unit) {
-        // Получаем взаимных друзей
-        users = repository.getMutualFriends()
+        val allUsers = repository.getMutualFriends()
+        val existingChats = repository.getAllChats()
+        val existingUserIds = existingChats.map { it.userId }.toSet()
+        users = allUsers.filter { it.id !in existingUserIds }
         isLoading = false
     }
     
@@ -225,16 +253,10 @@ fun AddChatDialog(
                         )
                         Spacer(modifier = Modifier.height(24.dp))
                         Text(
-                            text = "Нет взаимных друзей",
+                            text = "Нет доступных пользователей",
                             style = MaterialTheme.typography.titleLarge,
                             fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
-                        Spacer(modifier = Modifier.height(12.dp))
-                        Text(
-                            text = "Чтобы начать чат, вы и другой пользователь должны быть подписаны друг на друга",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
+                            color = MaterialTheme.colorScheme.onSurface,
                             textAlign = TextAlign.Center
                         )
                     }
@@ -308,16 +330,5 @@ fun AddChatDialog(
                 }
             }
         }
-    }
-}
-
-fun formatChatTime(timestamp: Long): String {
-    val diff = System.currentTimeMillis() - timestamp
-    val hours = diff / (1000 * 60 * 60)
-    val minutes = diff / (1000 * 60)
-    return when {
-        minutes < 60 -> "${minutes}м"
-        hours < 24 -> "${hours}ч"
-        else -> "${hours / 24}д"
     }
 }
