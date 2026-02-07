@@ -79,10 +79,8 @@ fun EditProfileScreen(repository: Repository, onBack: () -> Unit) {
             Button(
                 onClick = {
                     scope.launch {
-                        user?.let {
-                            repository.updateUser(it.copy(name = name, bio = bio))
-                            onBack()
-                        }
+                        repository.updateUser(name, bio)
+                        onBack()
                     }
                 },
                 modifier = Modifier.fillMaxWidth(),

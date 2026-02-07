@@ -3,8 +3,8 @@ package su.SkrinVex.ofox.screens
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -19,8 +19,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import kotlinx.coroutines.launch
 import su.SkrinVex.ofox.data.Repository
-import java.text.SimpleDateFormat
-import java.util.*
+
+data class TopParticipant(val name: String, val postCount: Int)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -30,6 +30,7 @@ fun DiscoveryDiscussionScreen(
     onBack: () -> Unit
 ) {
     var discovery by remember { mutableStateOf<su.SkrinVex.ofox.data.Discovery?>(null) }
+    var posts by remember { mutableStateOf(listOf<su.SkrinVex.ofox.data.Post>()) }
     var showLeaveDialog by remember { mutableStateOf(false) }
     var showMenuSheet by remember { mutableStateOf(false) }
     var showInfoSheet by remember { mutableStateOf(false) }
@@ -40,6 +41,7 @@ fun DiscoveryDiscussionScreen(
     
     LaunchedEffect(discoveryId) {
         discovery = repository.getDiscoveryById(discoveryId)
+        posts = repository.getPostsByDiscovery(discoveryId)
         userContribution = repository.getUserContributionToDiscovery(discoveryId)
     }
     
@@ -61,26 +63,19 @@ fun DiscoveryDiscussionScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 16.dp, vertical = 8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.Center
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                IconButton(
-                    onClick = onBack,
-                    modifier = Modifier.weight(0.1f)
-                ) {
+                IconButton(onClick = onBack) {
                     Icon(Icons.Default.ArrowBack, "Назад")
                 }
                 Text(
                     text = "Открытие",
                     style = MaterialTheme.typography.titleLarge,
                     fontWeight = FontWeight.Bold,
-                    modifier = Modifier.weight(0.8f),
+                    modifier = Modifier.weight(1f),
                     textAlign = TextAlign.Center
                 )
-                IconButton(
-                    onClick = { showMenuSheet = true },
-                    modifier = Modifier.weight(0.1f)
-                ) {
+                IconButton(onClick = { showMenuSheet = true }) {
                     Icon(Icons.Default.MoreVert, "Меню")
                 }
             }
@@ -90,104 +85,109 @@ fun DiscoveryDiscussionScreen(
                 contentPadding = PaddingValues(16.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
-            item {
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                    shape = MaterialTheme.shapes.medium
-                ) {
-                    Column(modifier = Modifier.padding(20.dp)) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Box(
-                                modifier = Modifier
-                                    .size(16.dp)
-                                    .clip(CircleShape)
-                                    .background(Color(android.graphics.Color.parseColor("#${discovery?.colorHex}")))
-                            )
-                            Spacer(modifier = Modifier.width(12.dp))
+                item {
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+                    ) {
+                        Column(modifier = Modifier.padding(20.dp)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(16.dp)
+                                        .clip(CircleShape)
+                                        .background(Color(android.graphics.Color.parseColor(discovery?.colorHex ?: "#000000")))
+                                )
+                                Spacer(modifier = Modifier.width(12.dp))
+                                Text(
+                                    discovery?.category ?: "",
+                                    style = MaterialTheme.typography.labelLarge,
+                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+                                )
+                            }
+                            Spacer(modifier = Modifier.height(12.dp))
                             Text(
-                                discovery?.category ?: "",
-                                style = MaterialTheme.typography.labelLarge,
-                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+                                discovery?.title ?: "",
+                                style = MaterialTheme.typography.headlineSmall,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text(
+                                discovery?.description ?: "",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f)
                             )
                         }
-                        Spacer(modifier = Modifier.height(12.dp))
-                        Text(
-                            discovery?.title ?: "",
-                            style = MaterialTheme.typography.headlineSmall,
-                            fontWeight = FontWeight.Bold
-                        )
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Text(
-                            discovery?.description ?: "",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f)
-                        )
+                    }
+                }
+                
+                item {
+                    Text("Статистика", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                }
+                
+                item {
+                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        StatCard("Участников", "${discovery?.participants ?: 0}", Icons.Default.People, Modifier.weight(1f))
+                        StatCard("Постов", "${posts.size}", Icons.Default.Article, Modifier.weight(1f))
+                    }
+                }
+                
+                item {
+                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        StatCard("Ваш вклад", "$userContribution", Icons.Default.Star, Modifier.weight(1f))
+                    }
+                }
+                
+                item {
+                    Text("Достижения", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                }
+                
+                item {
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+                    ) {
+                        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                            AchievementItem("Первый участник", "Присоединились к открытию", discovery?.isJoined == true)
+                            AchievementItem("Активист", "Создали ${userContribution} постов", userContribution > 0)
+                            AchievementItem("Лидер", "Создали 5+ постов", userContribution >= 5)
+                        }
+                    }
+                }
+                
+                if (posts.isNotEmpty()) {
+                    item {
+                        Text("Последние посты", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                    }
+                    
+                    items(posts.take(5)) { post ->
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+                        ) {
+                            Column(modifier = Modifier.padding(16.dp)) {
+                                Text(
+                                    post.authorName,
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Text(
+                                    post.content,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    maxLines = 3
+                                )
+                            }
+                        }
                     }
                 }
             }
-            
-            item {
-                Text("Статистика", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-            }
-            
-            item {
-                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    StatCard("Участников", "${discovery?.participants ?: 0}", Icons.Default.People, Modifier.weight(1f))
-                    StatCard("Активность", "87%", Icons.Default.TrendingUp, Modifier.weight(1f))
-                }
-            }
-            
-            item {
-                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    StatCard("Дней", "12", Icons.Default.CalendarToday, Modifier.weight(1f))
-                    StatCard("Вклад", "$userContribution", Icons.Default.Star, Modifier.weight(1f))
-                }
-            }
-            
-            item {
-                Text("Достижения", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-            }
-            
-            item {
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                    shape = MaterialTheme.shapes.medium
-                ) {
-                    Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                        AchievementItem("Первый участник", "Присоединились к открытию", true)
-                        AchievementItem("Активист", "Участвуете более 7 дней", true)
-                        AchievementItem("Лидер", "Пригласили 5+ участников", false)
-                    }
-                }
-            }
-            
-            item {
-                Text("Топ участников", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-            }
-            
-            item {
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                    shape = MaterialTheme.shapes.medium
-                ) {
-                    Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                        TopUserItem("Komari", 156, 1)
-                        TopUserItem("Елена", 142, 2)
-                        TopUserItem("Иван", 98, 3)
-                    }
-                }
-            }
-        }
         }
     }
     
     if (showLeaveDialog) {
         Dialog(onDismissRequest = { showLeaveDialog = false }) {
             Card(
-                shape = MaterialTheme.shapes.medium,
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
             ) {
                 Column(modifier = Modifier.padding(24.dp)) {
@@ -198,15 +198,14 @@ fun DiscoveryDiscussionScreen(
                     )
                     Spacer(modifier = Modifier.height(16.dp))
                     Text(
-                        "Вы уверены, что хотите покинуть это открытие? Ваш прогресс будет сохранён.",
+                        "Вы уверены, что хотите покинуть это открытие?",
                         style = MaterialTheme.typography.bodyMedium
                     )
                     Spacer(modifier = Modifier.height(24.dp))
                     Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                         OutlinedButton(
                             onClick = { showLeaveDialog = false },
-                            modifier = Modifier.weight(1f),
-                            shape = MaterialTheme.shapes.medium
+                            modifier = Modifier.weight(1f)
                         ) {
                             Text("Отмена")
                         }
@@ -217,8 +216,7 @@ fun DiscoveryDiscussionScreen(
                                     onBack()
                                 }
                             },
-                            modifier = Modifier.weight(1f),
-                            shape = MaterialTheme.shapes.medium
+                            modifier = Modifier.weight(1f)
                         ) {
                             Text("Покинуть")
                         }
@@ -301,35 +299,27 @@ fun DiscoveryDiscussionScreen(
                 InfoItem(
                     icon = Icons.Default.Explore,
                     title = "Открытия",
-                    description = "Это тематические события, где участники объединяются вокруг общих интересов и целей"
+                    description = "Это тематические события, где участники объединяются вокруг общих интересов"
                 )
                 Spacer(modifier = Modifier.height(16.dp))
                 
                 InfoItem(
                     icon = Icons.Default.TrendingUp,
                     title = "Вклад",
-                    description = "Количество ваших постов с хэштегом этого открытия. Публикуйте больше, чтобы увеличить вклад!"
+                    description = "Количество ваших постов в этом открытии. Публикуйте больше, чтобы увеличить вклад!"
                 )
                 Spacer(modifier = Modifier.height(16.dp))
                 
                 InfoItem(
                     icon = Icons.Default.EmojiEvents,
                     title = "Достижения",
-                    description = "Получайте награды за активность и приглашение новых участников"
-                )
-                Spacer(modifier = Modifier.height(16.dp))
-                
-                InfoItem(
-                    icon = Icons.Default.Create,
-                    title = "Как участвовать?",
-                    description = "При создании поста выберите это открытие из списка. Ваш пост будет отмечен хэштегом"
+                    description = "Получайте награды за активность в открытии"
                 )
                 
                 Spacer(modifier = Modifier.height(24.dp))
                 Button(
                     onClick = { showInfoSheet = false },
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = MaterialTheme.shapes.medium
+                    modifier = Modifier.fillMaxWidth()
                 ) {
                     Text("Понятно")
                 }
@@ -374,8 +364,7 @@ fun MenuButton(
 ) {
     Card(
         onClick = onClick,
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
-        shape = MaterialTheme.shapes.medium
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
     ) {
         Row(
             modifier = Modifier
@@ -410,8 +399,7 @@ fun MenuButton(
 fun StatCard(label: String, value: String, icon: androidx.compose.ui.graphics.vector.ImageVector, modifier: Modifier = Modifier) {
     Card(
         modifier = modifier,
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        shape = MaterialTheme.shapes.medium
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
     ) {
         Column(
             modifier = Modifier.padding(16.dp),
@@ -446,56 +434,6 @@ fun AchievementItem(title: String, description: String, unlocked: Boolean) {
         Column {
             Text(title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
             Text(description, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f))
-        }
-    }
-}
-
-@Composable
-fun TopUserItem(name: String, points: Int, position: Int) {
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        modifier = Modifier.fillMaxWidth()
-    ) {
-        Box(
-            modifier = Modifier
-                .size(32.dp)
-                .clip(CircleShape)
-                .background(
-                    when(position) {
-                        1 -> Color(0xFFFFD700)
-                        2 -> Color(0xFFC0C0C0)
-                        3 -> Color(0xFFCD7F32)
-                        else -> MaterialTheme.colorScheme.surfaceVariant
-                    }
-                ),
-            contentAlignment = Alignment.Center
-        ) {
-            Text(
-                "$position",
-                style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.Bold,
-                color = Color.White
-            )
-        }
-        Spacer(modifier = Modifier.width(12.dp))
-        Box(
-            modifier = Modifier
-                .size(40.dp)
-                .clip(CircleShape)
-                .background(MaterialTheme.colorScheme.primary),
-            contentAlignment = Alignment.Center
-        ) {
-            Text(
-                name.first().toString(),
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.onPrimary
-            )
-        }
-        Spacer(modifier = Modifier.width(12.dp))
-        Column(modifier = Modifier.weight(1f)) {
-            Text(name, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
-            Text("$points баллов", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f))
         }
     }
 }

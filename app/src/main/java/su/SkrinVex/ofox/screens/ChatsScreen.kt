@@ -9,12 +9,14 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.People
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
 import kotlinx.coroutines.launch
@@ -139,17 +141,21 @@ fun AddChatDialog(
     onDismiss: () -> Unit,
     onChatAdded: () -> Unit
 ) {
-    var subscriptions by remember { mutableStateOf(listOf<su.SkrinVex.ofox.data.User>()) }
+    var users by remember { mutableStateOf(listOf<su.SkrinVex.ofox.data.User>()) }
+    var isLoading by remember { mutableStateOf(true) }
     val scope = rememberCoroutineScope()
     
     LaunchedEffect(Unit) {
-        subscriptions = repository.getSubscriptions()
+        // Получаем взаимных друзей
+        users = repository.getMutualFriends()
+        isLoading = false
     }
     
-    androidx.compose.ui.window.Dialog(onDismissRequest = { }) {
+    androidx.compose.ui.window.Dialog(onDismissRequest = onDismiss) {
         Card(
             modifier = Modifier
                 .fillMaxWidth()
+                .fillMaxHeight(0.7f)
                 .padding(16.dp),
             shape = MaterialTheme.shapes.medium,
             colors = CardDefaults.cardColors(
@@ -158,7 +164,7 @@ fun AddChatDialog(
         ) {
             Column(
                 modifier = Modifier
-                    .fillMaxWidth()
+                    .fillMaxSize()
                     .padding(24.dp)
             ) {
                 Text(
@@ -169,62 +175,95 @@ fun AddChatDialog(
                 
                 Spacer(modifier = Modifier.height(16.dp))
                 
-                if (subscriptions.isEmpty()) {
-                    Text(
-                        text = "Подпишитесь на пользователей, чтобы начать общение",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
-                    )
+                if (isLoading) {
+                    Box(
+                        modifier = Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        CircularProgressIndicator()
+                    }
+                } else if (users.isEmpty()) {
+                    Column(
+                        modifier = Modifier.fillMaxSize(),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center
+                    ) {
+                        Icon(
+                            Icons.Default.People,
+                            contentDescription = null,
+                            modifier = Modifier.size(64.dp),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Spacer(modifier = Modifier.height(16.dp))
+                        Text(
+                            text = "Нет взаимных друзей",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            text = "Чтобы начать чат, вы и другой пользователь должны быть подписаны друг на друга",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
+                            textAlign = TextAlign.Center
+                        )
+                    }
                 } else {
-                    Text(
-                        text = "Выберите пользователя:",
-                        style = MaterialTheme.typography.bodyMedium
-                    )
-                    
-                    Spacer(modifier = Modifier.height(12.dp))
-                    
-                    subscriptions.forEach { user ->
-                        Card(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable {
-                                    scope.launch {
-                                        repository.createChat(user.id, user.name)
-                                        onChatAdded()
-                                    }
-                                },
-                            colors = CardDefaults.cardColors(
-                                containerColor = MaterialTheme.colorScheme.surfaceVariant
-                            ),
-                            shape = MaterialTheme.shapes.medium
-                        ) {
-                            Row(
+                    LazyColumn(
+                        modifier = Modifier.weight(1f),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        items(users) { user ->
+                            Card(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .padding(12.dp),
-                                verticalAlignment = Alignment.CenterVertically
+                                    .clickable {
+                                        scope.launch {
+                                            val chatId = repository.createChat(user.id, user.name)
+                                            if (chatId != null) {
+                                                onChatAdded()
+                                            }
+                                        }
+                                    },
+                                colors = CardDefaults.cardColors(
+                                    containerColor = MaterialTheme.colorScheme.surfaceVariant
+                                ),
+                                shape = MaterialTheme.shapes.medium
                             ) {
-                                Box(
+                                Row(
                                     modifier = Modifier
-                                        .size(40.dp)
-                                        .clip(CircleShape)
-                                        .background(MaterialTheme.colorScheme.primary),
-                                    contentAlignment = Alignment.Center
+                                        .fillMaxWidth()
+                                        .padding(12.dp),
+                                    verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Text(
-                                        text = user.name.first().toString(),
-                                        color = MaterialTheme.colorScheme.onPrimary,
-                                        fontWeight = FontWeight.Bold
-                                    )
+                                    Box(
+                                        modifier = Modifier
+                                            .size(40.dp)
+                                            .clip(CircleShape)
+                                            .background(MaterialTheme.colorScheme.primary),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Text(
+                                            text = user.name.firstOrNull()?.toString() ?: "?",
+                                            color = MaterialTheme.colorScheme.onPrimary,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                    }
+                                    Spacer(modifier = Modifier.width(12.dp))
+                                    Column {
+                                        Text(
+                                            text = user.name,
+                                            style = MaterialTheme.typography.bodyLarge
+                                        )
+                                        Text(
+                                            text = user.email,
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                                        )
+                                    }
                                 }
-                                Spacer(modifier = Modifier.width(12.dp))
-                                Text(
-                                    text = user.name,
-                                    style = MaterialTheme.typography.bodyLarge
-                                )
                             }
                         }
-                        Spacer(modifier = Modifier.height(8.dp))
                     }
                 }
                 

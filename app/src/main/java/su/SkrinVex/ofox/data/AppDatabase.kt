@@ -162,14 +162,14 @@ interface MessageDao {
 
 @Dao
 interface DiscoveryDao {
-    @Query("SELECT * FROM discoveries")
+    @Query("SELECT * FROM discoveries ORDER BY id DESC")
     suspend fun getAllDiscoveries(): List<Discovery>
 
     @Query("SELECT * FROM discoveries WHERE id = :id")
     suspend fun getDiscoveryById(id: Int): Discovery?
 
-    @Insert
-    suspend fun insertDiscovery(discovery: Discovery)
+    @Insert(onConflict = androidx.room.OnConflictStrategy.REPLACE)
+    suspend fun insertDiscovery(discovery: Discovery): Long
 
     @Query("UPDATE discoveries SET isJoined = :isJoined, participants = :participants WHERE id = :id")
     suspend fun updateJoinStatus(id: Int, isJoined: Boolean, participants: Int)

@@ -37,15 +37,31 @@ fun HomeScreen(repository: Repository, navController: androidx.navigation.NavCon
     var selectedPost by remember { mutableStateOf<su.SkrinVex.ofox.data.Post?>(null) }
     var posts by remember { mutableStateOf(listOf<su.SkrinVex.ofox.data.Post>()) }
     var currentUser by remember { mutableStateOf<su.SkrinVex.ofox.data.User?>(null) }
+    var isLoading by remember { mutableStateOf(true) }
     val scope = rememberCoroutineScope()
     val listState = rememberLazyListState()
 
     LaunchedEffect(Unit) {
-        currentUser = repository.getCurrentUser()
-        posts = repository.getAllPosts()
+        try {
+            currentUser = repository.getCurrentUser()
+            posts = repository.getAllPosts()
+        } catch (e: Exception) {
+            android.util.Log.e("HomeScreen", "Error loading data", e)
+            posts = emptyList()
+        } finally {
+            isLoading = false
+        }
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
+        if (isLoading) {
+            Box(
+                modifier = Modifier.fillMaxSize(),
+                contentAlignment = Alignment.Center
+            ) {
+                CircularProgressIndicator()
+            }
+        } else {
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -78,8 +94,9 @@ fun HomeScreen(repository: Repository, navController: androidx.navigation.NavCon
                         isLiked = post.isLiked,
                         onLike = {
                             scope.launch {
-                                repository.toggleLike(post)
-                                posts = repository.getAllPosts()
+                                repository.toggleLike(post)?.let { updatedPost ->
+                                    posts = posts.map { if (it.id == updatedPost.id) updatedPost else it }
+                                }
                             }
                         },
                         onComment = { },
@@ -94,8 +111,9 @@ fun HomeScreen(repository: Repository, navController: androidx.navigation.NavCon
                         },
                         onVote = { optionIndex ->
                             scope.launch {
-                                repository.voteOnPoll(post.id, optionIndex)
-                                posts = repository.getAllPosts()
+                                repository.voteOnPoll(post.id, optionIndex)?.let { updatedPost ->
+                                    posts = posts.map { if (it.id == updatedPost.id) updatedPost else it }
+                                }
                             }
                         },
                         onAuthorClick = {
@@ -125,8 +143,9 @@ fun HomeScreen(repository: Repository, navController: androidx.navigation.NavCon
             onShare = { 
                 scope.launch {
                     posts.find { it.id == selectedPostId }?.let {
-                        repository.sharePost(it)
-                        posts = repository.getAllPosts()
+                        repository.sharePost(it)?.let { updatedPost ->
+                            posts = posts.map { p -> if (p.id == updatedPost.id) updatedPost else p }
+                        }
                     }
                 }
                 showShareMenu = false
@@ -222,25 +241,23 @@ fun HomeScreen(repository: Repository, navController: androidx.navigation.NavCon
             repository = repository,
             onCreate = { content, type, pollOptions, discovery ->
                 scope.launch {
-                    if (type == "POLL" && pollOptions.isNotEmpty()) {
-                        val optionsJson = pollOptions.joinToString(",")
-                        val votesJson = pollOptions.joinToString(",") { "0" }
-                        repository.createPoll(content, optionsJson, votesJson)
-                    } else {
-                        repository.createPost(
-                            content, 
-                            type,
-                            discovery?.id ?: 0,
-                            discovery?.title ?: "",
-                            discovery?.colorHex ?: ""
-                        )
+                    try {
+                        if (type == "POLL" && pollOptions.isNotEmpty()) {
+                            repository.createPoll(content, pollOptions, discovery?.id)
+                        } else {
+                            repository.createPost(content, type, discovery?.id)
+                        }
+                        posts = repository.getAllPosts()
+                        showCreatePost = false
+                        listState.animateScrollToItem(0)
+                    } catch (e: Exception) {
+                        // Игнорируем ошибку, но закрываем диалог
+                        showCreatePost = false
                     }
-                    posts = repository.getAllPosts()
-                    showCreatePost = false
-                    listState.animateScrollToItem(0)
                 }
             }
         )
+        }
     }
 }
 
@@ -259,7 +276,11 @@ fun CreatePostDialog(
     val scope = rememberCoroutineScope()
     
     LaunchedEffect(Unit) {
-        discoveries = repository.getAllDiscoveries().filter { it.isJoined }
+        try {
+            discoveries = repository.getAllDiscoveries().filter { it.isJoined }
+        } catch (e: Exception) {
+            discoveries = emptyList()
+        }
     }
     
     val postTypes = listOf(
@@ -425,7 +446,7 @@ fun CreatePostDialog(
                                         modifier = Modifier
                                             .size(8.dp)
                                             .clip(CircleShape)
-                                            .background(Color(android.graphics.Color.parseColor("#${discovery.colorHex}")))
+                                            .background(Color(android.graphics.Color.parseColor(discovery.colorHex)))
                                     )
                                     Spacer(modifier = Modifier.width(8.dp))
                                     Text(discovery.title)

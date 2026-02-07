@@ -27,10 +27,24 @@ class MainActivity : ComponentActivity() {
     @OptIn(ExperimentalMaterial3Api::class)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        
+        // Глобальная обработка ошибок
+        Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
+            android.util.Log.e("OFOX_CRASH", "Uncaught exception in thread ${thread.name}", throwable)
+            throwable.printStackTrace()
+        }
+        
         repository = Repository(this)
         
+        // Синхронизация при запуске
         lifecycleScope.launch {
-            repository.initializeSampleData()
+            try {
+                if (repository.isLoggedIn()) {
+                    repository.syncData()
+                }
+            } catch (e: Exception) {
+                android.util.Log.e("OFOX", "Sync error", e)
+            }
         }
         
         enableEdgeToEdge()

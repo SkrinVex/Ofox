@@ -48,10 +48,6 @@ fun ChatDetailScreen(repository: Repository, chatId: Int, onBack: () -> Unit) {
         val chats = repository.getAllChats()
         chat = chats.find { it.id == chatId }
         messages = repository.getMessages(chatId)
-        if (messages.isEmpty()) {
-            repository.sendMessage(chatId, "Привет! Как дела?", false)
-            messages = repository.getMessages(chatId)
-        }
     }
 
     LaunchedEffect(messages.size) {
@@ -149,14 +145,10 @@ fun ChatDetailScreen(repository: Repository, chatId: Int, onBack: () -> Unit) {
                     onClick = {
                         if (messageText.isNotBlank()) {
                             scope.launch {
-                                repository.sendMessage(chatId, messageText, true)
-                                messages = repository.getMessages(chatId)
+                                repository.sendMessage(chatId, messageText)?.let {
+                                    messages = messages + it
+                                }
                                 messageText = ""
-                                
-                                delay(1000)
-                                val response = autoResponses.random()
-                                repository.sendMessage(chatId, response, false)
-                                messages = repository.getMessages(chatId)
                             }
                         }
                     },

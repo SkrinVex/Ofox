@@ -133,10 +133,14 @@ fun CreativePostCard(
                                 )
                             }
                         }
-                        if (post.discoveryId > 0) {
+                        if (post.discoveryId > 0 && post.discoveryColor.isNotBlank()) {
                             Spacer(modifier = Modifier.width(8.dp))
                             Badge(
-                                containerColor = Color(android.graphics.Color.parseColor("#${post.discoveryColor}"))
+                                containerColor = try {
+                                    Color(android.graphics.Color.parseColor(post.discoveryColor))
+                                } catch (e: Exception) {
+                                    MaterialTheme.colorScheme.primary
+                                }
                             ) {
                                 Text(
                                     text = "#${post.discoveryTitle}",

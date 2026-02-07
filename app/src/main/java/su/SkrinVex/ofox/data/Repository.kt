@@ -1,202 +1,300 @@
 package su.SkrinVex.ofox.data
 
 import android.content.Context
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
+import android.util.Patterns
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import su.SkrinVex.ofox.data.api.ApiClient
+import su.SkrinVex.ofox.data.api.models.*
+import java.text.SimpleDateFormat
+import java.util.*
 
-class Repository(context: Context) {
+class Repository(private val context: Context) {
+    private val apiClient = ApiClient.getInstance(context)
     private val db = AppDatabase.getDatabase(context)
     private val prefs = context.getSharedPreferences("ofox_prefs", Context.MODE_PRIVATE)
 
     init {
         CoroutineScope(Dispatchers.IO).launch {
-            initSampleUsers()
+            apiClient.getToken()
         }
     }
 
-    private suspend fun initSampleUsers() {
-        val users = listOf(
-            User(id = 1, email = "komari@ofox.su", password = "123", name = "Komari", bio = "Разработчик OFOX"),
-            User(id = 2, email = "elena@ofox.su", password = "123", name = "Елена", bio = "Дизайнер и художник"),
-            User(id = 3, email = "ivan@ofox.su", password = "123", name = "Иван", bio = "Программист")
-        )
-        users.forEach { user ->
-            if (db.userDao().getUser(user.id) == null) {
-                try {
-                    db.userDao().insertUser(user)
-                } catch (e: Exception) {
-                    // User already exists
-                }
+    // Auth
+    suspend fun login(email: String, password: String): Result<User> = withContext(Dispatchers.IO) {
+        try {
+            if (!isValidEmail(email)) return@withContext Result.failure(Exception("Неверный формат email"))
+            if (password.length < 3) return@withContext Result.failure(Exception("Пароль слишком короткий"))
+            
+            val response = apiClient.api.login(LoginRequest(email, password))
+            apiClient.saveToken(response.token)
+            prefs.edit().putInt("user_id", response.user.id).apply()
+            
+            val user = response.user.toUser()
+            db.userDao().insertUser(user)
+            Result.success(user)
+        } catch (e: retrofit2.HttpException) {
+            when (e.code()) {
+                401 -> Result.failure(Exception("Неверный email или пароль"))
+                else -> Result.failure(Exception("Ошибка сервера"))
             }
+        } catch (e: Exception) {
+            Result.failure(Exception("Ошибка подключения к серверу"))
         }
     }
 
-    suspend fun login(email: String, password: String): User? = withContext(Dispatchers.IO) {
-        db.userDao().login(email, password)?.also {
-            prefs.edit().putInt("user_id", it.id).apply()
-        }
-    }
-
-    suspend fun register(email: String, password: String, name: String): User? = withContext(Dispatchers.IO) {
-        val userId = db.userDao().register(User(email = email, password = password, name = name))
-        db.userDao().getUser(userId.toInt())?.also {
-            prefs.edit().putInt("user_id", it.id).apply()
+    suspend fun register(email: String, password: String, name: String): Result<User> = withContext(Dispatchers.IO) {
+        try {
+            if (!isValidEmail(email)) return@withContext Result.failure(Exception("Неверный формат email"))
+            if (password.length < 6) return@withContext Result.failure(Exception("Пароль должен быть минимум 6 символов"))
+            if (name.isBlank()) return@withContext Result.failure(Exception("Имя не может быть пустым"))
+            
+            val response = apiClient.api.register(RegisterRequest(email, password, name))
+            apiClient.saveToken(response.token)
+            prefs.edit().putInt("user_id", response.user.id).apply()
+            
+            val user = response.user.toUser()
+            db.userDao().insertUser(user)
+            Result.success(user)
+        } catch (e: retrofit2.HttpException) {
+            when (e.code()) {
+                400 -> Result.failure(Exception("Email уже используется"))
+                else -> Result.failure(Exception("Ошибка сервера"))
+            }
+        } catch (e: Exception) {
+            Result.failure(Exception("Ошибка подключения к серверу"))
         }
     }
 
     fun isLoggedIn(): Boolean = prefs.getInt("user_id", -1) != -1
-
     fun getCurrentUserId(): Int = prefs.getInt("user_id", -1)
 
     suspend fun getCurrentUser(): User? = withContext(Dispatchers.IO) {
         val userId = getCurrentUserId()
-        if (userId != -1) db.userDao().getUser(userId) else null
+        if (userId == -1) return@withContext null
+        try {
+            val response = apiClient.api.getProfile()
+            val user = response.toUser()
+            db.userDao().insertUser(user)
+            user
+        } catch (e: Exception) {
+            db.userDao().getUser(userId)
+        }
     }
 
     suspend fun getUserById(userId: Int): User? = withContext(Dispatchers.IO) {
-        db.userDao().getUser(userId)
+        try {
+            val response = apiClient.api.getUserById(userId)
+            val user = response.toUser()
+            db.userDao().insertUser(user)
+            user
+        } catch (e: Exception) {
+            db.userDao().getUser(userId)
+        }
+    }
+
+    suspend fun updateUser(name: String, bio: String): User? = withContext(Dispatchers.IO) {
+        try {
+            val response = apiClient.api.updateProfile(mapOf("name" to name, "bio" to bio))
+            val user = response.toUser()
+            db.userDao().updateUser(user)
+            user
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    suspend fun logout() = withContext(Dispatchers.IO) {
+        try {
+            apiClient.clearToken()
+            prefs.edit().clear().apply()
+            // НЕ очищаем БД - открытия должны остаться
+        } catch (e: Exception) {
+            android.util.Log.e("Repository", "Failed to logout", e)
+        }
+    }
+
+    suspend fun syncData() = withContext(Dispatchers.IO) {
+        try {
+            // Синхронизация постов
+            val posts = apiClient.api.getPosts().map { it.toPost() }
+            db.postDao().getAllPosts().forEach { db.postDao().deletePost(it.id) }
+            posts.forEach { db.postDao().insertPost(it) }
+            
+            // Синхронизация открытий
+            val discoveries = apiClient.api.getDiscoveries().map { it.toDiscovery() }
+            discoveries.forEach { db.discoveryDao().insertDiscovery(it) }
+            
+            // Синхронизация чатов
+            val chats = apiClient.api.getChats().map { it.toChat() }
+            chats.forEach { db.chatDao().insertChat(it) }
+        } catch (e: Exception) {
+            // Игнорируем ошибки синхронизации
+        }
+    }
+
+    // Posts with cache
+    suspend fun getAllPosts(): List<Post> = withContext(Dispatchers.IO) {
+        try {
+            val posts = apiClient.api.getPosts().map { it.toPost() }
+            posts.forEach { 
+                try {
+                    db.postDao().insertPost(it)
+                } catch (e: Exception) {
+                    android.util.Log.e("Repository", "Error inserting post ${it.id}", e)
+                }
+            }
+            posts
+        } catch (e: Exception) {
+            android.util.Log.e("Repository", "Error fetching posts from API", e)
+            try {
+                db.postDao().getAllPosts()
+            } catch (dbError: Exception) {
+                android.util.Log.e("Repository", "Error fetching posts from DB", dbError)
+                emptyList()
+            }
+        }
     }
 
     suspend fun getPostsByUser(userId: Int): List<Post> = withContext(Dispatchers.IO) {
-        db.postDao().getPostsByUser(userId)
-    }
-
-    suspend fun isSubscribed(userId: Int): Boolean = withContext(Dispatchers.IO) {
-        prefs.getStringSet("subscriptions", emptySet())?.contains(userId.toString()) ?: false
-    }
-
-    suspend fun getSubscribersCount(userId: Int): Int {
-        val baseCount = when(userId) {
-            1 -> 150
-            2 -> 473
-            3 -> 89
-            else -> 10
+        try {
+            apiClient.api.getPosts(userId = userId).map { it.toPost() }
+        } catch (e: Exception) {
+            db.postDao().getPostsByUser(userId)
         }
-        val key = "subs_count_$userId"
-        return prefs.getInt(key, baseCount)
     }
 
-    suspend fun toggleSubscription(userId: Int) = withContext(Dispatchers.IO) {
-        val subs = prefs.getStringSet("subscriptions", emptySet())?.toMutableSet() ?: mutableSetOf()
-        val key = "subs_count_$userId"
-        val currentCount = getSubscribersCount(userId)
-        
-        if (subs.contains(userId.toString())) {
-            subs.remove(userId.toString())
-            prefs.edit().putInt(key, currentCount - 1).apply()
-        } else {
-            subs.add(userId.toString())
-            prefs.edit().putInt(key, currentCount + 1).apply()
+    suspend fun getPostsByDiscovery(discoveryId: Int): List<Post> = withContext(Dispatchers.IO) {
+        try {
+            apiClient.api.getPosts(discoveryId = discoveryId).map { it.toPost() }
+        } catch (e: Exception) {
+            db.postDao().getPostsByDiscovery(discoveryId)
         }
-        prefs.edit().putStringSet("subscriptions", subs).apply()
     }
 
-    suspend fun getSubscriptions(): List<User> = withContext(Dispatchers.IO) {
-        val subs = prefs.getStringSet("subscriptions", emptySet()) ?: emptySet()
-        subs.mapNotNull { db.userDao().getUser(it.toIntOrNull() ?: 0) }
+    suspend fun createPost(content: String, type: String = "TEXT", discoveryId: Int? = null) = withContext(Dispatchers.IO) {
+        try {
+            android.util.Log.d("Repository", "Creating post: content=$content, type=$type, discoveryId=$discoveryId")
+            val response = apiClient.api.createPost(PostRequest(content, type, discoveryId = discoveryId))
+            android.util.Log.d("Repository", "Post created: $response")
+            val post = response.toPost()
+            db.postDao().insertPost(post)
+            post
+        } catch (e: Exception) {
+            android.util.Log.e("Repository", "Failed to create post", e)
+            e.printStackTrace()
+            null
+        }
     }
 
-    fun logout() {
-        prefs.edit().clear().apply()
+    suspend fun createPoll(question: String, options: List<String>, discoveryId: Int? = null) = withContext(Dispatchers.IO) {
+        try {
+            android.util.Log.d("Repository", "Creating poll: question=$question, options=$options, discoveryId=$discoveryId")
+            val response = apiClient.api.createPost(PostRequest(question, "POLL", options, discoveryId))
+            android.util.Log.d("Repository", "Poll created: $response")
+            val post = response.toPost()
+            db.postDao().insertPost(post)
+            post
+        } catch (e: Exception) {
+            android.util.Log.e("Repository", "Failed to create poll", e)
+            e.printStackTrace()
+            null
+        }
     }
 
-    suspend fun updateUser(user: User) = withContext(Dispatchers.IO) {
-        db.userDao().updateUser(user)
+    suspend fun toggleLike(post: Post): Post? = withContext(Dispatchers.IO) {
+        try {
+            val response = apiClient.api.toggleLike(post.id)
+            val updatedPost = response.toPost()
+            db.postDao().updateLikes(updatedPost.id, updatedPost.likes, updatedPost.isLiked)
+            updatedPost
+        } catch (e: Exception) {
+            val newLiked = !post.isLiked
+            val newLikes = if (newLiked) post.likes + 1 else post.likes - 1
+            db.postDao().updateLikes(post.id, newLikes, newLiked)
+            post.copy(likes = newLikes, isLiked = newLiked)
+        }
     }
 
-    suspend fun getAllPosts(): List<Post> = withContext(Dispatchers.IO) {
-        db.postDao().getAllPosts()
+    suspend fun sharePost(post: Post): Post? = withContext(Dispatchers.IO) {
+        try {
+            val response = apiClient.api.sharePost(post.id)
+            val updatedPost = response.toPost()
+            db.postDao().updateShares(updatedPost.id, updatedPost.shares)
+            updatedPost
+        } catch (e: Exception) {
+            val newShares = post.shares + 1
+            db.postDao().updateShares(post.id, newShares)
+            post.copy(shares = newShares)
+        }
     }
 
-    suspend fun createPost(
-        content: String, 
-        type: String = "TEXT",
-        discoveryId: Int = 0,
-        discoveryTitle: String = "",
-        discoveryColor: String = ""
-    ) = withContext(Dispatchers.IO) {
-        val user = getCurrentUser() ?: return@withContext
-        db.postDao().insertPost(
-            Post(
-                authorId = user.id,
-                authorName = user.name,
-                content = content,
-                timestamp = System.currentTimeMillis(),
-                type = type,
-                discoveryId = discoveryId,
-                discoveryTitle = discoveryTitle,
-                discoveryColor = discoveryColor
-            )
-        )
-    }
-
-    suspend fun createPoll(question: String, options: String, votes: String) = withContext(Dispatchers.IO) {
-        val user = getCurrentUser() ?: return@withContext
-        db.postDao().insertPost(
-            Post(
-                authorId = user.id,
-                authorName = user.name,
-                content = question,
-                timestamp = System.currentTimeMillis(),
-                type = "POLL",
-                pollOptions = options,
-                pollVotes = votes
-            )
-        )
-    }
-
-    suspend fun voteOnPoll(postId: Int, optionIndex: Int) = withContext(Dispatchers.IO) {
-        val post = db.postDao().getPostById(postId) ?: return@withContext
-        val votes = post.pollVotes.split(",").map { it.toIntOrNull() ?: 0 }.toMutableList()
-        votes[optionIndex] = votes[optionIndex] + 1
-        db.postDao().updatePollVote(postId, votes.joinToString(","), optionIndex)
-    }
-
-    suspend fun toggleLike(post: Post) = withContext(Dispatchers.IO) {
-        val newLiked = !post.isLiked
-        val newLikes = if (newLiked) post.likes + 1 else post.likes - 1
-        db.postDao().updateLikes(post.id, newLikes, newLiked)
-    }
-
-    suspend fun sharePost(post: Post) = withContext(Dispatchers.IO) {
-        db.postDao().updateShares(post.id, post.shares + 1)
+    suspend fun voteOnPoll(postId: Int, optionIndex: Int): Post? = withContext(Dispatchers.IO) {
+        try {
+            val response = apiClient.api.voteOnPoll(postId, mapOf("optionIndex" to optionIndex))
+            val updatedPost = response.toPost()
+            db.postDao().updatePollVote(updatedPost.id, updatedPost.pollVotes, optionIndex)
+            updatedPost
+        } catch (e: Exception) {
+            val post = db.postDao().getPostById(postId) ?: return@withContext null
+            val votes = post.pollVotes.split(",").map { it.toIntOrNull() ?: 0 }.toMutableList()
+            if (optionIndex < votes.size) {
+                votes[optionIndex]++
+                val newVotes = votes.joinToString(",")
+                db.postDao().updatePollVote(postId, newVotes, optionIndex)
+                post.copy(pollVotes = newVotes, userVote = optionIndex)
+            } else post
+        }
     }
 
     suspend fun deletePost(postId: Int) = withContext(Dispatchers.IO) {
-        db.postDao().deletePost(postId)
+        try {
+            apiClient.api.deletePost(postId)
+            db.postDao().deletePost(postId)
+        } catch (e: Exception) {
+            db.postDao().deletePost(postId)
+        }
     }
 
-    suspend fun getAllChats(): List<Chat> = withContext(Dispatchers.IO) {
-        db.chatDao().getAllChats()
-    }
-
-    suspend fun createChat(userId: Int, userName: String) = withContext(Dispatchers.IO) {
-        db.chatDao().insertChat(
-            Chat(
-                id = 0,
-                name = userName,
-                lastMessage = "Начните общение",
-                timestamp = System.currentTimeMillis()
-            )
-        )
-    }
-
-    suspend fun getMessages(chatId: Int): List<Message> = withContext(Dispatchers.IO) {
-        db.messageDao().getMessages(chatId)
-    }
-
-    suspend fun sendMessage(chatId: Int, text: String, isFromMe: Boolean) = withContext(Dispatchers.IO) {
-        val timestamp = System.currentTimeMillis()
-        db.messageDao().insertMessage(
-            Message(chatId = chatId, text = text, timestamp = timestamp, isFromMe = isFromMe)
-        )
-        db.chatDao().updateChat(chatId, text, timestamp)
-    }
-
+    // Discoveries
     suspend fun getAllDiscoveries(): List<Discovery> = withContext(Dispatchers.IO) {
-        db.discoveryDao().getAllDiscoveries()
+        try {
+            val discoveries = apiClient.api.getDiscoveries().map { it.toDiscovery() }
+            android.util.Log.d("Repository", "Fetched ${discoveries.size} discoveries from API")
+            
+            // Очищаем старый кэш
+            val cached = db.discoveryDao().getAllDiscoveries()
+            android.util.Log.d("Repository", "Cached discoveries: ${cached.size}")
+            
+            // Вставляем новые
+            discoveries.forEach { 
+                android.util.Log.d("Repository", "Inserting discovery: $it")
+                db.discoveryDao().insertDiscovery(it) 
+            }
+            discoveries
+        } catch (e: Exception) {
+            android.util.Log.e("Repository", "Failed to fetch discoveries from API", e)
+            e.printStackTrace()
+            val cached = db.discoveryDao().getAllDiscoveries()
+            android.util.Log.d("Repository", "Returning ${cached.size} cached discoveries")
+            cached
+        }
+    }
+
+    suspend fun toggleJoinDiscovery(discovery: Discovery): Discovery? = withContext(Dispatchers.IO) {
+        try {
+            val response = apiClient.api.toggleJoinDiscovery(discovery.id)
+            val updated = response.toDiscovery()
+            db.discoveryDao().updateJoinStatus(updated.id, updated.isJoined, updated.participants)
+            updated
+        } catch (e: Exception) {
+            val newJoined = !discovery.isJoined
+            val newParticipants = if (newJoined) discovery.participants + 1 else discovery.participants - 1
+            db.discoveryDao().updateJoinStatus(discovery.id, newJoined, newParticipants)
+            discovery.copy(isJoined = newJoined, participants = newParticipants)
+        }
     }
 
     suspend fun getDiscoveryById(id: Int): Discovery? = withContext(Dispatchers.IO) {
@@ -207,52 +305,188 @@ class Repository(context: Context) {
         db.postDao().getPostsByDiscovery(discoveryId).size
     }
 
-    suspend fun toggleJoinDiscovery(discovery: Discovery) = withContext(Dispatchers.IO) {
-        val newJoined = !discovery.isJoined
-        val newParticipants = if (newJoined) discovery.participants + 1 else discovery.participants - 1
-        db.discoveryDao().updateJoinStatus(discovery.id, newJoined, newParticipants)
+    suspend fun createDiscovery(title: String, description: String, category: String, colorHex: String): Discovery? = withContext(Dispatchers.IO) {
+        try {
+            // Убираем FF (альфа-канал) и # если есть
+            var cleanColor = if (colorHex.length == 8) colorHex.substring(2) else colorHex
+            if (cleanColor.startsWith("#")) cleanColor = cleanColor.substring(1)
+            
+            android.util.Log.d("Repository", "Creating discovery: title=$title, category=$category, colorHex=$cleanColor")
+            val response = apiClient.api.createDiscovery(mapOf(
+                "title" to title,
+                "description" to description,
+                "category" to category,
+                "colorHex" to cleanColor
+            ))
+            android.util.Log.d("Repository", "Discovery created: $response")
+            val discovery = response.toDiscovery()
+            db.discoveryDao().insertDiscovery(discovery)
+            discovery
+        } catch (e: Exception) {
+            android.util.Log.e("Repository", "Failed to create discovery", e)
+            e.printStackTrace()
+            null
+        }
     }
 
-    suspend fun createDiscovery(title: String, description: String, category: String, colorHex: String) = withContext(Dispatchers.IO) {
-        db.discoveryDao().insertDiscovery(
-            Discovery(
-                id = 0,
-                title = title,
-                description = description,
-                category = category,
-                participants = 1,
-                colorHex = colorHex,
-                isJoined = true
-            )
+    // Chats
+    suspend fun getAllChats(): List<Chat> = withContext(Dispatchers.IO) {
+        try {
+            val chats = apiClient.api.getChats().map { it.toChat() }
+            chats.forEach { db.chatDao().insertChat(it) }
+            chats
+        } catch (e: Exception) {
+            db.chatDao().getAllChats()
+        }
+    }
+
+    suspend fun getMessages(chatId: Int): List<Message> = withContext(Dispatchers.IO) {
+        try {
+            val currentUserId = getCurrentUserId()
+            val messages = apiClient.api.getMessages(chatId).map { it.toMessage(currentUserId) }
+            messages.forEach { db.messageDao().insertMessage(it) }
+            messages
+        } catch (e: Exception) {
+            db.messageDao().getMessages(chatId)
+        }
+    }
+
+    suspend fun sendMessage(chatId: Int, text: String): Message? = withContext(Dispatchers.IO) {
+        try {
+            val currentUserId = getCurrentUserId()
+            val response = apiClient.api.sendMessage(chatId, SendMessageRequest(text))
+            val message = response.toMessage(currentUserId)
+            db.messageDao().insertMessage(message)
+            db.chatDao().updateChat(chatId, text, message.timestamp)
+            message
+        } catch (e: Exception) {
+            val timestamp = System.currentTimeMillis()
+            val message = Message(0, chatId, text, timestamp, true)
+            db.messageDao().insertMessage(message)
+            db.chatDao().updateChat(chatId, text, timestamp)
+            message
+        }
+    }
+
+    // Subscriptions
+    suspend fun isSubscribed(userId: Int): Boolean = withContext(Dispatchers.IO) {
+        try {
+            val response = apiClient.api.isSubscribed(userId)
+            response["subscribed"] ?: false
+        } catch (e: Exception) {
+            false
+        }
+    }
+
+    suspend fun toggleSubscription(userId: Int): Boolean = withContext(Dispatchers.IO) {
+        try {
+            val response = apiClient.api.toggleSubscription(userId)
+            response["subscribed"] ?: false
+        } catch (e: Exception) {
+            android.util.Log.e("Repository", "Failed to toggle subscription", e)
+            false
+        }
+    }
+
+    suspend fun getMutualFriends(): List<User> = withContext(Dispatchers.IO) {
+        try {
+            apiClient.api.getMutualFriends().map { it.toUser() }
+        } catch (e: Exception) {
+            android.util.Log.e("Repository", "Failed to get mutual friends", e)
+            emptyList()
+        }
+    }
+
+    suspend fun getSubscribersCount(userId: Int): Int = withContext(Dispatchers.IO) {
+        try {
+            val response = apiClient.api.getSubscribersCount(userId)
+            response["count"] ?: 0
+        } catch (e: Exception) {
+            android.util.Log.e("Repository", "Failed to get subscribers count", e)
+            0
+        }
+    }
+
+    suspend fun getSubscriptions(): List<User> = withContext(Dispatchers.IO) {
+        emptyList()
+    }
+
+    suspend fun createChat(userId: Int, userName: String): Long? = withContext(Dispatchers.IO) {
+        try {
+            android.util.Log.d("Repository", "Creating chat with user $userId ($userName)")
+            val response = apiClient.api.createChat(CreateChatRequest(userName, listOf(userId)))
+            android.util.Log.d("Repository", "Chat created: $response")
+            val chat = Chat(response.id, userName, "Начните общение", System.currentTimeMillis())
+            db.chatDao().insertChat(chat)
+            response.id.toLong()
+        } catch (e: Exception) {
+            android.util.Log.e("Repository", "Failed to create chat", e)
+            e.printStackTrace()
+            null
+        }
+    }
+
+    // Helpers
+    private fun isValidEmail(email: String): Boolean = Patterns.EMAIL_ADDRESS.matcher(email).matches()
+
+    private fun UserResponse.toUser() = User(id, email, "", name, bio)
+
+    private fun PostResponse.toPost() = Post(
+        id = id,
+        authorId = author_id,
+        authorName = author_name ?: "Unknown",
+        content = content ?: "",
+        likes = likes ?: 0,
+        shares = shares ?: 0,
+        timestamp = parseTimestamp(created_at),
+        type = type ?: "TEXT",
+        isLiked = is_liked ?: false,
+        pollOptions = poll_options?.joinToString(",") ?: "",
+        pollVotes = poll_votes?.joinToString(",") ?: "",
+        userVote = user_vote ?: -1,
+        discoveryId = discovery_id ?: 0,
+        discoveryTitle = discovery_title ?: "",
+        discoveryColor = if (discovery_color.isNullOrBlank()) "" else if (discovery_color.startsWith("#")) discovery_color else "#$discovery_color"
+    )
+
+    private fun DiscoveryResponse.toDiscovery(): Discovery {
+        val cleanColor = color_hex?.let { 
+            if (it.startsWith("#")) it else "#$it" 
+        } ?: "#4CAF50"
+        
+        val discovery = Discovery(
+            id = id,
+            title = title,
+            description = description,
+            category = category,
+            participants = participants,
+            colorHex = cleanColor,
+            isJoined = is_joined
         )
+        android.util.Log.d("Repository", "Mapped discovery: $discovery")
+        return discovery
     }
 
-    suspend fun initializeSampleData() = withContext(Dispatchers.IO) {
-        if (db.postDao().getAllPosts().isEmpty()) {
-            val samplePosts = listOf(
-                Post(0, 1, "Komari", "🌟 Сегодня особенный день! Запустил новый проект и чувствую невероятный прилив энергии.", 42, 12, 8, System.currentTimeMillis() - 7200000, "MOOD"),
-                Post(0, 2, "Елена", "Что лучше для изучения Android разработки?", 28, 15, 3, System.currentTimeMillis() - 14400000, "POLL", pollOptions = "Kotlin,Java,Flutter,React Native", pollVotes = "45,23,18,14", userVote = -1),
-                Post(0, 3, "Андрей", "\"Код - это поэзия, которую понимают машины\" - неизвестный автор", 35, 8, 12, System.currentTimeMillis() - 21600000, "QUOTE")
-            )
-            samplePosts.forEach { db.postDao().insertPost(it) }
-        }
+    private fun ChatResponse.toChat() = Chat(
+        id = id,
+        name = name,
+        lastMessage = last_message,
+        timestamp = parseTimestamp(updated_at)
+    )
 
-        if (db.chatDao().getAllChats().isEmpty()) {
-            val sampleChats = listOf(
-                Chat(0, "Алексей", "Привет! Как дела?", System.currentTimeMillis() - 3600000),
-                Chat(0, "Мария", "Увидимся завтра", System.currentTimeMillis() - 7200000),
-                Chat(0, "Группа разработчиков", "Новый релиз готов", System.currentTimeMillis() - 10800000)
-            )
-            sampleChats.forEach { db.chatDao().insertChat(it) }
-        }
+    private fun MessageResponse.toMessage(currentUserId: Int) = Message(
+        id = id,
+        chatId = chat_id,
+        text = text,
+        timestamp = parseTimestamp(created_at),
+        isFromMe = sender_id == currentUserId
+    )
 
-        if (db.discoveryDao().getAllDiscoveries().isEmpty()) {
-            val sampleDiscoveries = listOf(
-                Discovery(0, "Coding Challenge", "Решай задачи по программированию", "Программирование", 1247, "FF4CAF50"),
-                Discovery(0, "Tech Meetup", "Встреча разработчиков в твоем городе", "События", 89, "FF2196F3"),
-                Discovery(0, "Open Source", "Найди проект для вклада", "Проекты", 567, "FFFF9800")
-            )
-            sampleDiscoveries.forEach { db.discoveryDao().insertDiscovery(it) }
+    private fun parseTimestamp(dateStr: String): Long {
+        return try {
+            SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", Locale.getDefault()).parse(dateStr)?.time ?: System.currentTimeMillis()
+        } catch (e: Exception) {
+            System.currentTimeMillis()
         }
     }
 }

@@ -16,6 +16,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.navigation.NavController
+import kotlinx.coroutines.launch
 import su.SkrinVex.ofox.data.Repository
 
 data class SettingItem(val title: String, val subtitle: String, val icon: ImageVector, val route: String?)
@@ -23,6 +24,7 @@ data class SettingItem(val title: String, val subtitle: String, val icon: ImageV
 @Composable
 fun SettingsScreen(repository: Repository, navController: NavController, onLogout: () -> Unit) {
     var showLogoutDialog by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
     
     val settings = listOf(
         SettingItem("Профиль", "Управление аккаунтом", Icons.Default.Person, "edit_profile"),
@@ -163,8 +165,10 @@ fun SettingsScreen(repository: Repository, navController: NavController, onLogou
                         
                         Button(
                             onClick = {
-                                repository.logout()
-                                onLogout()
+                                scope.launch {
+                                    repository.logout()
+                                    onLogout()
+                                }
                             },
                             modifier = Modifier.weight(1f),
                             colors = ButtonDefaults.buttonColors(

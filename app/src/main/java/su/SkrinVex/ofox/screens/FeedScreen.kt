@@ -22,6 +22,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import kotlinx.coroutines.launch
@@ -29,12 +30,11 @@ import su.SkrinVex.ofox.data.Repository
 import java.text.SimpleDateFormat
 import java.util.*
 
-data class TrendingTopic(val name: String, val posts: Int)
-
 @Composable
 fun FeedScreen(repository: Repository, navController: androidx.navigation.NavController? = null) {
     var discoveries by remember { mutableStateOf(listOf<su.SkrinVex.ofox.data.Discovery>()) }
     var showCreateDialog by remember { mutableStateOf(false) }
+    var isLoading by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     val listState = rememberLazyListState()
     val fabExpanded by remember {
@@ -42,20 +42,28 @@ fun FeedScreen(repository: Repository, navController: androidx.navigation.NavCon
             listState.firstVisibleItemIndex == 0
         }
     }
-    
-    val trendingTopics = listOf(
-        TrendingTopic("Jetpack Compose", 156),
-        TrendingTopic("Kotlin Multiplatform", 89),
-        TrendingTopic("Android 15", 234),
-        TrendingTopic("Flutter vs React Native", 67),
-        TrendingTopic("AI в мобильной разработке", 123)
-    )
+
+    fun loadDiscoveries() {
+        scope.launch {
+            isLoading = true
+            discoveries = repository.getAllDiscoveries()
+            isLoading = false
+        }
+    }
 
     LaunchedEffect(Unit) {
-        discoveries = repository.getAllDiscoveries()
+        loadDiscoveries()
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
+        if (isLoading) {
+            Box(
+                modifier = Modifier.fillMaxSize(),
+                contentAlignment = Alignment.Center
+            ) {
+                CircularProgressIndicator()
+            }
+        } else {
         LazyColumn(
             state = listState,
             modifier = Modifier
@@ -74,66 +82,6 @@ fun FeedScreen(repository: Repository, navController: androidx.navigation.NavCon
         }
         
         item {
-            Card(
-                colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.1f)
-                ),
-                shape = MaterialTheme.shapes.medium
-            ) {
-                Column(
-                    modifier = Modifier.padding(16.dp)
-                ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(
-                            Icons.Default.TrendingUp,
-                            contentDescription = "Тренды",
-                            tint = MaterialTheme.colorScheme.primary
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(
-                            text = "Сейчас обсуждают",
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.SemiBold
-                        )
-                    }
-                    
-                    Spacer(modifier = Modifier.height(12.dp))
-                    
-                    LazyRow(
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        items(trendingTopics) { topic ->
-                            Card(
-                                colors = CardDefaults.cardColors(
-                                    containerColor = MaterialTheme.colorScheme.surface
-                                ),
-                                modifier = Modifier.clickable { }
-                            ) {
-                                Column(
-                                    modifier = Modifier.padding(12.dp),
-                                    horizontalAlignment = Alignment.CenterHorizontally
-                                ) {
-                                    Text(
-                                        text = topic.name,
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        fontWeight = FontWeight.Medium
-                                    )
-                                    Text(
-                                        text = "${topic.posts} постов",
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
-                                    )
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        
-        item {
             Spacer(modifier = Modifier.height(8.dp))
         }
         
@@ -146,19 +94,60 @@ fun FeedScreen(repository: Repository, navController: androidx.navigation.NavCon
             )
         }
         
-        items(discoveries.filter { it.isJoined }) { discovery ->
-            DiscoveryCard(
-                discovery = discovery,
-                onJoin = {
-                    scope.launch {
-                        repository.toggleJoinDiscovery(discovery)
-                        discoveries = repository.getAllDiscoveries()
+        val joinedDiscoveries = discoveries.filter { it.isJoined }
+        
+        if (joinedDiscoveries.isEmpty()) {
+            item {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceVariant
+                    )
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(24.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Icon(
+                            Icons.Default.Explore,
+                            contentDescription = null,
+                            modifier = Modifier.size(48.dp),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Spacer(modifier = Modifier.height(16.dp))
+                        Text(
+                            text = "Вы нигде не участвуете",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            text = "Присоединитесь к открытиям ниже или создайте своё",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            textAlign = TextAlign.Center
+                        )
                     }
-                },
-                onDiscuss = {
-                    navController?.navigate("discovery_discussion/${discovery.id}")
                 }
-            )
+            }
+        } else {
+            items(joinedDiscoveries) { discovery ->
+                DiscoveryCard(
+                    discovery = discovery,
+                    onJoin = {
+                        scope.launch {
+                            repository.toggleJoinDiscovery(discovery)?.let { updated ->
+                                discoveries = discoveries.map { if (it.id == updated.id) updated else it }
+                            }
+                        }
+                    },
+                    onDiscuss = {
+                        navController?.navigate("discovery_discussion/${discovery.id}")
+                    }
+                )
+            }
         }
         
         item {
@@ -174,27 +163,68 @@ fun FeedScreen(repository: Repository, navController: androidx.navigation.NavCon
             )
         }
         
-        items(discoveries.filter { !it.isJoined }) { discovery ->
-            DiscoveryCard(
-                discovery = discovery,
-                onJoin = {
-                    scope.launch {
-                        repository.toggleJoinDiscovery(discovery)
-                        discoveries = repository.getAllDiscoveries()
+        val recommendedDiscoveries = discoveries.filter { !it.isJoined }
+        
+        if (recommendedDiscoveries.isEmpty()) {
+            item {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceVariant
+                    )
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(24.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Icon(
+                            Icons.Default.Search,
+                            contentDescription = null,
+                            modifier = Modifier.size(48.dp),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Spacer(modifier = Modifier.height(16.dp))
+                        Text(
+                            text = "Нет доступных открытий",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            text = "Создайте первое открытие для сообщества",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            textAlign = TextAlign.Center
+                        )
                     }
-                },
-                onDiscuss = {
-                    navController?.navigate("discovery_discussion/${discovery.id}")
                 }
-            )
+            }
+        } else {
+            items(recommendedDiscoveries) { discovery ->
+                DiscoveryCard(
+                    discovery = discovery,
+                    onJoin = {
+                        scope.launch {
+                            repository.toggleJoinDiscovery(discovery)?.let { updated ->
+                                discoveries = discoveries.map { if (it.id == updated.id) updated else it }
+                            }
+                        }
+                    },
+                    onDiscuss = {
+                        navController?.navigate("discovery_discussion/${discovery.id}")
+                    }
+                )
+            }
         }
-    }
+        }
         
         ExtendedFloatingActionButton(
             onClick = { showCreateDialog = true },
             expanded = fabExpanded,
             icon = { Icon(Icons.Default.Add, contentDescription = "Создать") },
-            text = { Text("Создать своё открытие") },
+            text = { Text("Создать открытие") },
             modifier = Modifier
                 .align(Alignment.BottomEnd)
                 .padding(16.dp),
@@ -207,12 +237,15 @@ fun FeedScreen(repository: Repository, navController: androidx.navigation.NavCon
             onDismiss = { showCreateDialog = false },
             onCreate = { title, description, category, color ->
                 scope.launch {
-                    repository.createDiscovery(title, description, category, color)
-                    discoveries = repository.getAllDiscoveries()
+                    val created = repository.createDiscovery(title, description, category, color)
                     showCreateDialog = false
+                    if (created != null) {
+                        loadDiscoveries()
+                    }
                 }
             }
         )
+    }
     }
 }
 
@@ -408,7 +441,7 @@ fun DiscoveryCard(
                     modifier = Modifier
                         .size(12.dp)
                         .clip(CircleShape)
-                        .background(Color(android.graphics.Color.parseColor("#${discovery.colorHex}")))
+                        .background(Color(android.graphics.Color.parseColor(discovery.colorHex)))
                 )
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(
@@ -510,7 +543,7 @@ fun DiscoveryDetailsDialog(
                         modifier = Modifier
                             .size(16.dp)
                             .clip(CircleShape)
-                            .background(Color(android.graphics.Color.parseColor("#${discovery.colorHex}")))
+                            .background(Color(android.graphics.Color.parseColor(discovery.colorHex)))
                     )
                     Spacer(modifier = Modifier.width(12.dp))
                     Text(

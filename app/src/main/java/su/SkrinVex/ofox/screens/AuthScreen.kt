@@ -33,13 +33,19 @@ fun AuthScreen(repository: Repository, onAuthSuccess: () -> Unit) {
     var confirmPasswordVisible by remember { mutableStateOf(false) }
     var showError by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf("") }
+    var isLoading by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
 
     LaunchedEffect(showError) {
         if (showError) {
-            delay(3000)
+            delay(4000)
             showError = false
         }
+    }
+
+    LaunchedEffect(isLogin) {
+        showError = false
+        errorMessage = ""
     }
 
     Column(
@@ -188,9 +194,13 @@ fun AuthScreen(repository: Repository, onAuthSuccess: () -> Unit) {
         
         Button(
             onClick = {
+                if (isLoading) return@Button
                 scope.launch {
+                    isLoading = true
+                    showError = false
+                    
                     when {
-                        email.isEmpty() -> {
+                        email.trim().isEmpty() -> {
                             errorMessage = "Введите email"
                             showError = true
                         }
@@ -198,8 +208,12 @@ fun AuthScreen(repository: Repository, onAuthSuccess: () -> Unit) {
                             errorMessage = "Введите пароль"
                             showError = true
                         }
-                        !isLogin && name.isEmpty() -> {
+                        !isLogin && name.trim().isEmpty() -> {
                             errorMessage = "Введите имя"
+                            showError = true
+                        }
+                        !isLogin && password.length < 6 -> {
+                            errorMessage = "Пароль должен быть минимум 6 символов"
                             showError = true
                         }
                         !isLogin && password != confirmPassword -> {
@@ -208,30 +222,43 @@ fun AuthScreen(repository: Repository, onAuthSuccess: () -> Unit) {
                         }
                         else -> {
                             val result = if (isLogin) {
-                                repository.login(email, password)
+                                repository.login(email.trim(), password)
                             } else {
-                                repository.register(email, password, name)
+                                repository.register(email.trim(), password, name.trim())
                             }
-                            if (result != null) {
-                                onAuthSuccess()
-                            } else {
-                                errorMessage = "Неверные данные"
-                                showError = true
-                            }
+                            result.fold(
+                                onSuccess = { 
+                                    isLoading = false
+                                    onAuthSuccess() 
+                                },
+                                onFailure = { 
+                                    errorMessage = it.message ?: "Ошибка подключения"
+                                    showError = true
+                                }
+                            )
                         }
                     }
+                    isLoading = false
                 }
             },
             modifier = Modifier
                 .fillMaxWidth()
                 .height(56.dp),
-            shape = MaterialTheme.shapes.medium
+            shape = MaterialTheme.shapes.medium,
+            enabled = !isLoading
         ) {
-            Text(
-                text = if (isLogin) "Войти" else "Зарегистрироваться",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold
-            )
+            if (isLoading) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(24.dp),
+                    color = MaterialTheme.colorScheme.onPrimary
+                )
+            } else {
+                Text(
+                    text = if (isLogin) "Войти" else "Зарегистрироваться",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold
+                )
+            }
         }
     }
 }

@@ -148,9 +148,9 @@ fun UserProfileScreen(
                         Button(
                             onClick = {
                                 scope.launch {
-                                    repository.toggleSubscription(userId)
-                                    isSubscribed = !isSubscribed
-                                    subscribersCount = if (isSubscribed) subscribersCount + 1 else subscribersCount - 1
+                                    val newSubscribed = repository.toggleSubscription(userId)
+                                    isSubscribed = newSubscribed
+                                    subscribersCount = repository.getSubscribersCount(userId)
                                 }
                             },
                             modifier = Modifier.fillMaxWidth(),

@@ -1,0 +1,78 @@
+package su.SkrinVex.ofox.data.api
+
+import retrofit2.http.*
+import su.SkrinVex.ofox.data.api.models.*
+
+interface ApiService {
+    @POST("auth/register")
+    suspend fun register(@Body request: RegisterRequest): AuthResponse
+    
+    @POST("auth/login")
+    suspend fun login(@Body request: LoginRequest): AuthResponse
+    
+    @GET("auth/profile")
+    suspend fun getProfile(): UserResponse
+    
+    @PUT("auth/profile")
+    suspend fun updateProfile(@Body request: Map<String, String>): UserResponse
+    
+    @GET("auth/users/{id}")
+    suspend fun getUserById(@Path("id") userId: Int): UserResponse
+    
+    @GET("posts")
+    suspend fun getPosts(
+        @Query("discoveryId") discoveryId: Int? = null,
+        @Query("userId") userId: Int? = null
+    ): List<PostResponse>
+    
+    @POST("posts")
+    suspend fun createPost(@Body request: PostRequest): PostResponse
+    
+    @POST("posts/{id}/like")
+    suspend fun toggleLike(@Path("id") postId: Int): PostResponse
+    
+    @POST("posts/{id}/share")
+    suspend fun sharePost(@Path("id") postId: Int): PostResponse
+    
+    @POST("posts/{id}/vote")
+    suspend fun voteOnPoll(@Path("id") postId: Int, @Body vote: Map<String, Int>): PostResponse
+    
+    @DELETE("posts/{id}")
+    suspend fun deletePost(@Path("id") postId: Int)
+    
+    @GET("discoveries")
+    suspend fun getDiscoveries(): List<DiscoveryResponse>
+    
+    @GET("discoveries/{id}")
+    suspend fun getDiscoveryById(@Path("id") discoveryId: Int): DiscoveryResponse
+    
+    @POST("discoveries")
+    suspend fun createDiscovery(@Body request: Map<String, String>): DiscoveryResponse
+    
+    @POST("discoveries/{id}/join")
+    suspend fun toggleJoinDiscovery(@Path("id") discoveryId: Int): DiscoveryResponse
+    
+    @GET("chats")
+    suspend fun getChats(): List<ChatResponse>
+    
+    @POST("chats")
+    suspend fun createChat(@Body request: CreateChatRequest): ChatResponse
+    
+    @GET("chats/{chatId}/messages")
+    suspend fun getMessages(@Path("chatId") chatId: Int): List<MessageResponse>
+    
+    @POST("chats/{chatId}/messages")
+    suspend fun sendMessage(@Path("chatId") chatId: Int, @Body message: SendMessageRequest): MessageResponse
+    
+    @GET("subscriptions/mutual")
+    suspend fun getMutualFriends(): List<UserResponse>
+    
+    @POST("subscriptions/{userId}")
+    suspend fun toggleSubscription(@Path("userId") userId: Int): Map<String, Boolean>
+    
+    @GET("subscriptions/{userId}/check")
+    suspend fun isSubscribed(@Path("userId") userId: Int): Map<String, Boolean>
+    
+    @GET("subscriptions/{userId}/subscribers/count")
+    suspend fun getSubscribersCount(@Path("userId") userId: Int): Map<String, Int>
+}
