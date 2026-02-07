@@ -43,6 +43,8 @@ fun HomeScreen(repository: Repository, navController: androidx.navigation.NavCon
     var hasMore by remember { mutableStateOf(true) }
     val scope = rememberCoroutineScope()
     val listState = rememberLazyListState()
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val wsClient = remember { su.SkrinVex.ofox.data.api.WebSocketClient.getInstance(context) }
 
     fun loadPosts(offset: Int = 0) {
         scope.launch {
@@ -69,9 +71,88 @@ fun HomeScreen(repository: Repository, navController: androidx.navigation.NavCon
         try {
             currentUser = repository.getCurrentUser()
             loadPosts(0)
+            wsClient.connect()
         } catch (e: Exception) {
             android.util.Log.e("HomeScreen", "Error loading user", e)
             isLoading = false
+        }
+    }
+    
+    LaunchedEffect(Unit) {
+        while (true) {
+            kotlinx.coroutines.delay(30000) // 30 секунд
+            if (posts.isNotEmpty()) {
+                try {
+                    val freshPosts = repository.getAllPosts(limit = posts.size.coerceAtMost(20), offset = 0)
+                    freshPosts.forEach { fresh ->
+                        val index = posts.indexOfFirst { it.id == fresh.id }
+                        if (index != -1 && (posts[index].likes != fresh.likes || 
+                            posts[index].shares != fresh.shares || 
+                            posts[index].authorBadges != fresh.authorBadges)) {
+                            posts[index] = fresh
+                        }
+                    }
+                } catch (e: Exception) {
+                    android.util.Log.e("HomeScreen", "Polling error", e)
+                }
+            }
+        }
+    }
+    
+    LaunchedEffect(wsClient.events) {
+        wsClient.events.collect { event ->
+            android.util.Log.d("HomeScreen", "Received event: $event")
+            when (event) {
+                is su.SkrinVex.ofox.data.api.WSEvent.BadgeUpdate -> {
+                    android.util.Log.d("HomeScreen", "Badge update for user ${event.userId}, badges: ${event.badges}")
+                    val badgesJson = org.json.JSONArray(event.badges.map { badge ->
+                        org.json.JSONObject().apply {
+                            put("badge_type", badge.type)
+                            put("description", badge.description)
+                        }
+                    }).toString()
+                    
+                    var updatedCount = 0
+                    posts.indices.forEach { index ->
+                        if (posts[index].authorId == event.userId) {
+                            posts[index] = posts[index].copy(authorBadges = badgesJson)
+                            updatedCount++
+                        }
+                    }
+                    android.util.Log.d("HomeScreen", "Updated $updatedCount posts for user ${event.userId}")
+                }
+                is su.SkrinVex.ofox.data.api.WSEvent.PostUpdate -> {
+                    android.util.Log.d("HomeScreen", "Post update: ${event.postId}, likes: ${event.likes}, shares: ${event.shares}")
+                    val index = posts.indexOfFirst { it.id == event.postId }
+                    if (index != -1) {
+                        val post = posts[index]
+                        posts[index] = post.copy(
+                            likes = if (event.likes >= 0) event.likes else post.likes,
+                            shares = if (event.shares >= 0) event.shares else post.shares
+                        )
+                        android.util.Log.d("HomeScreen", "Updated post ${event.postId}")
+                    }
+                }
+                is su.SkrinVex.ofox.data.api.WSEvent.NewPost -> {
+                    scope.launch {
+                        try {
+                            val newPosts = repository.getAllPosts(limit = 1, offset = 0)
+                            if (newPosts.isNotEmpty() && newPosts[0].id == event.postId) {
+                                posts.add(0, newPosts[0])
+                            }
+                        } catch (e: Exception) {
+                            android.util.Log.e("HomeScreen", "Error loading new post", e)
+                        }
+                    }
+                }
+                null -> {}
+            }
+        }
+    }
+    
+    DisposableEffect(Unit) {
+        onDispose {
+            wsClient.disconnect()
         }
     }
 

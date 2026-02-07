@@ -4,6 +4,7 @@ import su.SkrinVex.ofox.BuildConfig
 
 object ApiConfig {
     const val BASE_URL = "https://api.skrinvex.su/ofox/"
+    const val WS_URL = "wss://api.skrinvex.su/ofox/ws"
     
     // Включить логирование только в debug
     val ENABLE_LOGGING = BuildConfig.DEBUG

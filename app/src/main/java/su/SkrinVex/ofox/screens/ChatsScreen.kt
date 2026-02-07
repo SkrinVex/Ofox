@@ -47,10 +47,38 @@ fun ChatsScreen(repository: Repository, navController: NavController) {
             modifier = Modifier.padding(bottom = 16.dp)
         )
         
-        LazyColumn(
-            verticalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            items(chats) { chat ->
+        if (chats.isEmpty()) {
+            Column(
+                modifier = Modifier.fillMaxSize(),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center
+            ) {
+                Icon(
+                    Icons.Default.Add,
+                    contentDescription = null,
+                    modifier = Modifier.size(80.dp),
+                    tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.6f)
+                )
+                Spacer(modifier = Modifier.height(24.dp))
+                Text(
+                    text = "Нет активных чатов",
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onBackground
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = "Чтобы начать общение, нажмите на кнопку\n+ в правом нижнем углу",
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f),
+                    textAlign = TextAlign.Center
+                )
+            }
+        } else {
+            LazyColumn(
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                items(chats) { chat ->
                 Card(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -106,6 +134,7 @@ fun ChatsScreen(repository: Repository, navController: NavController) {
                     }
                 }
             }
+        }
         }
     }
         
@@ -191,16 +220,17 @@ fun AddChatDialog(
                         Icon(
                             Icons.Default.People,
                             contentDescription = null,
-                            modifier = Modifier.size(64.dp),
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                            modifier = Modifier.size(72.dp),
+                            tint = MaterialTheme.colorScheme.primary
                         )
-                        Spacer(modifier = Modifier.height(16.dp))
+                        Spacer(modifier = Modifier.height(24.dp))
                         Text(
                             text = "Нет взаимных друзей",
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.SemiBold
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurface
                         )
-                        Spacer(modifier = Modifier.height(8.dp))
+                        Spacer(modifier = Modifier.height(12.dp))
                         Text(
                             text = "Чтобы начать чат, вы и другой пользователь должны быть подписаны друг на друга",
                             style = MaterialTheme.typography.bodyMedium,
