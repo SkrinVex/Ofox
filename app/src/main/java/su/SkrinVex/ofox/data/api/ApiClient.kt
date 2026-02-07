@@ -53,14 +53,22 @@ class ApiClient(private val context: Context) {
     }
     
     private val loggingInterceptor = HttpLoggingInterceptor().apply {
-        level = HttpLoggingInterceptor.Level.BODY
+        level = if (ApiConfig.ENABLE_LOGGING) {
+            HttpLoggingInterceptor.Level.BODY
+        } else {
+            HttpLoggingInterceptor.Level.NONE
+        }
     }
     
     private val client = OkHttpClient.Builder()
         .addInterceptor(authInterceptor)
-        .addInterceptor(loggingInterceptor)
-        .connectTimeout(30, TimeUnit.SECONDS)
-        .readTimeout(30, TimeUnit.SECONDS)
+        .apply {
+            if (ApiConfig.ENABLE_LOGGING) {
+                addInterceptor(loggingInterceptor)
+            }
+        }
+        .connectTimeout(ApiConfig.CONNECT_TIMEOUT, TimeUnit.SECONDS)
+        .readTimeout(ApiConfig.READ_TIMEOUT, TimeUnit.SECONDS)
         .build()
     
     val api: ApiService = Retrofit.Builder()

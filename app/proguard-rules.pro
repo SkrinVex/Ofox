@@ -19,3 +19,50 @@
 # If you keep the line number information, uncomment this to
 # hide the original source file name.
 #-renamesourcefileattribute SourceFile
+
+# Retrofit
+-keepattributes Signature, InnerClasses, EnclosingMethod
+-keepattributes RuntimeVisibleAnnotations, RuntimeVisibleParameterAnnotations
+-keepclassmembers,allowshrinking,allowobfuscation interface * {
+    @retrofit2.http.* <methods>;
+}
+-dontwarn org.codehaus.mojo.animal_sniffer.IgnoreJRERequirement
+-dontwarn javax.annotation.**
+-dontwarn kotlin.Unit
+-dontwarn retrofit2.KotlinExtensions
+-dontwarn retrofit2.KotlinExtensions$*
+
+# OkHttp
+-dontwarn okhttp3.**
+-dontwarn okio.**
+-keepnames class okhttp3.internal.publicsuffix.PublicSuffixDatabase
+
+# Gson
+-keepattributes Signature
+-keepattributes *Annotation*
+-dontwarn sun.misc.**
+-keep class com.google.gson.** { *; }
+-keep class * implements com.google.gson.TypeAdapter
+-keep class * implements com.google.gson.TypeAdapterFactory
+-keep class * implements com.google.gson.JsonSerializer
+-keep class * implements com.google.gson.JsonDeserializer
+
+# Ваши модели данных (замените на ваш пакет)
+-keep class su.SkrinVex.ofox.data.model.** { *; }
+-keep class su.SkrinVex.ofox.data.api.** { *; }
+
+# Сохранить ApiClient и его методы
+-keep class su.SkrinVex.ofox.data.api.ApiClient { *; }
+-keep class su.SkrinVex.ofox.data.api.ApiService { *; }
+-keep class su.SkrinVex.ofox.data.api.ApiConfig { *; }
+
+# Сохранить все классы запросов и ответов
+-keep class su.SkrinVex.ofox.data.model.** { *; }
+
+# Kotlin Coroutines
+-keepnames class kotlinx.coroutines.internal.MainDispatcherFactory {}
+-keepnames class kotlinx.coroutines.CoroutineExceptionHandler {}
+-dontwarn kotlinx.coroutines.flow.**
+
+# DataStore
+-keep class androidx.datastore.preferences.** { *; }

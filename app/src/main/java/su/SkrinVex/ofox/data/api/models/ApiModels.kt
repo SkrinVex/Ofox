@@ -9,6 +9,10 @@ data class RegisterRequest(
     val bio: String = ""
 )
 
+data class VerifyRequest(val email: String, val code: String)
+
+data class SimpleMessageResponse(val message: String)
+
 data class AuthResponse(val user: UserResponse, val token: String)
 
 data class UserResponse(

@@ -5,7 +5,10 @@ import su.SkrinVex.ofox.data.api.models.*
 
 interface ApiService {
     @POST("auth/register")
-    suspend fun register(@Body request: RegisterRequest): AuthResponse
+    suspend fun register(@Body request: RegisterRequest): SimpleMessageResponse
+    
+    @POST("auth/verify")
+    suspend fun verifyCode(@Body request: VerifyRequest): AuthResponse
     
     @POST("auth/login")
     suspend fun login(@Body request: LoginRequest): AuthResponse

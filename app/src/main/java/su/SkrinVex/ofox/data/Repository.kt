@@ -45,13 +45,30 @@ class Repository(private val context: Context) {
         }
     }
 
-    suspend fun register(email: String, password: String, name: String): Result<User> = withContext(Dispatchers.IO) {
+    suspend fun register(email: String, password: String, name: String): Result<String> = withContext(Dispatchers.IO) {
         try {
             if (!isValidEmail(email)) return@withContext Result.failure(Exception("Неверный формат email"))
             if (password.length < 6) return@withContext Result.failure(Exception("Пароль должен быть минимум 6 символов"))
             if (name.isBlank()) return@withContext Result.failure(Exception("Имя не может быть пустым"))
             
             val response = apiClient.api.register(RegisterRequest(email, password, name))
+            Result.success(response.message)
+        } catch (e: retrofit2.HttpException) {
+            val errorBody = e.response()?.errorBody()?.string()
+            val errorMessage = try {
+                org.json.JSONObject(errorBody ?: "{}").getString("error")
+            } catch (_: Exception) {
+                "Ошибка сервера"
+            }
+            Result.failure(Exception(errorMessage))
+        } catch (e: Exception) {
+            Result.failure(Exception("Ошибка подключения к серверу"))
+        }
+    }
+
+    suspend fun verifyCode(email: String, code: String): Result<User> = withContext(Dispatchers.IO) {
+        try {
+            val response = apiClient.api.verifyCode(VerifyRequest(email, code))
             apiClient.saveToken(response.token)
             prefs.edit().putInt("user_id", response.user.id).apply()
             
@@ -60,7 +77,7 @@ class Repository(private val context: Context) {
             Result.success(user)
         } catch (e: retrofit2.HttpException) {
             when (e.code()) {
-                400 -> Result.failure(Exception("Email уже используется"))
+                400 -> Result.failure(Exception("Неверный или истёкший код"))
                 else -> Result.failure(Exception("Ошибка сервера"))
             }
         } catch (e: Exception) {

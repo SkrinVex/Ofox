@@ -37,6 +37,8 @@ fun AuthScreen(repository: Repository, onAuthSuccess: () -> Unit) {
     var showError by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf("") }
     var isLoading by remember { mutableStateOf(false) }
+    var showVerificationDialog by remember { mutableStateOf(false) }
+    var verificationCode by remember { mutableStateOf("") }
     val scope = rememberCoroutineScope()
 
     LaunchedEffect(showError) {
@@ -51,12 +53,128 @@ fun AuthScreen(repository: Repository, onAuthSuccess: () -> Unit) {
         errorMessage = ""
     }
 
+    if (showVerificationDialog) {
+        AlertDialog(
+            onDismissRequest = { },
+            containerColor = MaterialTheme.colorScheme.surface,
+            title = { 
+                Text(
+                    "Подтверждение email",
+                    style = MaterialTheme.typography.headlineSmall,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+            },
+            text = {
+                Column {
+                    Card(
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.primaryContainer
+                        ),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(modifier = Modifier.padding(12.dp)) {
+                            Text(
+                                "Код отправлен на:",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onPrimaryContainer
+                            )
+                            Text(
+                                email,
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.onPrimaryContainer
+                            )
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Card(
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.secondaryContainer
+                        ),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(modifier = Modifier.padding(10.dp)) {
+                            Text(
+                                "• Убедитесь, что email введён верно",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSecondaryContainer
+                            )
+                            Text(
+                                "• Проверьте папку «Спам»",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSecondaryContainer
+                            )
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(16.dp))
+                    OutlinedTextField(
+                        value = verificationCode,
+                        onValueChange = { if (it.length <= 6 && it.all { c -> c.isDigit() }) verificationCode = it },
+                        label = { Text("Код из письма") },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = MaterialTheme.shapes.medium,
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = MaterialTheme.colorScheme.primary,
+                            unfocusedBorderColor = MaterialTheme.colorScheme.outline
+                        )
+                    )
+                    if (showError) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            errorMessage,
+                            color = MaterialTheme.colorScheme.error,
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                    }
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        if (verificationCode.length == 6) {
+                            scope.launch {
+                                isLoading = true
+                                showError = false
+                                val result = repository.verifyCode(email.trim(), verificationCode)
+                                result.fold(
+                                    onSuccess = {
+                                        showVerificationDialog = false
+                                        isLoading = false
+                                        onAuthSuccess()
+                                    },
+                                    onFailure = {
+                                        errorMessage = it.message ?: "Ошибка проверки кода"
+                                        showError = true
+                                        isLoading = false
+                                    }
+                                )
+                            }
+                        }
+                    },
+                    enabled = verificationCode.length == 6 && !isLoading
+                ) {
+                    if (isLoading) {
+                        CircularProgressIndicator(modifier = Modifier.size(20.dp))
+                    } else {
+                        Text("Подтвердить")
+                    }
+                }
+            },
+            dismissButton = null
+        )
+    }
+
+    val scrollState = rememberScrollState()
+
     Column(
         modifier = Modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
-            .verticalScroll(rememberScrollState())
-            .padding(24.dp),
+            .verticalScroll(scrollState)
+            .padding(24.dp)
+            .imePadding(),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
@@ -228,21 +346,32 @@ fun AuthScreen(repository: Repository, onAuthSuccess: () -> Unit) {
                             showError = true
                         }
                         else -> {
-                            val result = if (isLogin) {
-                                repository.login(email.trim(), password)
+                            if (isLogin) {
+                                val result = repository.login(email.trim(), password)
+                                result.fold(
+                                    onSuccess = { 
+                                        isLoading = false
+                                        onAuthSuccess() 
+                                    },
+                                    onFailure = { 
+                                        errorMessage = it.message ?: "Ошибка подключения"
+                                        showError = true
+                                    }
+                                )
                             } else {
-                                repository.register(email.trim(), password, name.trim())
+                                val result = repository.register(email.trim(), password, name.trim())
+                                result.fold(
+                                    onSuccess = {
+                                        isLoading = false
+                                        verificationCode = ""
+                                        showVerificationDialog = true
+                                    },
+                                    onFailure = { 
+                                        errorMessage = it.message ?: "Ошибка подключения"
+                                        showError = true
+                                    }
+                                )
                             }
-                            result.fold(
-                                onSuccess = { 
-                                    isLoading = false
-                                    onAuthSuccess() 
-                                },
-                                onFailure = { 
-                                    errorMessage = it.message ?: "Ошибка подключения"
-                                    showError = true
-                                }
-                            )
                         }
                     }
                     isLoading = false
