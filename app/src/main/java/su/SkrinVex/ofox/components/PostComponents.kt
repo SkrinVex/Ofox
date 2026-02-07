@@ -3,7 +3,9 @@ package su.SkrinVex.ofox.components
 import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -64,11 +66,11 @@ fun CreativePostCard(
     var liked by remember { mutableStateOf(isLiked) }
     var likesCount by remember { mutableStateOf(post.likes) }
     var selectedPollOption by remember { mutableStateOf<String?>(null) }
-    
+
     LaunchedEffect(isLiked) {
         liked = isLiked
     }
-    
+
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(
@@ -104,9 +106,9 @@ fun CreativePostCard(
                         fontWeight = FontWeight.Bold
                     )
                 }
-                
+
                 Spacer(modifier = Modifier.width(12.dp))
-                
+
                 Column(modifier = Modifier.weight(1f)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(
@@ -115,6 +117,10 @@ fun CreativePostCard(
                             color = MaterialTheme.colorScheme.onSurface,
                             fontWeight = FontWeight.SemiBold
                         )
+                        if (post.authorBadges.isNotEmpty()) {
+                            Spacer(modifier = Modifier.width(6.dp))
+                            UserBadges(badges = post.authorBadges)
+                        }
                         if (post.type != PostType.TEXT) {
                             Spacer(modifier = Modifier.width(8.dp))
                             Badge(
@@ -158,7 +164,7 @@ fun CreativePostCard(
                         color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
                     )
                 }
-                
+
                 IconButton(onClick = onMoreClick) {
                     Icon(
                         Icons.Default.MoreVert,
@@ -167,13 +173,13 @@ fun CreativePostCard(
                     )
                 }
             }
-            
+
             Spacer(modifier = Modifier.height(12.dp))
-            
+
             // Content with hashtag highlighting and "Read more"
             var isExpanded by remember { mutableStateOf(false) }
             val hasOverflow = remember { mutableStateOf(false) }
-            
+
             Column {
                 HashtagText(
                     text = post.content,
@@ -187,7 +193,7 @@ fun CreativePostCard(
                         }
                     }
                 )
-                
+
                 if (hasOverflow.value) {
                     TextButton(
                         onClick = { isExpanded = !isExpanded },
@@ -202,27 +208,27 @@ fun CreativePostCard(
                     }
                 }
             }
-            
+
             // Poll options (if poll)
             if (post.type == PostType.POLL && post.pollOptions.isNotEmpty()) {
                 Spacer(modifier = Modifier.height(12.dp))
                 val totalVotes = post.pollVotes.sum()
                 val hasVoted = post.userVote >= 0
-                
+
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     post.pollOptions.forEachIndexed { index, option ->
                         val votes = post.pollVotes.getOrNull(index) ?: 0
                         val percentage = if (totalVotes > 0) (votes * 100f / totalVotes) else 0f
                         val isSelected = post.userVote == index
-                        
+
                         Card(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .clickable(enabled = !hasVoted) { onVote(index) },
                             colors = CardDefaults.cardColors(
-                                containerColor = if (isSelected) 
+                                containerColor = if (isSelected)
                                     MaterialTheme.colorScheme.primary.copy(alpha = 0.2f)
-                                else 
+                                else
                                     MaterialTheme.colorScheme.surfaceVariant
                             )
                         ) {
@@ -239,7 +245,7 @@ fun CreativePostCard(
                                             )
                                     )
                                 }
-                                
+
                                 Row(
                                     modifier = Modifier
                                         .fillMaxWidth()
@@ -265,7 +271,7 @@ fun CreativePostCard(
                             }
                         }
                     }
-                    
+
                     if (hasVoted) {
                         Text(
                             text = "$totalVotes ${if (totalVotes == 1) "голос" else if (totalVotes < 5) "голоса" else "голосов"}",
@@ -275,9 +281,9 @@ fun CreativePostCard(
                     }
                 }
             }
-            
+
             Spacer(modifier = Modifier.height(12.dp))
-            
+
             // Actions
             Row(
                 horizontalArrangement = Arrangement.spacedBy(24.dp),
@@ -303,7 +309,7 @@ fun CreativePostCard(
                         color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
                     )
                 }
-                
+
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier.clickable { onComment() }
@@ -321,7 +327,7 @@ fun CreativePostCard(
                         color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
                     )
                 }
-                
+
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier.clickable { onShare() }
@@ -356,7 +362,7 @@ fun ShareBottomSheet(
         "Копировать ссылку" to Icons.Default.Link,
         "Сохранить" to Icons.Default.Bookmark
     )
-    
+
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         containerColor = MaterialTheme.colorScheme.surface
@@ -370,7 +376,7 @@ fun ShareBottomSheet(
                 fontWeight = FontWeight.SemiBold,
                 modifier = Modifier.padding(bottom = 16.dp)
             )
-            
+
             shareOptions.forEach { (name, icon) ->
                 Row(
                     modifier = Modifier
@@ -391,7 +397,7 @@ fun ShareBottomSheet(
                     )
                 }
             }
-            
+
             Spacer(modifier = Modifier.height(16.dp))
         }
     }
@@ -418,7 +424,7 @@ fun PostMenuBottomSheet(
             "Не показывать от автора" to Icons.Default.Block
         )
     }
-    
+
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         containerColor = MaterialTheme.colorScheme.surface
@@ -432,12 +438,12 @@ fun PostMenuBottomSheet(
                 fontWeight = FontWeight.SemiBold,
                 modifier = Modifier.padding(bottom = 16.dp)
             )
-            
+
             menuOptions.forEach { (name, icon) ->
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clickable { 
+                        .clickable {
                             onAction(name)
                             onDismiss()
                         }
@@ -447,9 +453,9 @@ fun PostMenuBottomSheet(
                     Icon(
                         icon,
                         contentDescription = name,
-                        tint = if (name == "Удалить пост") 
+                        tint = if (name == "Удалить пост")
                             MaterialTheme.colorScheme.primary
-                        else 
+                        else
                             MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
                     )
                     Spacer(modifier = Modifier.width(16.dp))
@@ -463,7 +469,7 @@ fun PostMenuBottomSheet(
                     )
                 }
             }
-            
+
             Spacer(modifier = Modifier.height(16.dp))
         }
     }

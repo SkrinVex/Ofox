@@ -112,6 +112,15 @@ class Repository(private val context: Context) {
         }
     }
 
+    suspend fun getUserBadges(userId: Int): List<su.SkrinVex.ofox.data.api.models.BadgeResponse> = withContext(Dispatchers.IO) {
+        try {
+            val response = apiClient.api.getUserById(userId)
+            response.badges ?: emptyList()
+        } catch (e: Exception) {
+            emptyList()
+        }
+    }
+
     suspend fun updateUser(name: String, bio: String): User? = withContext(Dispatchers.IO) {
         try {
             val response = apiClient.api.updateProfile(mapOf("name" to name, "bio" to bio))
@@ -471,7 +480,15 @@ class Repository(private val context: Context) {
         userVote = user_vote ?: -1,
         discoveryId = discovery_id ?: 0,
         discoveryTitle = discovery_title ?: "",
-        discoveryColor = if (discovery_color.isNullOrBlank()) "" else if (discovery_color.startsWith("#")) discovery_color else "#$discovery_color"
+        discoveryColor = if (discovery_color.isNullOrBlank()) "" else if (discovery_color.startsWith("#")) discovery_color else "#$discovery_color",
+        authorBadges = author_badges?.let { badges ->
+            org.json.JSONArray(badges.map { 
+                org.json.JSONObject().apply {
+                    put("badge_type", it.badge_type)
+                    put("description", it.description)
+                }
+            }).toString()
+        } ?: ""
     )
 
     private fun DiscoveryResponse.toDiscovery(): Discovery {

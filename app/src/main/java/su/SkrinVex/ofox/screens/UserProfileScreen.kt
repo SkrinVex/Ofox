@@ -17,6 +17,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
 import su.SkrinVex.ofox.data.Repository
+import su.SkrinVex.ofox.components.UserBadges
+import su.SkrinVex.ofox.data.api.models.BadgeResponse
 
 @Composable
 fun UserProfileScreen(
@@ -25,6 +27,7 @@ fun UserProfileScreen(
     onBack: () -> Unit
 ) {
     var user by remember { mutableStateOf<su.SkrinVex.ofox.data.User?>(null) }
+    var userBadges by remember { mutableStateOf<List<BadgeResponse>>(emptyList()) }
     var isSubscribed by remember { mutableStateOf(false) }
     var userPosts by remember { mutableStateOf(listOf<su.SkrinVex.ofox.data.Post>()) }
     var subscribersCount by remember { mutableStateOf(0) }
@@ -32,6 +35,7 @@ fun UserProfileScreen(
     
     LaunchedEffect(userId) {
         user = repository.getUserById(userId)
+        userBadges = repository.getUserBadges(userId)
         isSubscribed = repository.isSubscribed(userId)
         userPosts = repository.getPostsByUser(userId)
         subscribersCount = repository.getSubscribersCount(userId)
@@ -96,11 +100,20 @@ fun UserProfileScreen(
                         
                         Spacer(modifier = Modifier.height(16.dp))
                         
-                        Text(
-                            text = user?.name ?: "",
-                            style = MaterialTheme.typography.headlineSmall,
-                            fontWeight = FontWeight.Bold
-                        )
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.Center
+                        ) {
+                            Text(
+                                text = user?.name ?: "",
+                                style = MaterialTheme.typography.headlineSmall,
+                                fontWeight = FontWeight.Bold
+                            )
+                            if (userBadges.isNotEmpty()) {
+                                Spacer(modifier = Modifier.width(8.dp))
+                                UserBadges(badges = userBadges)
+                            }
+                        }
                         
                         if (!user?.bio.isNullOrEmpty()) {
                             Spacer(modifier = Modifier.height(8.dp))

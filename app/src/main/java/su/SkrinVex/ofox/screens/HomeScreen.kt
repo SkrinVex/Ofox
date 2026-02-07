@@ -105,6 +105,21 @@ fun HomeScreen(repository: Repository, navController: androidx.navigation.NavCon
                 contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp)
             ) {
                 items(posts, key = { it.id }) { post ->
+                    val badges = try {
+                        if (post.authorBadges.isNotEmpty()) {
+                            val jsonArray = org.json.JSONArray(post.authorBadges)
+                            (0 until jsonArray.length()).map { i ->
+                                val obj = jsonArray.getJSONObject(i)
+                                su.SkrinVex.ofox.data.api.models.BadgeResponse(
+                                    badge_type = obj.getString("badge_type"),
+                                    description = obj.getString("description")
+                                )
+                            }
+                        } else emptyList()
+                    } catch (e: Exception) {
+                        emptyList()
+                    }
+                    
                     CreativePostCard(
                         post = su.SkrinVex.ofox.screens.CreativePost(
                             post.authorName,
@@ -120,7 +135,8 @@ fun HomeScreen(repository: Repository, navController: androidx.navigation.NavCon
                             post.authorId,
                             post.discoveryId,
                             post.discoveryTitle,
-                            post.discoveryColor
+                            post.discoveryColor,
+                            badges
                         ),
                         isLiked = post.isLiked,
                         onLike = {
@@ -579,7 +595,8 @@ data class CreativePost(
     val authorId: Int = 0,
     val discoveryId: Int = 0,
     val discoveryTitle: String = "",
-    val discoveryColor: String = ""
+    val discoveryColor: String = "",
+    val authorBadges: List<su.SkrinVex.ofox.data.api.models.BadgeResponse> = emptyList()
 )
 
 enum class PostType { TEXT, POLL, QUOTE, MOOD }

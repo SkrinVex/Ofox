@@ -19,7 +19,13 @@ data class UserResponse(
     val id: Int,
     val email: String,
     val name: String,
-    val bio: String
+    val bio: String,
+    val badges: List<BadgeResponse>? = null
+)
+
+data class BadgeResponse(
+    val badge_type: String,
+    val description: String
 )
 
 data class PostRequest(
@@ -33,6 +39,7 @@ data class PostResponse(
     val id: Int,
     val author_id: Int,
     val author_name: String?,
+    val author_badges: List<BadgeResponse>?,
     val content: String?,
     val type: String?,
     val likes: Int?,

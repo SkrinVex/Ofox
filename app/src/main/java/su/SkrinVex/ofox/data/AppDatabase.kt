@@ -5,7 +5,7 @@ import androidx.room.*
 
 @Database(
     entities = [User::class, Post::class, Chat::class, Message::class, Discovery::class],
-    version = 5
+    version = 6
 )
 abstract class AppDatabase : RoomDatabase() {
     abstract fun userDao(): UserDao
@@ -60,7 +60,8 @@ data class Post(
     val userVote: Int = -1, // -1 means not voted, otherwise index of voted option
     val discoveryId: Int = 0,
     val discoveryTitle: String = "",
-    val discoveryColor: String = ""
+    val discoveryColor: String = "",
+    val authorBadges: String = "" // JSON array of badges
 )
 
 @Entity(tableName = "chats")
