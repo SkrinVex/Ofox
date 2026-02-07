@@ -40,7 +40,8 @@ data class PostResponse(
     val discovery_id: Int?,
     val discovery_title: String?,
     val discovery_color: String?,
-    val created_at: String
+    val created_at: String,
+    val created_timestamp: Long?
 )
 
 data class DiscoveryResponse(
@@ -50,7 +51,8 @@ data class DiscoveryResponse(
     val category: String,
     val participants: Int,
     val color_hex: String?,
-    val is_joined: Boolean
+    val is_joined: Boolean,
+    val creator_name: String?
 )
 
 data class ChatResponse(

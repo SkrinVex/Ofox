@@ -101,7 +101,7 @@ fun FeedScreen(repository: Repository, navController: androidx.navigation.NavCon
                 Card(
                     modifier = Modifier.fillMaxWidth(),
                     colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.surfaceVariant
+                        containerColor = MaterialTheme.colorScheme.primaryContainer
                     )
                 ) {
                     Column(
@@ -114,19 +114,20 @@ fun FeedScreen(repository: Repository, navController: androidx.navigation.NavCon
                             Icons.Default.Explore,
                             contentDescription = null,
                             modifier = Modifier.size(48.dp),
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                            tint = MaterialTheme.colorScheme.primary
                         )
                         Spacer(modifier = Modifier.height(16.dp))
                         Text(
                             text = "Вы нигде не участвуете",
                             style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.SemiBold
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer
                         )
                         Spacer(modifier = Modifier.height(8.dp))
                         Text(
                             text = "Присоединитесь к открытиям ниже или создайте своё",
                             style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f),
                             textAlign = TextAlign.Center
                         )
                     }
@@ -558,7 +559,7 @@ fun DiscoveryDetailsDialog(
                 DetailRow(icon = Icons.Default.Category, label = "Категория", value = discovery.category)
                 DetailRow(icon = Icons.Default.People, label = "Участников", value = "${discovery.participants}")
                 DetailRow(icon = Icons.Default.CalendarToday, label = "Создано", value = createdDate)
-                DetailRow(icon = Icons.Default.Person, label = "Создатель", value = "Komari")
+                DetailRow(icon = Icons.Default.Person, label = "Создатель", value = discovery.creatorName)
                 
                 Spacer(modifier = Modifier.height(16.dp))
                 

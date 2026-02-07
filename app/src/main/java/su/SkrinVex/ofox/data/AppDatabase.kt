@@ -5,7 +5,7 @@ import androidx.room.*
 
 @Database(
     entities = [User::class, Post::class, Chat::class, Message::class, Discovery::class],
-    version = 4
+    version = 5
 )
 abstract class AppDatabase : RoomDatabase() {
     abstract fun userDao(): UserDao
@@ -88,7 +88,8 @@ data class Discovery(
     val category: String,
     val participants: Int,
     val colorHex: String,
-    val isJoined: Boolean = false
+    val isJoined: Boolean = false,
+    val creatorName: String = ""
 )
 
 @Dao
@@ -137,6 +138,9 @@ interface PostDao {
 
     @Query("DELETE FROM posts WHERE id = :postId")
     suspend fun deletePost(postId: Int)
+
+    @Query("DELETE FROM posts")
+    suspend fun deleteAllPosts()
 }
 
 @Dao

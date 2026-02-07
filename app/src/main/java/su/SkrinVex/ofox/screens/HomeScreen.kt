@@ -13,6 +13,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -35,22 +36,52 @@ fun HomeScreen(repository: Repository, navController: androidx.navigation.NavCon
     var showDeleteDialog by remember { mutableStateOf(false) }
     var selectedPostId by remember { mutableStateOf(0) }
     var selectedPost by remember { mutableStateOf<su.SkrinVex.ofox.data.Post?>(null) }
-    var posts by remember { mutableStateOf(listOf<su.SkrinVex.ofox.data.Post>()) }
+    val posts = remember { androidx.compose.runtime.snapshots.SnapshotStateList<su.SkrinVex.ofox.data.Post>() }
     var currentUser by remember { mutableStateOf<su.SkrinVex.ofox.data.User?>(null) }
     var isLoading by remember { mutableStateOf(true) }
+    var isLoadingMore by remember { mutableStateOf(false) }
+    var hasMore by remember { mutableStateOf(true) }
     val scope = rememberCoroutineScope()
     val listState = rememberLazyListState()
+
+    fun loadPosts(offset: Int = 0) {
+        scope.launch {
+            try {
+                if (offset == 0) isLoading = true else isLoadingMore = true
+                val newPosts = repository.getAllPosts(limit = 20, offset = offset)
+                if (offset == 0) {
+                    posts.clear()
+                    posts.addAll(newPosts)
+                } else {
+                    posts.addAll(newPosts)
+                }
+                hasMore = newPosts.size == 20
+            } catch (e: Exception) {
+                android.util.Log.e("HomeScreen", "Error loading posts", e)
+            } finally {
+                isLoading = false
+                isLoadingMore = false
+            }
+        }
+    }
 
     LaunchedEffect(Unit) {
         try {
             currentUser = repository.getCurrentUser()
-            posts = repository.getAllPosts()
+            loadPosts(0)
         } catch (e: Exception) {
-            android.util.Log.e("HomeScreen", "Error loading data", e)
-            posts = emptyList()
-        } finally {
+            android.util.Log.e("HomeScreen", "Error loading user", e)
             isLoading = false
         }
+    }
+
+    LaunchedEffect(listState) {
+        snapshotFlow { listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index }
+            .collect { lastIndex ->
+                if (lastIndex != null && lastIndex >= posts.size - 3 && !isLoadingMore && hasMore) {
+                    loadPosts(posts.size)
+                }
+            }
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
@@ -95,7 +126,8 @@ fun HomeScreen(repository: Repository, navController: androidx.navigation.NavCon
                         onLike = {
                             scope.launch {
                                 repository.toggleLike(post)?.let { updatedPost ->
-                                    posts = posts.map { if (it.id == updatedPost.id) updatedPost else it }
+                                    val index = posts.indexOfFirst { it.id == updatedPost.id }
+                                    if (index != -1) posts[index] = updatedPost
                                 }
                             }
                         },
@@ -112,7 +144,8 @@ fun HomeScreen(repository: Repository, navController: androidx.navigation.NavCon
                         onVote = { optionIndex ->
                             scope.launch {
                                 repository.voteOnPoll(post.id, optionIndex)?.let { updatedPost ->
-                                    posts = posts.map { if (it.id == updatedPost.id) updatedPost else it }
+                                    val index = posts.indexOfFirst { it.id == updatedPost.id }
+                                    if (index != -1) posts[index] = updatedPost
                                 }
                             }
                         },
@@ -122,6 +155,19 @@ fun HomeScreen(repository: Repository, navController: androidx.navigation.NavCon
                             }
                         }
                     )
+                }
+                
+                if (isLoadingMore) {
+                    item {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(16.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            CircularProgressIndicator()
+                        }
+                    }
                 }
             }
         }
@@ -144,7 +190,8 @@ fun HomeScreen(repository: Repository, navController: androidx.navigation.NavCon
                 scope.launch {
                     posts.find { it.id == selectedPostId }?.let {
                         repository.sharePost(it)?.let { updatedPost ->
-                            posts = posts.map { p -> if (p.id == updatedPost.id) updatedPost else p }
+                            val index = posts.indexOfFirst { p -> p.id == updatedPost.id }
+                            if (index != -1) posts[index] = updatedPost
                         }
                     }
                 }
@@ -216,8 +263,10 @@ fun HomeScreen(repository: Repository, navController: androidx.navigation.NavCon
                         Button(
                             onClick = {
                                 scope.launch {
-                                    selectedPost?.let { repository.deletePost(it.id) }
-                                    posts = repository.getAllPosts()
+                                    selectedPost?.let { 
+                                        repository.deletePost(it.id)
+                                        posts.removeIf { p -> p.id == it.id }
+                                    }
                                     showDeleteDialog = false
                                 }
                             },
@@ -242,16 +291,15 @@ fun HomeScreen(repository: Repository, navController: androidx.navigation.NavCon
             onCreate = { content, type, pollOptions, discovery ->
                 scope.launch {
                     try {
-                        if (type == "POLL" && pollOptions.isNotEmpty()) {
+                        val newPost = if (type == "POLL" && pollOptions.isNotEmpty()) {
                             repository.createPoll(content, pollOptions, discovery?.id)
                         } else {
                             repository.createPost(content, type, discovery?.id)
                         }
-                        posts = repository.getAllPosts()
+                        newPost?.let { posts.add(0, it) }
                         showCreatePost = false
                         listState.animateScrollToItem(0)
                     } catch (e: Exception) {
-                        // Игнорируем ошибку, но закрываем диалог
                         showCreatePost = false
                     }
                 }
@@ -377,10 +425,11 @@ fun CreatePostDialog(
                 if (selectedType == "POLL") {
                     OutlinedTextField(
                         value = content,
-                        onValueChange = { content = it },
+                        onValueChange = { if (it.length <= su.SkrinVex.ofox.utils.ValidationConstants.MAX_POST_CONTENT_LENGTH) content = it },
                         label = { Text(placeholder) },
                         modifier = Modifier.fillMaxWidth(),
-                        shape = MaterialTheme.shapes.medium
+                        shape = MaterialTheme.shapes.medium,
+                        supportingText = { Text("${content.length}/${su.SkrinVex.ofox.utils.ValidationConstants.MAX_POST_CONTENT_LENGTH}") }
                     )
                     
                     Spacer(modifier = Modifier.height(12.dp))
@@ -502,11 +551,17 @@ fun CreatePostDialog(
 
 fun formatTime(timestamp: Long): String {
     val diff = System.currentTimeMillis() - timestamp
-    val hours = diff / (1000 * 60 * 60)
+    val seconds = diff / 1000
+    val minutes = seconds / 60
+    val hours = minutes / 60
+    val days = hours / 24
+    
     return when {
-        hours < 1 -> "только что"
+        seconds < 5 -> "только что"
+        seconds < 60 -> "$seconds сек назад"
+        minutes < 60 -> "$minutes мин назад"
         hours < 24 -> "$hours ч назад"
-        else -> "${hours / 24} дн назад"
+        else -> "$days дн назад"
     }
 }
 

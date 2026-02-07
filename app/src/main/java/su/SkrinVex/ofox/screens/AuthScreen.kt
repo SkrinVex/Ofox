@@ -2,8 +2,10 @@ package su.SkrinVex.ofox.screens
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
@@ -20,6 +22,7 @@ import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import su.SkrinVex.ofox.data.Repository
+import su.SkrinVex.ofox.utils.ValidationConstants
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -52,6 +55,7 @@ fun AuthScreen(repository: Repository, onAuthSuccess: () -> Unit) {
         modifier = Modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
+            .verticalScroll(rememberScrollState())
             .padding(24.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
@@ -114,29 +118,31 @@ fun AuthScreen(repository: Repository, onAuthSuccess: () -> Unit) {
         if (!isLogin) {
             OutlinedTextField(
                 value = name,
-                onValueChange = { name = it },
-                label = { Text("Имя") },
+                onValueChange = { if (it.length <= ValidationConstants.MAX_NAME_LENGTH) name = it },
+                label = { Text("Имя (макс. ${ValidationConstants.MAX_NAME_LENGTH})") },
                 modifier = Modifier.fillMaxWidth(),
-                shape = MaterialTheme.shapes.medium
+                shape = MaterialTheme.shapes.medium,
+                supportingText = { Text("${name.length}/${ValidationConstants.MAX_NAME_LENGTH}") }
             )
             Spacer(modifier = Modifier.height(16.dp))
         }
         
         OutlinedTextField(
             value = email,
-            onValueChange = { email = it },
+            onValueChange = { if (it.length <= ValidationConstants.MAX_EMAIL_LENGTH) email = it },
             label = { Text("Email") },
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
             modifier = Modifier.fillMaxWidth(),
-            shape = MaterialTheme.shapes.medium
+            shape = MaterialTheme.shapes.medium,
+            supportingText = { Text("${email.length}/${ValidationConstants.MAX_EMAIL_LENGTH}") }
         )
         
         Spacer(modifier = Modifier.height(16.dp))
         
         OutlinedTextField(
             value = password,
-            onValueChange = { password = it },
-            label = { Text("Пароль") },
+            onValueChange = { if (it.length <= ValidationConstants.MAX_PASSWORD_LENGTH) password = it },
+            label = { Text("Пароль (мин. ${ValidationConstants.MIN_PASSWORD_LENGTH})") },
             visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
             trailingIcon = {
@@ -148,7 +154,8 @@ fun AuthScreen(repository: Repository, onAuthSuccess: () -> Unit) {
                 }
             },
             modifier = Modifier.fillMaxWidth(),
-            shape = MaterialTheme.shapes.medium
+            shape = MaterialTheme.shapes.medium,
+            supportingText = { Text("${password.length}/${ValidationConstants.MAX_PASSWORD_LENGTH}") }
         )
         
         if (!isLogin) {
@@ -156,7 +163,7 @@ fun AuthScreen(repository: Repository, onAuthSuccess: () -> Unit) {
             
             OutlinedTextField(
                 value = confirmPassword,
-                onValueChange = { confirmPassword = it },
+                onValueChange = { if (it.length <= ValidationConstants.MAX_PASSWORD_LENGTH) confirmPassword = it },
                 label = { Text("Подтвердить пароль") },
                 visualTransformation = if (confirmPasswordVisible) VisualTransformation.None else PasswordVisualTransformation(),
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),

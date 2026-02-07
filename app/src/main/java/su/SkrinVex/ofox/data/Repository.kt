@@ -135,10 +135,14 @@ class Repository(private val context: Context) {
         }
     }
 
-    // Posts with cache
-    suspend fun getAllPosts(): List<Post> = withContext(Dispatchers.IO) {
+    // Posts with cache and pagination
+    suspend fun getAllPosts(limit: Int = 20, offset: Int = 0): List<Post> = withContext(Dispatchers.IO) {
         try {
-            val posts = apiClient.api.getPosts().map { it.toPost() }
+            val posts = apiClient.api.getPosts(limit = limit, offset = offset).map { it.toPost() }
+            if (offset == 0) {
+                // Очищаем кэш только при первой загрузке
+                db.postDao().deleteAllPosts()
+            }
             posts.forEach { 
                 try {
                     db.postDao().insertPost(it)
@@ -149,10 +153,14 @@ class Repository(private val context: Context) {
             posts
         } catch (e: Exception) {
             android.util.Log.e("Repository", "Error fetching posts from API", e)
-            try {
-                db.postDao().getAllPosts()
-            } catch (dbError: Exception) {
-                android.util.Log.e("Repository", "Error fetching posts from DB", dbError)
+            if (offset == 0) {
+                try {
+                    db.postDao().getAllPosts()
+                } catch (dbError: Exception) {
+                    android.util.Log.e("Repository", "Error fetching posts from DB", dbError)
+                    emptyList()
+                }
+            } else {
                 emptyList()
             }
         }
@@ -438,7 +446,7 @@ class Repository(private val context: Context) {
         content = content ?: "",
         likes = likes ?: 0,
         shares = shares ?: 0,
-        timestamp = parseTimestamp(created_at),
+        timestamp = created_timestamp ?: parseTimestamp(created_at),
         type = type ?: "TEXT",
         isLiked = is_liked ?: false,
         pollOptions = poll_options?.joinToString(",") ?: "",
@@ -461,7 +469,8 @@ class Repository(private val context: Context) {
             category = category,
             participants = participants,
             colorHex = cleanColor,
-            isJoined = is_joined
+            isJoined = is_joined,
+            creatorName = creator_name ?: "Unknown"
         )
         android.util.Log.d("Repository", "Mapped discovery: $discovery")
         return discovery

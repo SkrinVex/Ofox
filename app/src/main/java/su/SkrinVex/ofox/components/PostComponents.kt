@@ -1,5 +1,6 @@
 package su.SkrinVex.ofox.components
 
+import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -27,7 +28,9 @@ fun HashtagText(
     text: String,
     style: TextStyle,
     color: Color,
-    hashtagColor: Color
+    hashtagColor: Color,
+    maxLines: Int = Int.MAX_VALUE,
+    onTextLayout: (androidx.compose.ui.text.TextLayoutResult) -> Unit = {}
 ) {
     val annotatedString = buildAnnotatedString {
         val words = text.split(" ")
@@ -44,7 +47,7 @@ fun HashtagText(
             if (index < words.size - 1) append(" ")
         }
     }
-    Text(text = annotatedString, style = style)
+    Text(text = annotatedString, style = style, maxLines = maxLines, onTextLayout = onTextLayout)
 }
 
 @Composable
@@ -167,13 +170,38 @@ fun CreativePostCard(
             
             Spacer(modifier = Modifier.height(12.dp))
             
-            // Content with hashtag highlighting
-            HashtagText(
-                text = post.content,
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurface,
-                hashtagColor = MaterialTheme.colorScheme.primary
-            )
+            // Content with hashtag highlighting and "Read more"
+            var isExpanded by remember { mutableStateOf(false) }
+            val hasOverflow = remember { mutableStateOf(false) }
+            
+            Column {
+                HashtagText(
+                    text = post.content,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    hashtagColor = MaterialTheme.colorScheme.primary,
+                    maxLines = if (isExpanded) Int.MAX_VALUE else 5,
+                    onTextLayout = { result ->
+                        if (!isExpanded && !hasOverflow.value) {
+                            hasOverflow.value = result.hasVisualOverflow
+                        }
+                    }
+                )
+                
+                if (hasOverflow.value) {
+                    TextButton(
+                        onClick = { isExpanded = !isExpanded },
+                        modifier = Modifier.padding(top = 4.dp)
+                    ) {
+                        Text(
+                            text = if (isExpanded) "Свернуть" else "Читать далее",
+                            color = MaterialTheme.colorScheme.primary,
+                            style = MaterialTheme.typography.bodySmall,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
+                }
+            }
             
             // Poll options (if poll)
             if (post.type == PostType.POLL && post.pollOptions.isNotEmpty()) {
