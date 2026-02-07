@@ -52,7 +52,7 @@ fun EditProfileScreen(repository: Repository, onBack: () -> Unit) {
                 fontWeight = FontWeight.SemiBold
             )
         }
-        
+
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -98,7 +98,7 @@ fun OldThemeScreen(onBack: () -> Unit) {
     val context = androidx.compose.ui.platform.LocalContext.current
     val prefs = context.getSharedPreferences("ofox_prefs", android.content.Context.MODE_PRIVATE)
     var selectedTheme by remember { mutableStateOf(prefs.getString("theme", "Orange") ?: "Orange") }
-    
+
     val themes = listOf(
         "Orange" to androidx.compose.ui.graphics.Color(0xFFFF6B35),
         "Blue" to androidx.compose.ui.graphics.Color(0xFF2196F3),
@@ -127,7 +127,7 @@ fun OldThemeScreen(onBack: () -> Unit) {
                 fontWeight = FontWeight.SemiBold
             )
         }
-        
+
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -163,16 +163,16 @@ fun OldThemeScreen(onBack: () -> Unit) {
                                 .clip(androidx.compose.foundation.shape.CircleShape)
                                 .background(color)
                         )
-                        
+
                         Spacer(modifier = Modifier.width(16.dp))
-                        
+
                         Text(
                             text = name,
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.SemiBold,
                             modifier = Modifier.weight(1f)
                         )
-                        
+
                         if (selectedTheme == name) {
                             Icon(
                                 Icons.Default.Check,
@@ -210,7 +210,7 @@ fun AboutScreen(onBack: () -> Unit) {
                 fontWeight = FontWeight.SemiBold
             )
         }
-        
+
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -235,7 +235,7 @@ fun AboutScreen(onBack: () -> Unit) {
                     )
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(
-                        text = "Версия 1.0.0",
+                        text = "Версия 1.1",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
                     )
