@@ -31,8 +31,14 @@ import java.text.SimpleDateFormat
 import java.util.*
 
 @Composable
-fun FeedScreen(repository: Repository, navController: androidx.navigation.NavController? = null) {
+fun FeedScreen(
+    repository: Repository, 
+    navController: androidx.navigation.NavController? = null,
+    highlightDiscoveryId: Int? = null
+) {
     var discoveries by remember { mutableStateOf(listOf<su.SkrinVex.ofox.data.Discovery>()) }
+    var filteredDiscoveries by remember { mutableStateOf(listOf<su.SkrinVex.ofox.data.Discovery>()) }
+    var searchQuery by remember { mutableStateOf("") }
     var showCreateDialog by remember { mutableStateOf(false) }
     var isLoading by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
@@ -47,12 +53,41 @@ fun FeedScreen(repository: Repository, navController: androidx.navigation.NavCon
         scope.launch {
             isLoading = true
             discoveries = repository.getAllDiscoveries()
+            filteredDiscoveries = discoveries
             isLoading = false
+        }
+    }
+    
+    fun filterDiscoveries(query: String) {
+        filteredDiscoveries = if (query.isEmpty()) {
+            discoveries
+        } else {
+            discoveries.filter { discovery ->
+                discovery.title.contains(query, ignoreCase = true) ||
+                discovery.description.contains(query, ignoreCase = true) ||
+                discovery.category.contains(query, ignoreCase = true) ||
+                levenshteinDistance(discovery.title.lowercase(), query.lowercase()) <= 2
+            }
         }
     }
 
     LaunchedEffect(Unit) {
         loadDiscoveries()
+    }
+    
+    LaunchedEffect(highlightDiscoveryId, filteredDiscoveries.size) {
+        highlightDiscoveryId?.let { discoveryId ->
+            if (filteredDiscoveries.isNotEmpty()) {
+                android.util.Log.d("FeedScreen", "Trying to scroll to discovery $discoveryId")
+                val index = filteredDiscoveries.indexOfFirst { it.id == discoveryId }
+                android.util.Log.d("FeedScreen", "Discovery index: $index")
+                if (index != -1) {
+                    kotlinx.coroutines.delay(500)
+                    listState.animateScrollToItem(index + 4)
+                    android.util.Log.d("FeedScreen", "Scrolled to index ${index + 4}")
+                }
+            }
+        }
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
@@ -82,7 +117,32 @@ fun FeedScreen(repository: Repository, navController: androidx.navigation.NavCon
         }
         
         item {
-            Spacer(modifier = Modifier.height(8.dp))
+            OutlinedTextField(
+                value = searchQuery,
+                onValueChange = { 
+                    searchQuery = it
+                    filterDiscoveries(it)
+                },
+                modifier = Modifier.fillMaxWidth(),
+                placeholder = { Text("Поиск открытий...") },
+                leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
+                trailingIcon = {
+                    if (searchQuery.isNotEmpty()) {
+                        IconButton(onClick = { 
+                            searchQuery = ""
+                            filterDiscoveries("")
+                        }) {
+                            Icon(Icons.Default.Clear, contentDescription = "Очистить")
+                        }
+                    }
+                },
+                singleLine = true,
+                shape = MaterialTheme.shapes.medium,
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = MaterialTheme.colorScheme.primary,
+                    unfocusedBorderColor = MaterialTheme.colorScheme.outline
+                )
+            )
         }
         
         item {
@@ -94,7 +154,7 @@ fun FeedScreen(repository: Repository, navController: androidx.navigation.NavCon
             )
         }
         
-        val joinedDiscoveries = discoveries.filter { it.isJoined }
+        val joinedDiscoveries = filteredDiscoveries.filter { it.isJoined }
         
         if (joinedDiscoveries.isEmpty()) {
             item {
@@ -147,7 +207,8 @@ fun FeedScreen(repository: Repository, navController: androidx.navigation.NavCon
                     },
                     onDiscuss = {
                         navController?.navigate("discovery_discussion/${discovery.id}")
-                    }
+                    },
+                    isHighlighted = highlightDiscoveryId == discovery.id
                 )
             }
         }
@@ -165,7 +226,7 @@ fun FeedScreen(repository: Repository, navController: androidx.navigation.NavCon
             )
         }
         
-        val recommendedDiscoveries = discoveries.filter { !it.isJoined }
+        val recommendedDiscoveries = filteredDiscoveries.filter { !it.isJoined }
         
         if (recommendedDiscoveries.isEmpty()) {
             item {
@@ -218,7 +279,8 @@ fun FeedScreen(repository: Repository, navController: androidx.navigation.NavCon
                     },
                     onDiscuss = {
                         navController?.navigate("discovery_discussion/${discovery.id}")
-                    }
+                    },
+                    isHighlighted = highlightDiscoveryId == discovery.id
                 )
             }
         }
@@ -424,14 +486,34 @@ fun CreateDiscoveryDialog(
 fun DiscoveryCard(
     discovery: su.SkrinVex.ofox.data.Discovery,
     onJoin: () -> Unit,
-    onDiscuss: () -> Unit = {}
+    onDiscuss: () -> Unit = {},
+    isHighlighted: Boolean = false
 ) {
     var showDetails by remember { mutableStateOf(false) }
+    var shouldHighlight by remember { mutableStateOf(false) }
+    
+    LaunchedEffect(isHighlighted) {
+        if (isHighlighted) {
+            android.util.Log.d("DiscoveryCard", "Highlighting discovery ${discovery.id}: ${discovery.title}")
+            shouldHighlight = true
+            kotlinx.coroutines.delay(2500)
+            shouldHighlight = false
+        }
+    }
+    
+    val animatedAlpha by androidx.compose.animation.core.animateFloatAsState(
+        targetValue = if (shouldHighlight) 0.2f else 0f,
+        animationSpec = androidx.compose.animation.core.tween(500)
+    )
     
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surface
+            containerColor = if (animatedAlpha > 0) {
+                MaterialTheme.colorScheme.primary.copy(alpha = animatedAlpha)
+            } else {
+                MaterialTheme.colorScheme.surface
+            }
         ),
         shape = MaterialTheme.shapes.medium
     ) {
@@ -453,12 +535,6 @@ fun DiscoveryCard(
                     style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
                 )
-                Spacer(modifier = Modifier.weight(1f))
-                Text(
-                    text = "${discovery.participants} участников",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
-                )
             }
             
             Spacer(modifier = Modifier.height(8.dp))
@@ -476,6 +552,14 @@ fun DiscoveryCard(
                 text = discovery.description,
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f)
+            )
+            
+            Spacer(modifier = Modifier.height(8.dp))
+            
+            Text(
+                text = "${discovery.participants} участников",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
             )
             
             Spacer(modifier = Modifier.height(12.dp))
@@ -621,4 +705,26 @@ fun DetailRow(icon: androidx.compose.ui.graphics.vector.ImageVector, label: Stri
             color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f)
         )
     }
+}
+
+fun levenshteinDistance(s1: String, s2: String): Int {
+    val len1 = s1.length
+    val len2 = s2.length
+    val dp = Array(len1 + 1) { IntArray(len2 + 1) }
+    
+    for (i in 0..len1) dp[i][0] = i
+    for (j in 0..len2) dp[0][j] = j
+    
+    for (i in 1..len1) {
+        for (j in 1..len2) {
+            val cost = if (s1[i - 1] == s2[j - 1]) 0 else 1
+            dp[i][j] = minOf(
+                dp[i - 1][j] + 1,
+                dp[i][j - 1] + 1,
+                dp[i - 1][j - 1] + cost
+            )
+        }
+    }
+    
+    return dp[len1][len2]
 }

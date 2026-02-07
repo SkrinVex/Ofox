@@ -34,6 +34,7 @@ fun DiscoveryDiscussionScreen(
     var showLeaveDialog by remember { mutableStateOf(false) }
     var showMenuSheet by remember { mutableStateOf(false) }
     var showInfoSheet by remember { mutableStateOf(false) }
+    var showShareSheet by remember { mutableStateOf(false) }
     var userContribution by remember { mutableStateOf(0) }
     val scope = rememberCoroutineScope()
     val menuSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
@@ -259,7 +260,10 @@ fun DiscoveryDiscussionScreen(
                     icon = Icons.Default.Share,
                     title = "Поделиться",
                     description = "Пригласить друзей в открытие",
-                    onClick = { showMenuSheet = false }
+                    onClick = {
+                        showMenuSheet = false
+                        showShareSheet = true
+                    }
                 )
                 Spacer(modifier = Modifier.height(16.dp))
                 
@@ -326,6 +330,13 @@ fun DiscoveryDiscussionScreen(
                 Spacer(modifier = Modifier.height(16.dp))
             }
         }
+    }
+    
+    if (showShareSheet) {
+        su.SkrinVex.ofox.components.ShareDiscoveryBottomSheet(
+            discoveryId = discoveryId,
+            onDismiss = { showShareSheet = false }
+        )
     }
 }
 

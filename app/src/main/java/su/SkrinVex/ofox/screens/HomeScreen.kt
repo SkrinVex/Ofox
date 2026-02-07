@@ -29,7 +29,11 @@ import su.SkrinVex.ofox.data.Repository
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun HomeScreen(repository: Repository, navController: androidx.navigation.NavController? = null) {
+fun HomeScreen(
+    repository: Repository, 
+    navController: androidx.navigation.NavController? = null,
+    highlightPostId: Int? = null
+) {
     var showShareMenu by remember { mutableStateOf(false) }
     var showPostMenu by remember { mutableStateOf(false) }
     var showCreatePost by remember { mutableStateOf(false) }
@@ -78,10 +82,19 @@ fun HomeScreen(repository: Repository, navController: androidx.navigation.NavCon
         }
     }
     
-    LaunchedEffect(Unit) {
+    LaunchedEffect(highlightPostId) {
+        highlightPostId?.let { postId ->
+            val index = posts.indexOfFirst { it.id == postId }
+            if (index != -1) {
+                listState.animateScrollToItem(index)
+            }
+        }
+    }
+    
+    LaunchedEffect(highlightPostId) {
         while (true) {
             kotlinx.coroutines.delay(30000) // 30 секунд
-            if (posts.isNotEmpty()) {
+            if (posts.isNotEmpty() && highlightPostId == null) { // Не обновлять при подсветке
                 try {
                     val freshPosts = repository.getAllPosts(limit = posts.size.coerceAtMost(20), offset = 0)
                     freshPosts.forEach { fresh ->
@@ -201,25 +214,28 @@ fun HomeScreen(repository: Repository, navController: androidx.navigation.NavCon
                         emptyList()
                     }
                     
+                    val isHighlighted = highlightPostId == post.id
+                    
                     CreativePostCard(
                         post = su.SkrinVex.ofox.screens.CreativePost(
-                            post.authorName,
-                            post.content,
-                            post.likes,
-                            post.comments,
-                            post.shares,
-                            formatTime(post.timestamp),
-                            PostType.valueOf(post.type),
-                            post.pollOptions.split(",").filter { it.isNotEmpty() },
-                            post.pollVotes.split(",").mapNotNull { it.toIntOrNull() },
-                            post.userVote,
-                            post.authorId,
-                            post.discoveryId,
+                                post.authorName,
+                                post.content,
+                                post.likes,
+                                post.comments,
+                                post.shares,
+                                formatTime(post.timestamp),
+                                PostType.valueOf(post.type),
+                                post.pollOptions.split(",").filter { it.isNotEmpty() },
+                                post.pollVotes.split(",").mapNotNull { it.toIntOrNull() },
+                                post.userVote,
+                                post.authorId,
+                                post.discoveryId,
                             post.discoveryTitle,
                             post.discoveryColor,
                             badges
                         ),
                         isLiked = post.isLiked,
+                        isHighlighted = isHighlighted,
                         onLike = {
                             scope.launch {
                                 repository.toggleLike(post)?.let { updatedPost ->
@@ -282,8 +298,8 @@ fun HomeScreen(repository: Repository, navController: androidx.navigation.NavCon
     
     if (showShareMenu) {
         ShareBottomSheet(
-            onDismiss = { showShareMenu = false },
-            onShare = { 
+            postId = selectedPostId,
+            onDismiss = { 
                 scope.launch {
                     posts.find { it.id == selectedPostId }?.let {
                         repository.sharePost(it)?.let { updatedPost ->

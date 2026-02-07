@@ -1,5 +1,6 @@
 package su.SkrinVex.ofox
 
+import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -23,6 +24,7 @@ import su.SkrinVex.ofox.ui.theme.OfoxTheme
 
 class MainActivity : ComponentActivity() {
     private lateinit var repository: Repository
+    private val pendingDeepLink = mutableStateOf<DeepLinkData?>(null)
 
     @OptIn(ExperimentalMaterial3Api::class)
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -35,6 +37,9 @@ class MainActivity : ComponentActivity() {
         }
         
         repository = Repository(this)
+        
+        // Обработка deep link
+        handleDeepLink(intent)
         
         // Синхронизация при запуске
         lifecycleScope.launch {
@@ -51,6 +56,9 @@ class MainActivity : ComponentActivity() {
         setContent {
             OfoxTheme {
                 var isAuthenticated by remember { mutableStateOf(repository.isLoggedIn()) }
+                val deepLink by pendingDeepLink
+                
+                android.util.Log.d("OFOX", "Compose: isAuthenticated=$isAuthenticated, deepLink=$deepLink")
                 
                 if (!isAuthenticated) {
                     AuthScreen(
@@ -61,6 +69,43 @@ class MainActivity : ComponentActivity() {
                     val navController = rememberNavController()
                     val navBackStackEntry by navController.currentBackStackEntryAsState()
                     val currentRoute = navBackStackEntry?.destination?.route
+                    
+                    val initialRoute = remember {
+                        when (deepLink) {
+                            is DeepLinkData.Post -> Screen.Home.route
+                            is DeepLinkData.Discovery -> Screen.Feed.route
+                            else -> Screen.Home.route
+                        }
+                    }
+                    
+                    // Навигация при изменении deep link
+                    LaunchedEffect(deepLink) {
+                        deepLink?.let { link ->
+                            android.util.Log.d("OFOX", "Deep link changed: $link, current: $currentRoute")
+                            kotlinx.coroutines.delay(300)
+                            
+                            when (link) {
+                                is DeepLinkData.Post -> {
+                                    if (currentRoute != Screen.Home.route) {
+                                        navController.navigate(Screen.Home.route) {
+                                            popUpTo(navController.graph.startDestinationId)
+                                            launchSingleTop = true
+                                        }
+                                    }
+                                }
+                                is DeepLinkData.Discovery -> {
+                                    if (currentRoute != Screen.Feed.route) {
+                                        navController.navigate(Screen.Feed.route) {
+                                            popUpTo(navController.graph.startDestinationId)
+                                            launchSingleTop = true
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    
+                    android.util.Log.d("OFOX", "Deep link: $deepLink, current route: $currentRoute, initial: $initialRoute")
                     
                     val shouldShowBottomBar = currentRoute in listOf(
                         Screen.Home.route,
@@ -107,10 +152,28 @@ class MainActivity : ComponentActivity() {
                     ) { innerPadding ->
                         NavHost(
                             navController = navController,
-                            startDestination = Screen.Home.route,
+                            startDestination = initialRoute,
                             modifier = Modifier.padding(innerPadding)
                         ) {
-                            composable(Screen.Home.route) { HomeScreen(repository, navController) }
+                            composable(Screen.Home.route) { 
+                                val postId = (deepLink as? DeepLinkData.Post)?.postId
+                                
+                                key(postId) {
+                                    HomeScreen(
+                                        repository = repository, 
+                                        navController = navController,
+                                        highlightPostId = postId
+                                    )
+                                }
+                                
+                                if (postId != null) {
+                                    LaunchedEffect(postId) {
+                                        android.util.Log.d("OFOX", "HomeScreen loaded with postId: $postId")
+                                        kotlinx.coroutines.delay(2500)
+                                        pendingDeepLink.value = null
+                                    }
+                                }
+                            }
                             composable(Screen.Chats.route) { ChatsScreen(repository, navController) }
                             composable("chat/{chatId}") { backStackEntry ->
                                 ChatDetailScreen(
@@ -119,7 +182,25 @@ class MainActivity : ComponentActivity() {
                                     onBack = { navController.popBackStack() }
                                 )
                             }
-                            composable(Screen.Feed.route) { FeedScreen(repository, navController) }
+                            composable(Screen.Feed.route) { 
+                                val discoveryId = (deepLink as? DeepLinkData.Discovery)?.discoveryId
+                                
+                                key(discoveryId) {
+                                    FeedScreen(
+                                        repository = repository, 
+                                        navController = navController,
+                                        highlightDiscoveryId = discoveryId
+                                    )
+                                }
+                                
+                                if (discoveryId != null) {
+                                    LaunchedEffect(discoveryId) {
+                                        android.util.Log.d("OFOX", "FeedScreen loaded with discoveryId: $discoveryId")
+                                        kotlinx.coroutines.delay(3000)
+                                        pendingDeepLink.value = null
+                                    }
+                                }
+                            }
                             composable(Screen.Settings.route) { 
                                 SettingsScreen(
                                     repository = repository,
@@ -170,4 +251,42 @@ class MainActivity : ComponentActivity() {
             }
         }
     }
+    
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handleDeepLink(intent)
+    }
+    
+    private fun handleDeepLink(intent: Intent?) {
+        intent?.data?.let { uri ->
+            android.util.Log.d("OFOX", "Deep link received: $uri")
+            android.util.Log.d("OFOX", "URI host: ${uri.host}, path: ${uri.path}, lastSegment: ${uri.lastPathSegment}")
+            android.util.Log.d("OFOX", "Is logged in: ${repository.isLoggedIn()}")
+            
+            when {
+                uri.host == "post" || uri.path?.contains("/post/") == true -> {
+                    val postId = uri.lastPathSegment?.toIntOrNull()
+                    android.util.Log.d("OFOX", "Post deep link: $postId")
+                    if (postId != null) {
+                        pendingDeepLink.value = DeepLinkData.Post(postId)
+                        android.util.Log.d("OFOX", "Set pendingDeepLink to Post($postId)")
+                    }
+                }
+                uri.host == "discovery" || uri.path?.contains("/discovery/") == true -> {
+                    val discoveryId = uri.lastPathSegment?.toIntOrNull()
+                    android.util.Log.d("OFOX", "Discovery deep link: $discoveryId")
+                    if (discoveryId != null) {
+                        pendingDeepLink.value = DeepLinkData.Discovery(discoveryId)
+                        android.util.Log.d("OFOX", "Set pendingDeepLink to Discovery($discoveryId)")
+                    }
+                }
+            }
+        } ?: android.util.Log.d("OFOX", "No deep link data in intent")
+    }
+}
+
+sealed class DeepLinkData {
+    data class Post(val postId: Int) : DeepLinkData()
+    data class Discovery(val discoveryId: Int) : DeepLinkData()
 }

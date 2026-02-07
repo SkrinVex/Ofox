@@ -22,6 +22,7 @@ import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.launch
 import su.SkrinVex.ofox.screens.CreativePost
 import su.SkrinVex.ofox.screens.PostType
 
@@ -56,6 +57,7 @@ fun HashtagText(
 fun CreativePostCard(
     post: CreativePost,
     isLiked: Boolean = false,
+    isHighlighted: Boolean = false,
     onLike: () -> Unit,
     onComment: () -> Unit,
     onShare: () -> Unit,
@@ -66,15 +68,31 @@ fun CreativePostCard(
     var liked by remember { mutableStateOf(isLiked) }
     var likesCount by remember { mutableStateOf(post.likes) }
     var selectedPollOption by remember { mutableStateOf<String?>(null) }
+    var shouldHighlight by remember { mutableStateOf(false) }
 
     LaunchedEffect(isLiked) {
         liked = isLiked
     }
+    
+    LaunchedEffect(isHighlighted) {
+        if (isHighlighted) {
+            shouldHighlight = true
+            kotlinx.coroutines.delay(2000)
+            shouldHighlight = false
+        }
+    }
+    
+    val animatedAlpha by androidx.compose.animation.core.animateFloatAsState(
+        targetValue = if (shouldHighlight) 0.2f else 0f,
+        animationSpec = androidx.compose.animation.core.tween(500)
+    )
 
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(
-            containerColor = when (post.type) {
+            containerColor = if (animatedAlpha > 0) {
+                MaterialTheme.colorScheme.primary.copy(alpha = animatedAlpha)
+            } else when (post.type) {
                 PostType.MOOD -> MaterialTheme.colorScheme.primary.copy(alpha = 0.05f)
                 PostType.QUOTE -> MaterialTheme.colorScheme.secondary.copy(alpha = 0.05f)
                 PostType.POLL -> MaterialTheme.colorScheme.tertiary.copy(alpha = 0.05f)
@@ -353,15 +371,13 @@ fun CreativePostCard(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ShareBottomSheet(
-    onDismiss: () -> Unit,
-    onShare: (String) -> Unit
+    postId: Int,
+    onDismiss: () -> Unit
 ) {
-    val shareOptions = listOf(
-        "Telegram" to Icons.Default.Send,
-        "WhatsApp" to Icons.Default.Message,
-        "Копировать ссылку" to Icons.Default.Link,
-        "Сохранить" to Icons.Default.Bookmark
-    )
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val clipboardManager = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+    var showSnackbar by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -377,23 +393,46 @@ fun ShareBottomSheet(
                 modifier = Modifier.padding(bottom = 16.dp)
             )
 
-            shareOptions.forEach { (name, icon) ->
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable { onShare(name) }
-                        .padding(vertical = 12.dp),
-                    verticalAlignment = Alignment.CenterVertically
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable {
+                        val link = "https://api.skrinvex.su/ofox/post/$postId"
+                        val clip = android.content.ClipData.newPlainText("Post Link", link)
+                        clipboardManager.setPrimaryClip(clip)
+                        showSnackbar = true
+                        scope.launch {
+                            kotlinx.coroutines.delay(1500)
+                            onDismiss()
+                        }
+                    }
+                    .padding(vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    Icons.Default.Link,
+                    contentDescription = "Копировать ссылку",
+                    tint = MaterialTheme.colorScheme.primary
+                )
+                Spacer(modifier = Modifier.width(16.dp))
+                Text(
+                    text = "Копировать ссылку",
+                    style = MaterialTheme.typography.bodyMedium
+                )
+            }
+            
+            if (showSnackbar) {
+                Spacer(modifier = Modifier.height(8.dp))
+                androidx.compose.material3.Card(
+                    colors = androidx.compose.material3.CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.primaryContainer
+                    ),
+                    modifier = Modifier.fillMaxWidth()
                 ) {
-                    Icon(
-                        icon,
-                        contentDescription = name,
-                        tint = MaterialTheme.colorScheme.primary
-                    )
-                    Spacer(modifier = Modifier.width(16.dp))
                     Text(
-                        text = name,
-                        style = MaterialTheme.typography.bodyMedium
+                        text = "✓ Ссылка скопирована",
+                        modifier = Modifier.padding(12.dp),
+                        color = MaterialTheme.colorScheme.onPrimaryContainer
                     )
                 }
             }
@@ -466,6 +505,81 @@ fun PostMenuBottomSheet(
                             MaterialTheme.colorScheme.primary
                         else
                             MaterialTheme.colorScheme.onSurface
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+        }
+    }
+}
+
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun ShareDiscoveryBottomSheet(
+    discoveryId: Int,
+    onDismiss: () -> Unit
+) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val clipboardManager = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+    var showSnackbar by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        containerColor = MaterialTheme.colorScheme.surface
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp)
+        ) {
+            Text(
+                text = "Поделиться",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.padding(bottom = 16.dp)
+            )
+
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable {
+                        val link = "https://api.skrinvex.su/ofox/discovery/$discoveryId"
+                        val clip = android.content.ClipData.newPlainText("Discovery Link", link)
+                        clipboardManager.setPrimaryClip(clip)
+                        showSnackbar = true
+                        scope.launch {
+                            kotlinx.coroutines.delay(1500)
+                            onDismiss()
+                        }
+                    }
+                    .padding(vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    Icons.Default.Link,
+                    contentDescription = "Копировать ссылку",
+                    tint = MaterialTheme.colorScheme.primary
+                )
+                Spacer(modifier = Modifier.width(16.dp))
+                Text(
+                    text = "Копировать ссылку",
+                    style = MaterialTheme.typography.bodyMedium
+                )
+            }
+            
+            if (showSnackbar) {
+                Spacer(modifier = Modifier.height(8.dp))
+                androidx.compose.material3.Card(
+                    colors = androidx.compose.material3.CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.primaryContainer
+                    ),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(
+                        text = "✓ Ссылка скопирована",
+                        modifier = Modifier.padding(12.dp),
+                        color = MaterialTheme.colorScheme.onPrimaryContainer
                     )
                 }
             }
