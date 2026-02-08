@@ -2,10 +2,11 @@ package su.SkrinVex.ofox.data
 
 import android.content.Context
 import androidx.room.*
+import kotlinx.coroutines.flow.Flow
 
 @Database(
     entities = [User::class, Post::class, Chat::class, Message::class, Discovery::class],
-    version = 8
+    version = 9
 )
 abstract class AppDatabase : RoomDatabase() {
     abstract fun userDao(): UserDao
@@ -71,7 +72,8 @@ data class Chat(
     val lastMessage: String,
     val timestamp: Long,
     val userId: Int = 0,
-    val userBadges: String = ""
+    val userBadges: String = "",
+    val unreadCount: Int = 0
 )
 
 @Entity(tableName = "messages")
@@ -152,12 +154,18 @@ interface PostDao {
 interface ChatDao {
     @Query("SELECT * FROM chats ORDER BY timestamp DESC")
     suspend fun getAllChats(): List<Chat>
+    
+    @Query("SELECT * FROM chats ORDER BY timestamp DESC")
+    fun getAllChatsFlow(): Flow<List<Chat>>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertChat(chat: Chat): Long
 
     @Query("UPDATE chats SET lastMessage = :message, timestamp = :timestamp WHERE id = :chatId")
     suspend fun updateChat(chatId: Int, message: String, timestamp: Long)
+    
+    @Query("UPDATE chats SET unreadCount = 0 WHERE id = :chatId")
+    suspend fun resetUnreadCount(chatId: Int)
     
     @Query("DELETE FROM chats")
     suspend fun deleteAllChats()

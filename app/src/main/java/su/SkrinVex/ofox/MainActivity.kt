@@ -114,6 +114,28 @@ class MainActivity : ComponentActivity() {
                         Screen.Settings.route
                     )
                     
+                    val chats by repository.chatsFlow.collectAsState(initial = emptyList())
+                    val totalUnread = remember(chats) { chats.sumOf { it.unreadCount } }
+                    
+                    LaunchedEffect(Unit) {
+                        repository.getAllChats()
+                    }
+                    
+                    val wsClient = remember { su.SkrinVex.ofox.data.api.WebSocketClient.getInstance(this@MainActivity) }
+                    LaunchedEffect(wsClient.events) {
+                        wsClient.events.collect { event ->
+                            android.util.Log.d("MainActivity", "WebSocket event received: $event")
+                            when (event) {
+                                is su.SkrinVex.ofox.data.api.WSEvent.NewMessage,
+                                is su.SkrinVex.ofox.data.api.WSEvent.ChatUpdate -> {
+                                    android.util.Log.d("MainActivity", "Reloading chats due to: $event")
+                                    repository.getAllChats()
+                                }
+                                else -> {}
+                            }
+                        }
+                    }
+                    
                     Scaffold(
                         modifier = Modifier.fillMaxSize(),
                         bottomBar = {
@@ -124,10 +146,20 @@ class MainActivity : ComponentActivity() {
                                     bottomNavItems.forEach { screen ->
                                         NavigationBarItem(
                                             icon = { 
-                                                Icon(
-                                                    screen.icon, 
-                                                    contentDescription = screen.title
-                                                ) 
+                                                BadgedBox(
+                                                    badge = {
+                                                        if (screen.route == Screen.Chats.route && totalUnread > 0) {
+                                                            Badge {
+                                                                Text(if (totalUnread > 9) "9+" else totalUnread.toString())
+                                                            }
+                                                        }
+                                                    }
+                                                ) {
+                                                    Icon(
+                                                        screen.icon, 
+                                                        contentDescription = screen.title
+                                                    )
+                                                }
                                             },
                                             label = { Text(screen.title) },
                                             selected = currentRoute == screen.route,

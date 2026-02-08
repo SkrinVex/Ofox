@@ -4,6 +4,7 @@ import android.content.Context
 import android.util.Patterns
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import su.SkrinVex.ofox.data.api.ApiClient
@@ -17,10 +18,16 @@ class Repository(private val context: Context) {
     private val prefs = context.getSharedPreferences("ofox_prefs", Context.MODE_PRIVATE)
     private val wsClient = su.SkrinVex.ofox.data.api.WebSocketClient.getInstance(context)
 
+    val chatsFlow: Flow<List<Chat>> = db.chatDao().getAllChatsFlow()
+
     init {
         CoroutineScope(Dispatchers.IO).launch {
+            android.util.Log.d("Repository", "Init: getting token")
             apiClient.getToken()
-            if (isLoggedIn()) {
+            val loggedIn = isLoggedIn()
+            android.util.Log.d("Repository", "Init: isLoggedIn=$loggedIn")
+            if (loggedIn) {
+                android.util.Log.d("Repository", "Init: connecting WebSocket")
                 wsClient.connect()
             }
         }
@@ -390,6 +397,8 @@ class Repository(private val context: Context) {
             val messages = apiClient.api.getMessages(chatId).map { it.toMessage(currentUserId) }
             db.messageDao().deleteMessagesByChat(chatId)
             messages.forEach { db.messageDao().insertMessage(it) }
+            apiClient.api.markChatAsRead(chatId)
+            db.chatDao().resetUnreadCount(chatId)
             messages
         } catch (e: Exception) {
             db.messageDao().getMessages(chatId)
@@ -565,7 +574,8 @@ class Repository(private val context: Context) {
                 }).toString()
                 android.util.Log.d("Repository", "Badges JSON: $json")
                 json
-            } ?: ""
+            } ?: "",
+            unreadCount = unread_count
         )
     }
 

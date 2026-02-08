@@ -69,6 +69,9 @@ interface ApiService {
     @POST("chats/{chatId}/messages")
     suspend fun sendMessage(@Path("chatId") chatId: Int, @Body message: SendMessageRequest): MessageResponse
     
+    @POST("chats/{chatId}/read")
+    suspend fun markChatAsRead(@Path("chatId") chatId: Int)
+    
     @GET("subscriptions/mutual")
     suspend fun getMutualFriends(): List<UserResponse>
     

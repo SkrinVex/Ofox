@@ -74,7 +74,8 @@ data class ChatResponse(
     val updated_at: String,
     val other_user_id: Int,
     val other_user_name: String,
-    val other_user_badges: List<BadgeResponse>? = null
+    val other_user_badges: List<BadgeResponse>? = null,
+    val unread_count: Int = 0
 )
 
 data class CreateChatRequest(
