@@ -5,7 +5,7 @@ import androidx.room.*
 
 @Database(
     entities = [User::class, Post::class, Chat::class, Message::class, Discovery::class],
-    version = 7
+    version = 8
 )
 abstract class AppDatabase : RoomDatabase() {
     abstract fun userDao(): UserDao
@@ -93,7 +93,8 @@ data class Discovery(
     val participants: Int,
     val colorHex: String,
     val isJoined: Boolean = false,
-    val creatorName: String = ""
+    val creatorName: String = "",
+    val createdAt: Long = 0
 )
 
 @Dao
@@ -152,11 +153,14 @@ interface ChatDao {
     @Query("SELECT * FROM chats ORDER BY timestamp DESC")
     suspend fun getAllChats(): List<Chat>
 
-    @Insert
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertChat(chat: Chat): Long
 
     @Query("UPDATE chats SET lastMessage = :message, timestamp = :timestamp WHERE id = :chatId")
     suspend fun updateChat(chatId: Int, message: String, timestamp: Long)
+    
+    @Query("DELETE FROM chats")
+    suspend fun deleteAllChats()
 }
 
 @Dao
@@ -164,8 +168,11 @@ interface MessageDao {
     @Query("SELECT * FROM messages WHERE chatId = :chatId ORDER BY timestamp ASC")
     suspend fun getMessages(chatId: Int): List<Message>
 
-    @Insert
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertMessage(message: Message)
+    
+    @Query("DELETE FROM messages WHERE chatId = :chatId")
+    suspend fun deleteMessagesByChat(chatId: Int)
 }
 
 @Dao

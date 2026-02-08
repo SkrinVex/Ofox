@@ -28,11 +28,13 @@ import su.SkrinVex.ofox.data.api.models.BadgeResponse
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ChatDetailScreen(repository: Repository, chatId: Int, onBack: () -> Unit) {
-    var messages by remember { mutableStateOf(listOf<su.SkrinVex.ofox.data.Message>()) }
+    val messages = remember { androidx.compose.runtime.snapshots.SnapshotStateList<su.SkrinVex.ofox.data.Message>() }
     var messageText by remember { mutableStateOf("") }
     var chat by remember { mutableStateOf<su.SkrinVex.ofox.data.Chat?>(null) }
     val scope = rememberCoroutineScope()
     val listState = rememberLazyListState()
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val wsClient = remember { su.SkrinVex.ofox.data.api.WebSocketClient.getInstance(context) }
 
     val autoResponses = listOf(
         "Привет! Как дела?",
@@ -47,15 +49,53 @@ fun ChatDetailScreen(repository: Repository, chatId: Int, onBack: () -> Unit) {
         "Супер! 🎉"
     )
 
+    fun loadMessages() {
+        scope.launch {
+            val loaded = repository.getMessages(chatId)
+            messages.clear()
+            messages.addAll(loaded)
+        }
+    }
+
     LaunchedEffect(chatId) {
         val chats = repository.getAllChats()
         chat = chats.find { it.id == chatId }
-        messages = repository.getMessages(chatId)
+        loadMessages()
     }
 
     LaunchedEffect(messages.size) {
         if (messages.isNotEmpty()) {
             listState.animateScrollToItem(messages.size - 1)
+        }
+    }
+    
+    LaunchedEffect(wsClient.events) {
+        wsClient.events.collect { event ->
+            when (event) {
+                is su.SkrinVex.ofox.data.api.WSEvent.NewMessage -> {
+                    if (event.chatId == chatId) {
+                        val currentUserId = repository.getCurrentUserId()
+                        val newMessage = su.SkrinVex.ofox.data.Message(
+                            id = 0,
+                            chatId = chatId,
+                            text = event.message,
+                            timestamp = event.timestamp,
+                            isFromMe = false
+                        )
+                        if (!messages.any { it.text == event.message && it.timestamp == event.timestamp }) {
+                            messages.add(newMessage)
+                        }
+                    }
+                }
+                else -> {}
+            }
+        }
+    }
+    
+    LaunchedEffect(Unit) {
+        while (true) {
+            kotlinx.coroutines.delay(10000)
+            loadMessages()
         }
     }
     
@@ -174,11 +214,18 @@ fun ChatDetailScreen(repository: Repository, chatId: Int, onBack: () -> Unit) {
                 IconButton(
                     onClick = {
                         if (messageText.isNotBlank()) {
+                            val text = messageText
+                            messageText = ""
+                            val tempMessage = su.SkrinVex.ofox.data.Message(
+                                id = 0,
+                                chatId = chatId,
+                                text = text,
+                                timestamp = System.currentTimeMillis(),
+                                isFromMe = true
+                            )
+                            messages.add(tempMessage)
                             scope.launch {
-                                repository.sendMessage(chatId, messageText)?.let {
-                                    messages = messages + it
-                                }
-                                messageText = ""
+                                repository.sendMessage(chatId, text)
                             }
                         }
                     },

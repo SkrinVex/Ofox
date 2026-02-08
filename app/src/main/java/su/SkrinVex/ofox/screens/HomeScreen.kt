@@ -13,6 +13,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -43,22 +44,41 @@ fun HomeScreen(
     var selectedPost by remember { mutableStateOf<su.SkrinVex.ofox.data.Post?>(null) }
     val posts = remember { androidx.compose.runtime.snapshots.SnapshotStateList<su.SkrinVex.ofox.data.Post>() }
     var currentUser by remember { mutableStateOf<su.SkrinVex.ofox.data.User?>(null) }
-    var isLoading by remember { mutableStateOf(true) }
+    var isInitialized by remember { mutableStateOf(false) }
+    var isLoading by remember { mutableStateOf(false) }
     var isLoadingMore by remember { mutableStateOf(false) }
     var hasMore by remember { mutableStateOf(true) }
+    var localHighlightPostId by remember { mutableStateOf<Int?>(null) }
     val scope = rememberCoroutineScope()
     val listState = rememberLazyListState()
     val context = androidx.compose.ui.platform.LocalContext.current
     val wsClient = remember { su.SkrinVex.ofox.data.api.WebSocketClient.getInstance(context) }
 
-    fun loadPosts(offset: Int = 0) {
+    LaunchedEffect(highlightPostId) {
+        if (highlightPostId != null && highlightPostId != localHighlightPostId) {
+            localHighlightPostId = highlightPostId
+            kotlinx.coroutines.delay(2500)
+            localHighlightPostId = null
+        }
+    }
+
+    fun loadPosts(offset: Int = 0, force: Boolean = false) {
         scope.launch {
             try {
                 if (offset == 0) isLoading = true else isLoadingMore = true
                 val newPosts = repository.getAllPosts(limit = 20, offset = offset)
-                if (offset == 0) {
+                if (offset == 0 && force) {
                     posts.clear()
                     posts.addAll(newPosts)
+                } else if (offset == 0) {
+                    newPosts.forEach { newPost ->
+                        val index = posts.indexOfFirst { it.id == newPost.id }
+                        if (index != -1) {
+                            posts[index] = newPost
+                        } else {
+                            posts.add(newPost)
+                        }
+                    }
                 } else {
                     posts.addAll(newPosts)
                 }
@@ -74,28 +94,36 @@ fun HomeScreen(
 
     LaunchedEffect(Unit) {
         try {
-            currentUser = repository.getCurrentUser()
-            loadPosts(0)
-            wsClient.connect()
+            if (currentUser == null) {
+                currentUser = repository.getCurrentUser()
+            }
+            if (posts.isEmpty() && isInitialized.not()) {
+                loadPosts(0, force = true)
+                isInitialized = true
+            }
         } catch (e: Exception) {
             android.util.Log.e("HomeScreen", "Error loading user", e)
-            isLoading = false
         }
     }
     
-    LaunchedEffect(highlightPostId) {
-        highlightPostId?.let { postId ->
-            val index = posts.indexOfFirst { it.id == postId }
-            if (index != -1) {
-                listState.animateScrollToItem(index)
+    LaunchedEffect(localHighlightPostId, posts.size, isLoading) {
+        localHighlightPostId?.let { postId ->
+            if (posts.isNotEmpty() && !isLoading) {
+                val index = posts.indexOfFirst { it.id == postId }
+                if (index != -1) {
+                    kotlinx.coroutines.delay(300)
+                    val itemInfo = listState.layoutInfo.visibleItemsInfo.firstOrNull()
+                    val offset = itemInfo?.size?.div(2) ?: 0
+                    listState.scrollToItem(index, -offset)
+                }
             }
         }
     }
     
-    LaunchedEffect(highlightPostId) {
+    LaunchedEffect(Unit) {
         while (true) {
-            kotlinx.coroutines.delay(30000) // 30 секунд
-            if (posts.isNotEmpty() && highlightPostId == null) { // Не обновлять при подсветке
+            kotlinx.coroutines.delay(30000)
+            if (posts.isNotEmpty() && highlightPostId == null) {
                 try {
                     val freshPosts = repository.getAllPosts(limit = posts.size.coerceAtMost(20), offset = 0)
                     freshPosts.forEach { fresh ->
@@ -159,14 +187,10 @@ fun HomeScreen(
                         }
                     }
                 }
+                is su.SkrinVex.ofox.data.api.WSEvent.NewMessage,
+                is su.SkrinVex.ofox.data.api.WSEvent.ChatUpdate -> {}
                 null -> {}
             }
-        }
-    }
-    
-    DisposableEffect(Unit) {
-        onDispose {
-            wsClient.disconnect()
         }
     }
 
@@ -180,7 +204,7 @@ fun HomeScreen(
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
-        if (isLoading) {
+        if (isLoading && posts.isEmpty()) {
             Box(
                 modifier = Modifier.fillMaxSize(),
                 contentAlignment = Alignment.Center
@@ -215,7 +239,7 @@ fun HomeScreen(
                         emptyList()
                     }
                     
-                    val isHighlighted = highlightPostId == post.id
+                    val isHighlighted = localHighlightPostId == post.id
                     
                     CreativePostCard(
                         post = su.SkrinVex.ofox.screens.CreativePost(
@@ -226,7 +250,7 @@ fun HomeScreen(
                                 post.shares,
                                 formatTime(post.timestamp),
                                 PostType.valueOf(post.type),
-                                post.pollOptions.split(",").filter { it.isNotEmpty() },
+                                post.pollOptions.split("|||").filter { it.isNotEmpty() },
                                 post.pollVotes.split(",").mapNotNull { it.toIntOrNull() },
                                 post.userVote,
                                 post.authorId,
@@ -559,22 +583,27 @@ fun CreatePostDialog(
                         OutlinedTextField(
                             value = option,
                             onValueChange = { 
-                                pollOptions = pollOptions.toMutableList().apply { this[index] = it }
+                                if (it.length <= 150) {
+                                    pollOptions = pollOptions.toMutableList().apply { this[index] = it }
+                                }
                             },
                             label = { Text("Вариант ${index + 1}") },
                             modifier = Modifier.fillMaxWidth(),
-                            shape = MaterialTheme.shapes.medium
+                            shape = MaterialTheme.shapes.medium,
+                            supportingText = { Text("${option.length}/150") }
                         )
                         Spacer(modifier = Modifier.height(8.dp))
                     }
                     
-                    TextButton(
-                        onClick = { pollOptions = pollOptions + "" },
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Icon(Icons.Default.Add, contentDescription = null)
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text("Добавить вариант")
+                    if (pollOptions.size < 15) {
+                        TextButton(
+                            onClick = { pollOptions = pollOptions + "" },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Icon(Icons.Default.Add, contentDescription = null)
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("Добавить вариант (${pollOptions.size}/15)")
+                        }
                     }
                 } else {
                     OutlinedTextField(

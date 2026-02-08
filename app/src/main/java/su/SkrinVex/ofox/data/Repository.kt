@@ -15,10 +15,14 @@ class Repository(private val context: Context) {
     private val apiClient = ApiClient.getInstance(context)
     private val db = AppDatabase.getDatabase(context)
     private val prefs = context.getSharedPreferences("ofox_prefs", Context.MODE_PRIVATE)
+    private val wsClient = su.SkrinVex.ofox.data.api.WebSocketClient.getInstance(context)
 
     init {
         CoroutineScope(Dispatchers.IO).launch {
             apiClient.getToken()
+            if (isLoggedIn()) {
+                wsClient.connect()
+            }
         }
     }
 
@@ -134,6 +138,7 @@ class Repository(private val context: Context) {
 
     suspend fun logout() = withContext(Dispatchers.IO) {
         try {
+            su.SkrinVex.ofox.data.api.WebSocketClient.getInstance(context).disconnect()
             apiClient.clearToken()
             prefs.edit().clear().apply()
             db.clearAllTables()
@@ -165,10 +170,6 @@ class Repository(private val context: Context) {
     suspend fun getAllPosts(limit: Int = 20, offset: Int = 0): List<Post> = withContext(Dispatchers.IO) {
         try {
             val posts = apiClient.api.getPosts(limit = limit, offset = offset).map { it.toPost() }
-            if (offset == 0) {
-                // Очищаем кэш только при первой загрузке
-                db.postDao().deleteAllPosts()
-            }
             posts.forEach { 
                 try {
                     db.postDao().insertPost(it)
@@ -242,9 +243,11 @@ class Repository(private val context: Context) {
         try {
             val response = apiClient.api.toggleLike(post.id)
             val updatedPost = response.toPost()
-            db.postDao().updateLikes(updatedPost.id, updatedPost.likes, updatedPost.isLiked)
+            android.util.Log.d("Repository", "toggleLike response: likes=${updatedPost.likes}, isLiked=${updatedPost.isLiked}, pollVotes=${updatedPost.pollVotes}, userVote=${updatedPost.userVote}")
+            db.postDao().insertPost(updatedPost)
             updatedPost
         } catch (e: Exception) {
+            android.util.Log.e("Repository", "toggleLike error", e)
             val newLiked = !post.isLiked
             val newLikes = if (newLiked) post.likes + 1 else post.likes - 1
             db.postDao().updateLikes(post.id, newLikes, newLiked)
@@ -256,7 +259,7 @@ class Repository(private val context: Context) {
         try {
             val response = apiClient.api.sharePost(post.id)
             val updatedPost = response.toPost()
-            db.postDao().updateShares(updatedPost.id, updatedPost.shares)
+            db.postDao().insertPost(updatedPost)
             updatedPost
         } catch (e: Exception) {
             val newShares = post.shares + 1
@@ -269,7 +272,7 @@ class Repository(private val context: Context) {
         try {
             val response = apiClient.api.voteOnPoll(postId, mapOf("optionIndex" to optionIndex))
             val updatedPost = response.toPost()
-            db.postDao().updatePollVote(updatedPost.id, updatedPost.pollVotes, optionIndex)
+            db.postDao().insertPost(updatedPost)
             updatedPost
         } catch (e: Exception) {
             val post = db.postDao().getPostById(postId) ?: return@withContext null
@@ -336,7 +339,8 @@ class Repository(private val context: Context) {
     }
 
     suspend fun getUserContributionToDiscovery(discoveryId: Int): Int = withContext(Dispatchers.IO) {
-        db.postDao().getPostsByDiscovery(discoveryId).size
+        val currentUserId = getCurrentUserId()
+        db.postDao().getPostsByDiscovery(discoveryId).count { it.authorId == currentUserId }
     }
 
     suspend fun createDiscovery(title: String, description: String, category: String, colorHex: String): Discovery? = withContext(Dispatchers.IO) {
@@ -367,9 +371,10 @@ class Repository(private val context: Context) {
     suspend fun getAllChats(): List<Chat> = withContext(Dispatchers.IO) {
         try {
             val chats = apiClient.api.getChats().map { it.toChat() }
-            android.util.Log.d("Repository", "Loaded ${chats.size} chats")
+            android.util.Log.d("Repository", "Loaded ${chats.size} chats from API")
+            db.chatDao().deleteAllChats()
             chats.forEach { chat ->
-                android.util.Log.d("Repository", "Chat: ${chat.name}, badges: ${chat.userBadges}")
+                android.util.Log.d("Repository", "Inserting chat: ${chat.name}, lastMessage: ${chat.lastMessage}")
                 db.chatDao().insertChat(chat)
             }
             chats
@@ -383,6 +388,7 @@ class Repository(private val context: Context) {
         try {
             val currentUserId = getCurrentUserId()
             val messages = apiClient.api.getMessages(chatId).map { it.toMessage(currentUserId) }
+            db.messageDao().deleteMessagesByChat(chatId)
             messages.forEach { db.messageDao().insertMessage(it) }
             messages
         } catch (e: Exception) {
@@ -506,7 +512,7 @@ class Repository(private val context: Context) {
         timestamp = created_timestamp ?: parseTimestamp(created_at),
         type = type ?: "TEXT",
         isLiked = is_liked ?: false,
-        pollOptions = poll_options?.joinToString(",") ?: "",
+        pollOptions = poll_options?.joinToString("|||") ?: "",
         pollVotes = poll_votes?.joinToString(",") ?: "",
         userVote = user_vote ?: -1,
         discoveryId = discovery_id ?: 0,
@@ -535,7 +541,8 @@ class Repository(private val context: Context) {
             participants = participants,
             colorHex = cleanColor,
             isJoined = is_joined,
-            creatorName = creator_name ?: "Unknown"
+            creatorName = creator_name ?: "Unknown",
+            createdAt = created_at?.let { parseTimestamp(it) } ?: System.currentTimeMillis()
         )
         android.util.Log.d("Repository", "Mapped discovery: $discovery")
         return discovery

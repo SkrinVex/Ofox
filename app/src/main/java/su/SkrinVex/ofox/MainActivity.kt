@@ -158,13 +158,11 @@ class MainActivity : ComponentActivity() {
                             composable(Screen.Home.route) { 
                                 val postId = (deepLink as? DeepLinkData.Post)?.postId
                                 
-                                key(postId) {
-                                    HomeScreen(
-                                        repository = repository, 
-                                        navController = navController,
-                                        highlightPostId = postId
-                                    )
-                                }
+                                HomeScreen(
+                                    repository = repository, 
+                                    navController = navController,
+                                    highlightPostId = postId
+                                )
                                 
                                 if (postId != null) {
                                     LaunchedEffect(postId) {
@@ -185,13 +183,11 @@ class MainActivity : ComponentActivity() {
                             composable(Screen.Feed.route) { 
                                 val discoveryId = (deepLink as? DeepLinkData.Discovery)?.discoveryId
                                 
-                                key(discoveryId) {
-                                    FeedScreen(
-                                        repository = repository, 
-                                        navController = navController,
-                                        highlightDiscoveryId = discoveryId
-                                    )
-                                }
+                                FeedScreen(
+                                    repository = repository, 
+                                    navController = navController,
+                                    highlightDiscoveryId = discoveryId
+                                )
                                 
                                 if (discoveryId != null) {
                                     LaunchedEffect(discoveryId) {
@@ -245,7 +241,14 @@ class MainActivity : ComponentActivity() {
                                 DiscoveryDiscussionScreen(
                                     discoveryId = backStackEntry.arguments?.getString("discoveryId")?.toIntOrNull() ?: 0,
                                     repository = repository,
-                                    onBack = { navController.popBackStack() }
+                                    onBack = { navController.popBackStack() },
+                                    onNavigateToPost = { postId ->
+                                        navController.navigate(Screen.Home.route) {
+                                            popUpTo(navController.graph.startDestinationId)
+                                            launchSingleTop = true
+                                        }
+                                        pendingDeepLink.value = DeepLinkData.Post(postId)
+                                    }
                                 )
                             }
                         }

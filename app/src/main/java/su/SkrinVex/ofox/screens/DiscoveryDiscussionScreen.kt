@@ -1,6 +1,7 @@
 package su.SkrinVex.ofox.screens
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -27,7 +28,8 @@ data class TopParticipant(val name: String, val postCount: Int)
 fun DiscoveryDiscussionScreen(
     discoveryId: Int,
     repository: Repository,
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    onNavigateToPost: (Int) -> Unit = {}
 ) {
     var discovery by remember { mutableStateOf<su.SkrinVex.ofox.data.Discovery?>(null) }
     var posts by remember { mutableStateOf(listOf<su.SkrinVex.ofox.data.Post>()) }
@@ -150,8 +152,8 @@ fun DiscoveryDiscussionScreen(
                     ) {
                         Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                             AchievementItem("Первый участник", "Присоединились к открытию", discovery?.isJoined == true)
-                            AchievementItem("Активист", "Создали ${userContribution} постов", userContribution > 0)
-                            AchievementItem("Лидер", "Создали 5+ постов", userContribution >= 5)
+                            AchievementItem("Активист", "Создайте ${if (userContribution >= 1) userContribution else 1} ${if (userContribution >= 1) "постов" else "пост"}", userContribution >= 1)
+                            AchievementItem("Лидер", "Создайте 5+ постов", userContribution >= 5)
                         }
                     }
                 }
@@ -163,7 +165,9 @@ fun DiscoveryDiscussionScreen(
                     
                     items(posts.take(5)) { post ->
                         Card(
-                            modifier = Modifier.fillMaxWidth(),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { onNavigateToPost(post.id) },
                             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
                         ) {
                             Column(modifier = Modifier.padding(16.dp)) {

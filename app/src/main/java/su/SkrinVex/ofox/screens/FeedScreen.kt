@@ -41,11 +41,21 @@ fun FeedScreen(
     var searchQuery by remember { mutableStateOf("") }
     var showCreateDialog by remember { mutableStateOf(false) }
     var isLoading by remember { mutableStateOf(false) }
+    var isInitialized by remember { mutableStateOf(false) }
+    var localHighlightDiscoveryId by remember { mutableStateOf<Int?>(null) }
     val scope = rememberCoroutineScope()
     val listState = rememberLazyListState()
     val fabExpanded by remember {
         derivedStateOf {
             listState.firstVisibleItemIndex == 0
+        }
+    }
+
+    LaunchedEffect(highlightDiscoveryId) {
+        if (highlightDiscoveryId != null && highlightDiscoveryId != localHighlightDiscoveryId) {
+            localHighlightDiscoveryId = highlightDiscoveryId
+            kotlinx.coroutines.delay(3000)
+            localHighlightDiscoveryId = null
         }
     }
 
@@ -57,7 +67,6 @@ fun FeedScreen(
             isLoading = false
         }
     }
-    
     fun filterDiscoveries(query: String) {
         filteredDiscoveries = if (query.isEmpty()) {
             discoveries
@@ -72,18 +81,21 @@ fun FeedScreen(
     }
 
     LaunchedEffect(Unit) {
-        loadDiscoveries()
+        if (discoveries.isEmpty() && isInitialized.not()) {
+            loadDiscoveries()
+            isInitialized = true
+        }
     }
     
-    LaunchedEffect(highlightDiscoveryId, filteredDiscoveries.size) {
-        highlightDiscoveryId?.let { discoveryId ->
-            if (filteredDiscoveries.isNotEmpty()) {
+    LaunchedEffect(localHighlightDiscoveryId, filteredDiscoveries.size) {
+        localHighlightDiscoveryId?.let { discoveryId ->
+            if (filteredDiscoveries.isNotEmpty() && !isLoading) {
                 android.util.Log.d("FeedScreen", "Trying to scroll to discovery $discoveryId")
                 val index = filteredDiscoveries.indexOfFirst { it.id == discoveryId }
                 android.util.Log.d("FeedScreen", "Discovery index: $index")
                 if (index != -1) {
                     kotlinx.coroutines.delay(500)
-                    listState.animateScrollToItem(index + 4)
+                    listState.scrollToItem(index + 4)
                     android.util.Log.d("FeedScreen", "Scrolled to index ${index + 4}")
                 }
             }
@@ -202,13 +214,14 @@ fun FeedScreen(
                         scope.launch {
                             repository.toggleJoinDiscovery(discovery)?.let { updated ->
                                 discoveries = discoveries.map { if (it.id == updated.id) updated else it }
+                                filterDiscoveries(searchQuery)
                             }
                         }
                     },
                     onDiscuss = {
                         navController?.navigate("discovery_discussion/${discovery.id}")
                     },
-                    isHighlighted = highlightDiscoveryId == discovery.id
+                    isHighlighted = localHighlightDiscoveryId == discovery.id
                 )
             }
         }
@@ -274,13 +287,14 @@ fun FeedScreen(
                         scope.launch {
                             repository.toggleJoinDiscovery(discovery)?.let { updated ->
                                 discoveries = discoveries.map { if (it.id == updated.id) updated else it }
+                                filterDiscoveries(searchQuery)
                             }
                         }
                     },
                     onDiscuss = {
                         navController?.navigate("discovery_discussion/${discovery.id}")
                     },
-                    isHighlighted = highlightDiscoveryId == discovery.id
+                    isHighlighted = localHighlightDiscoveryId == discovery.id
                 )
             }
         }
@@ -607,7 +621,11 @@ fun DiscoveryDetailsDialog(
     onDismiss: () -> Unit
 ) {
     val dateFormat = SimpleDateFormat("dd MMMM yyyy", Locale("ru"))
-    val createdDate = dateFormat.format(Date(System.currentTimeMillis() - (1..30).random() * 24 * 60 * 60 * 1000L))
+    val createdDate = if (discovery.createdAt > 0) {
+        dateFormat.format(Date(discovery.createdAt))
+    } else {
+        "Неизвестно"
+    }
     
     Dialog(onDismissRequest = onDismiss) {
         Card(

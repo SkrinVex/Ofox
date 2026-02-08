@@ -30,9 +30,38 @@ fun ChatsScreen(repository: Repository, navController: NavController) {
     var chats by remember { mutableStateOf(listOf<su.SkrinVex.ofox.data.Chat>()) }
     var showAddChatDialog by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val wsClient = remember { su.SkrinVex.ofox.data.api.WebSocketClient.getInstance(context) }
+
+    fun loadChats() {
+        scope.launch {
+            chats = repository.getAllChats()
+        }
+    }
 
     LaunchedEffect(Unit) {
-        chats = repository.getAllChats()
+        loadChats()
+    }
+    
+    LaunchedEffect(wsClient.events) {
+        wsClient.events.collect { event ->
+            when (event) {
+                is su.SkrinVex.ofox.data.api.WSEvent.ChatUpdate -> {
+                    loadChats()
+                }
+                is su.SkrinVex.ofox.data.api.WSEvent.NewMessage -> {
+                    loadChats()
+                }
+                else -> {}
+            }
+        }
+    }
+    
+    LaunchedEffect(Unit) {
+        while (true) {
+            kotlinx.coroutines.delay(10000)
+            loadChats()
+        }
     }
     
     Box(modifier = Modifier.fillMaxSize()) {

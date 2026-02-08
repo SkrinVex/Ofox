@@ -63,7 +63,8 @@ data class DiscoveryResponse(
     val participants: Int,
     val color_hex: String?,
     val is_joined: Boolean,
-    val creator_name: String?
+    val creator_name: String?,
+    val created_at: String?
 )
 
 data class ChatResponse(
