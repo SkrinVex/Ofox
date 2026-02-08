@@ -199,7 +199,7 @@ fun AboutScreen(repository: Repository, onBack: () -> Unit) {
     var isLoading by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-    
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -245,13 +245,13 @@ fun AboutScreen(repository: Repository, onBack: () -> Unit) {
                     )
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(
-                        text = "Версия 1.1",
+                        text = "Версия 1.2",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
                     )
                 }
             }
-            
+
             Card(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -348,7 +348,7 @@ fun AboutScreen(repository: Repository, onBack: () -> Unit) {
             }
         }
     }
-    
+
     if (showAppInfo) {
         ModalBottomSheet(
             onDismissRequest = { showAppInfo = false },
@@ -377,7 +377,7 @@ fun AboutScreen(repository: Repository, onBack: () -> Unit) {
 @Composable
 fun MarkdownText(markdown: String) {
     val lines = markdown.split("\n")
-    
+
     lines.forEach { line ->
         when {
             line.startsWith("# ") -> {
