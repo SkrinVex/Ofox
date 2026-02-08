@@ -2,6 +2,7 @@ package su.SkrinVex.ofox.screens
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -12,6 +13,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material3.*
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.snapshotFlow
@@ -447,7 +449,7 @@ fun HomeScreen(
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun CreatePostDialog(
     onDismiss: () -> Unit, 
@@ -460,6 +462,7 @@ fun CreatePostDialog(
     var discoveries by remember { mutableStateOf(listOf<su.SkrinVex.ofox.data.Discovery>()) }
     var selectedDiscovery by remember { mutableStateOf<su.SkrinVex.ofox.data.Discovery?>(null) }
     val scope = rememberCoroutineScope()
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     
     LaunchedEffect(Unit) {
         try {
@@ -484,27 +487,22 @@ fun CreatePostDialog(
         else -> "Что у вас нового?"
     }
 
-    Dialog(onDismissRequest = onDismiss) {
-        Card(
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState,
+        containerColor = MaterialTheme.colorScheme.surface
+    ) {
+        Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .fillMaxHeight(0.9f)
-                .padding(16.dp),
-            shape = MaterialTheme.shapes.medium,
-            colors = CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.surface
-            )
         ) {
             Column(
                 modifier = Modifier
-                    .fillMaxSize()
+                    .weight(1f)
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = 24.dp)
+                    .padding(top = 24.dp)
             ) {
-                Column(
-                    modifier = Modifier
-                        .weight(1f)
-                        .verticalScroll(rememberScrollState())
-                        .padding(24.dp)
-                ) {
                 Text(
                     text = "Создать пост",
                     style = MaterialTheme.typography.headlineSmall,
@@ -516,11 +514,11 @@ fun CreatePostDialog(
                 Text(
                     text = "Тип поста",
                     style = MaterialTheme.typography.titleSmall
-                )
-                
-                Spacer(modifier = Modifier.height(8.dp))
-                
-                Row(
+            )
+            
+            Spacer(modifier = Modifier.height(8.dp))
+            
+            Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
@@ -626,66 +624,72 @@ fun CreatePostDialog(
                     
                     Spacer(modifier = Modifier.height(8.dp))
                     
-                    discoveries.forEach { discovery ->
-                        FilterChip(
-                            selected = selectedDiscovery?.id == discovery.id,
-                            onClick = { 
-                                selectedDiscovery = if (selectedDiscovery?.id == discovery.id) null else discovery
-                            },
-                            label = { 
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Box(
-                                        modifier = Modifier
-                                            .size(8.dp)
-                                            .clip(CircleShape)
-                                            .background(Color(android.graphics.Color.parseColor(discovery.colorHex)))
-                                    )
-                                    Spacer(modifier = Modifier.width(8.dp))
-                                    Text(discovery.title)
-                                }
-                            },
-                            modifier = Modifier.fillMaxWidth(),
-                            colors = FilterChipDefaults.filterChipColors(
-                                selectedContainerColor = MaterialTheme.colorScheme.primary,
-                                selectedLabelColor = MaterialTheme.colorScheme.onPrimary
+                    FlowRow(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        discoveries.forEach { discovery ->
+                            FilterChip(
+                                selected = selectedDiscovery?.id == discovery.id,
+                                onClick = { 
+                                    selectedDiscovery = if (selectedDiscovery?.id == discovery.id) null else discovery
+                                },
+                                label = { 
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Box(
+                                            modifier = Modifier
+                                                .size(8.dp)
+                                                .clip(CircleShape)
+                                                .background(Color(android.graphics.Color.parseColor(discovery.colorHex)))
+                                        )
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Text(discovery.title)
+                                    }
+                                },
+                                colors = FilterChipDefaults.filterChipColors(
+                                    selectedContainerColor = MaterialTheme.colorScheme.primary,
+                                    selectedLabelColor = MaterialTheme.colorScheme.onPrimary
+                                )
                             )
-                        )
-                        Spacer(modifier = Modifier.height(8.dp))
+                        }
                     }
                 }
             }
-                
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(24.dp),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+            
+            HorizontalDivider()
+            
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp)
+                    .navigationBarsPadding(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                OutlinedButton(
+                    onClick = onDismiss,
+                    modifier = Modifier.weight(1f),
+                    shape = MaterialTheme.shapes.medium
                 ) {
-                    OutlinedButton(
-                        onClick = onDismiss,
-                        modifier = Modifier.weight(1f),
-                        shape = MaterialTheme.shapes.medium
-                    ) {
-                        Text("Отмена")
-                    }
-                    
-                    Button(
-                        onClick = { 
-                            if (content.isNotBlank()) {
-                                if (selectedType == "POLL") {
-                                    val validOptions = pollOptions.filter { it.isNotBlank() }
-                                    onCreate(content, selectedType, validOptions, selectedDiscovery)
-                                } else {
-                                    onCreate(content, selectedType, emptyList(), selectedDiscovery)
-                                }
+                    Text("Отмена")
+                }
+                
+                Button(
+                    onClick = { 
+                        if (content.isNotBlank()) {
+                            if (selectedType == "POLL") {
+                                val validOptions = pollOptions.filter { it.isNotBlank() }
+                                onCreate(content, selectedType, validOptions, selectedDiscovery)
+                            } else {
+                                onCreate(content, selectedType, emptyList(), selectedDiscovery)
                             }
-                        },
-                        enabled = content.isNotBlank() && (selectedType != "POLL" || pollOptions.count { it.isNotBlank() } >= 2),
-                        modifier = Modifier.weight(1f),
-                        shape = MaterialTheme.shapes.medium
-                    ) {
-                        Text("Опубликовать")
-                    }
+                        }
+                    },
+                    enabled = content.isNotBlank() && (selectedType != "POLL" || pollOptions.count { it.isNotBlank() } >= 2),
+                    modifier = Modifier.weight(1f),
+                    shape = MaterialTheme.shapes.medium
+                ) {
+                    Text("Опубликовать")
                 }
             }
         }

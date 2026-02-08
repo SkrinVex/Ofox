@@ -1,5 +1,6 @@
 package su.SkrinVex.ofox.screens
 
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -9,6 +10,8 @@ import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
@@ -329,6 +332,7 @@ fun FeedScreen(
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun CreateDiscoveryDialog(
     onDismiss: () -> Unit,
@@ -338,36 +342,30 @@ fun CreateDiscoveryDialog(
     var description by remember { mutableStateOf("") }
     var selectedCategory by remember { mutableStateOf("Технологии") }
     var selectedColor by remember { mutableStateOf("FF4CAF50") }
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val pagerState = rememberPagerState(pageCount = { 3 })
     
     val categories = listOf(
-        "Технологии" to "FF4CAF50",
-        "Наука" to "FF2196F3",
-        "Искусство" to "FFFF9800",
-        "Спорт" to "FFF44336",
-        "Образование" to "FF9C27B0",
-        "Бизнес" to "FF00BCD4"
+        listOf("Технологии" to "FF4CAF50", "Наука" to "FF2196F3"),
+        listOf("Искусство" to "FFFF9800", "Спорт" to "FFF44336"),
+        listOf("Образование" to "FF9C27B0", "Бизнес" to "FF00BCD4")
     )
 
-    Dialog(onDismissRequest = onDismiss) {
-        Card(
-            modifier = Modifier
-                .fillMaxWidth()
-                .fillMaxHeight(0.85f)
-                .padding(16.dp),
-            shape = MaterialTheme.shapes.medium,
-            colors = CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.surface
-            )
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState,
+        containerColor = MaterialTheme.colorScheme.surface
+    ) {
+        Column(
+            modifier = Modifier.fillMaxWidth()
         ) {
             Column(
-                modifier = Modifier.fillMaxSize()
+                modifier = Modifier
+                    .weight(1f)
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = 24.dp)
+                    .padding(top = 24.dp)
             ) {
-                Column(
-                    modifier = Modifier
-                        .weight(1f)
-                        .verticalScroll(rememberScrollState())
-                        .padding(24.dp)
-                ) {
                 Text(
                     text = "Создать открытие",
                     style = MaterialTheme.typography.headlineSmall,
@@ -378,21 +376,23 @@ fun CreateDiscoveryDialog(
                 
                 OutlinedTextField(
                     value = title,
-                    onValueChange = { title = it },
+                    onValueChange = { if (it.length <= 500) title = it },
                     label = { Text("Название") },
                     modifier = Modifier.fillMaxWidth(),
-                    shape = MaterialTheme.shapes.medium
+                    shape = MaterialTheme.shapes.medium,
+                    supportingText = { Text("${title.length}/500") }
                 )
                 
                 Spacer(modifier = Modifier.height(12.dp))
                 
                 OutlinedTextField(
                     value = description,
-                    onValueChange = { description = it },
+                    onValueChange = { if (it.length <= 5000) description = it },
                     label = { Text("Описание") },
                     modifier = Modifier.fillMaxWidth(),
                     minLines = 3,
-                    shape = MaterialTheme.shapes.medium
+                    shape = MaterialTheme.shapes.medium,
+                    supportingText = { Text("${description.length}/5000") }
                 )
                 
                 Spacer(modifier = Modifier.height(12.dp))
@@ -404,27 +404,33 @@ fun CreateDiscoveryDialog(
                 
                 Spacer(modifier = Modifier.height(8.dp))
                 
-                LazyVerticalGrid(
-                    columns = GridCells.Fixed(2),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp),
-                    modifier = Modifier.height(300.dp)
-                ) {
-                    items(categories.size) { index ->
-                        val (category, color) = categories[index]
-                        Card(
-                            onClick = {
-                                selectedCategory = category
-                                selectedColor = color
-                            },
-                            colors = CardDefaults.cardColors(
-                                containerColor = if (selectedCategory == category)
-                                    Color(android.graphics.Color.parseColor("#$color"))
-                                else
-                                    MaterialTheme.colorScheme.surfaceVariant
-                            ),
-                            shape = MaterialTheme.shapes.medium
+                HorizontalPager(
+                    state = pagerState,
+                    modifier = Modifier.fillMaxWidth()
+                ) { page ->
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)
                         ) {
+                            categories[page].forEach { (category, color) ->
+                                Card(
+                                    onClick = {
+                                        selectedCategory = category
+                                        selectedColor = color
+                                    },
+                                colors = CardDefaults.cardColors(
+                                    containerColor = if (selectedCategory == category)
+                                        Color(android.graphics.Color.parseColor("#$color"))
+                                    else
+                                        MaterialTheme.colorScheme.surfaceVariant
+                                ),
+                                shape = MaterialTheme.shapes.medium,
+                                modifier = Modifier.weight(1f)
+                            ) {
                             Column(
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -461,35 +467,61 @@ fun CreateDiscoveryDialog(
                             }
                         }
                     }
+                        }
+                    }
                 }
-            }
+                
+                Spacer(modifier = Modifier.height(12.dp))
                 
                 Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(24.dp),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.Center
                 ) {
-                    OutlinedButton(
-                        onClick = onDismiss,
-                        modifier = Modifier.weight(1f),
-                        shape = MaterialTheme.shapes.medium
-                    ) {
-                        Text("Отмена")
+                    repeat(pagerState.pageCount) { index ->
+                        Box(
+                            modifier = Modifier
+                                .size(8.dp)
+                                .padding(2.dp)
+                                .clip(CircleShape)
+                                .background(
+                                    if (pagerState.currentPage == index)
+                                        MaterialTheme.colorScheme.primary
+                                    else
+                                        MaterialTheme.colorScheme.onSurface.copy(alpha = 0.3f)
+                                )
+                        )
                     }
-                    
-                    Button(
-                        onClick = { 
-                            if (title.isNotBlank() && description.isNotBlank()) {
-                                onCreate(title, description, selectedCategory, selectedColor)
-                            }
-                        },
-                        enabled = title.isNotBlank() && description.isNotBlank(),
-                        modifier = Modifier.weight(1f),
-                        shape = MaterialTheme.shapes.medium
-                    ) {
-                        Text("Создать")
-                    }
+                }
+            }
+            
+            HorizontalDivider()
+            
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp)
+                    .navigationBarsPadding(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                OutlinedButton(
+                    onClick = onDismiss,
+                    modifier = Modifier.weight(1f),
+                    shape = MaterialTheme.shapes.medium
+                ) {
+                    Text("Отмена")
+                }
+                
+                Button(
+                    onClick = { 
+                        if (title.isNotBlank() && description.isNotBlank()) {
+                            onCreate(title, description, selectedCategory, selectedColor)
+                        }
+                    },
+                    enabled = title.isNotBlank() && description.isNotBlank(),
+                    modifier = Modifier.weight(1f),
+                    shape = MaterialTheme.shapes.medium
+                ) {
+                    Text("Создать")
                 }
             }
         }
