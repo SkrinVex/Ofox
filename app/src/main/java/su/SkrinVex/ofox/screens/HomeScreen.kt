@@ -429,6 +429,7 @@ fun HomeScreen(
             onDismiss = { showCreatePost = false },
             repository = repository,
             onCreate = { content, type, pollOptions, discovery ->
+                showCreatePost = false
                 scope.launch {
                     try {
                         val newPost = if (type == "POLL" && pollOptions.isNotEmpty()) {
@@ -437,10 +438,9 @@ fun HomeScreen(
                             repository.createPost(content, type, discovery?.id)
                         }
                         newPost?.let { posts.add(0, it) }
-                        showCreatePost = false
                         listState.animateScrollToItem(0)
                     } catch (e: Exception) {
-                        showCreatePost = false
+                        android.util.Log.e("HomeScreen", "Error creating post", e)
                     }
                 }
             }

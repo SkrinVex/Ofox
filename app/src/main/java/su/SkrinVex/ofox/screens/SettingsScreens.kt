@@ -245,7 +245,7 @@ fun AboutScreen(repository: Repository, onBack: () -> Unit) {
                     )
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(
-                        text = "Версия 1.2",
+                        text = "Версия ${su.SkrinVex.ofox.BuildConfig.VERSION_NAME}",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
                     )
