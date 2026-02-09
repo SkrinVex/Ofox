@@ -300,6 +300,92 @@ fun AboutScreen(repository: Repository, onBack: () -> Unit) {
             }
 
             Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable {
+                        scope.launch {
+                            isLoading = true
+                            appInfoContent = repository.getOfoxRules()
+                            isLoading = false
+                            showAppInfo = true
+                        }
+                    },
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surface
+                ),
+                shape = MaterialTheme.shapes.medium
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column {
+                        Text(
+                            text = "Правила Ofox",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        Text(
+                            text = "Правила использования платформы",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                        )
+                    }
+                    Icon(
+                        Icons.AutoMirrored.Filled.ArrowForward,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
+                    )
+                }
+            }
+
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable {
+                        scope.launch {
+                            isLoading = true
+                            appInfoContent = repository.getPrivacyPolicy()
+                            isLoading = false
+                            showAppInfo = true
+                        }
+                    },
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surface
+                ),
+                shape = MaterialTheme.shapes.medium
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column {
+                        Text(
+                            text = "Политика конфиденциальности",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        Text(
+                            text = "Как мы обрабатываем ваши данные",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                        )
+                    }
+                    Icon(
+                        Icons.AutoMirrored.Filled.ArrowForward,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
+                    )
+                }
+            }
+
+            Card(
                 modifier = Modifier.fillMaxWidth(),
                 colors = CardDefaults.cardColors(
                     containerColor = MaterialTheme.colorScheme.surface
@@ -377,86 +463,41 @@ fun AboutScreen(repository: Repository, onBack: () -> Unit) {
 @Composable
 fun MarkdownText(markdown: String) {
     val lines = markdown.split("\n")
-
+    
     lines.forEach { line ->
+        val trimmed = line.trim()
+        
         when {
-            line.startsWith("# ") -> {
+            // Заголовки - проверяем от большего к меньшему
+            trimmed.startsWith("### ") -> {
                 Text(
-                    text = line.removePrefix("# "),
-                    style = MaterialTheme.typography.headlineMedium,
+                    text = trimmed.removePrefix("### "),
+                    style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.padding(top = 16.dp, bottom = 12.dp)
+                    modifier = Modifier.padding(top = 16.dp, bottom = 6.dp)
                 )
             }
-            line.startsWith("## ") -> {
+            trimmed.startsWith("## ") -> {
                 Text(
-                    text = line.removePrefix("## "),
+                    text = trimmed.removePrefix("## "),
                     style = MaterialTheme.typography.titleLarge,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.primary,
                     modifier = Modifier.padding(top = 20.dp, bottom = 8.dp)
                 )
             }
-            line.startsWith("- **") && line.contains("**") -> {
-                val parts = line.removePrefix("- **").split("**", limit = 2)
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = 6.dp, horizontal = 8.dp)
-                ) {
-                    Text(
-                        text = "• ",
-                        style = MaterialTheme.typography.bodyLarge,
-                        color = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.padding(end = 8.dp)
-                    )
-                    Column {
-                        Text(
-                            text = parts[0],
-                            style = MaterialTheme.typography.bodyLarge,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
-                        if (parts.size > 1) {
-                            Text(
-                                text = parts[1].removePrefix(" - ").trim(),
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f),
-                                modifier = Modifier.padding(top = 2.dp)
-                            )
-                        }
-                    }
-                }
-            }
-            line.startsWith("- ") -> {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = 4.dp, horizontal = 8.dp)
-                ) {
-                    Text(
-                        text = "• ",
-                        style = MaterialTheme.typography.bodyLarge,
-                        color = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.padding(end = 8.dp)
-                    )
-                    Text(
-                        text = line.removePrefix("- "),
-                        style = MaterialTheme.typography.bodyLarge,
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
-                }
-            }
-            line.startsWith("*") && line.endsWith("*") && !line.startsWith("**") -> {
+            trimmed.startsWith("# ") -> {
                 Text(
-                    text = line.trim('*').trim(),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
-                    modifier = Modifier.padding(top = 12.dp, bottom = 4.dp)
+                    text = trimmed.removePrefix("# "),
+                    style = MaterialTheme.typography.headlineMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.padding(top = 16.dp, bottom = 12.dp)
                 )
             }
-            line.startsWith("---") -> {
+            // Горизонтальная линия
+            trimmed.matches(Regex("^-{3,}$")) || trimmed.matches(Regex("^\\*{3,}$")) -> {
                 Spacer(modifier = Modifier.height(12.dp))
                 HorizontalDivider(
                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.2f),
@@ -464,18 +505,108 @@ fun MarkdownText(markdown: String) {
                 )
                 Spacer(modifier = Modifier.height(12.dp))
             }
-            line.isNotBlank() -> {
-                Text(
-                    text = line,
+            // Списки
+            trimmed.startsWith("- ") || trimmed.startsWith("* ") -> {
+                Row(
+                    modifier = Modifier.padding(start = 8.dp, top = 4.dp, bottom = 4.dp)
+                ) {
+                    Text(
+                        text = "• ",
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    FormattedText(
+                        text = trimmed.removePrefix("- ").removePrefix("* "),
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                }
+            }
+            // Нумерованные списки
+            trimmed.matches(Regex("^\\d+\\.\\s+.*")) -> {
+                val number = trimmed.substringBefore(".").trim()
+                val text = trimmed.substringAfter(". ").trim()
+                Row(
+                    modifier = Modifier.padding(start = 8.dp, top = 4.dp, bottom = 4.dp)
+                ) {
+                    Text(
+                        text = "$number. ",
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        fontWeight = FontWeight.Bold
+                    )
+                    FormattedText(
+                        text = text,
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                }
+            }
+            // Обычный текст
+            trimmed.isNotBlank() -> {
+                FormattedText(
+                    text = trimmed,
                     style = MaterialTheme.typography.bodyLarge,
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.9f),
-                    lineHeight = 24.sp,
+                    color = MaterialTheme.colorScheme.onSurface,
                     modifier = Modifier.padding(vertical = 4.dp)
                 )
             }
+            // Пустая строка
             else -> {
-                Spacer(modifier = Modifier.height(4.dp))
+                Spacer(modifier = Modifier.height(8.dp))
             }
         }
     }
+}
+
+@Composable
+fun FormattedText(
+    text: String,
+    style: androidx.compose.ui.text.TextStyle,
+    color: androidx.compose.ui.graphics.Color,
+    modifier: Modifier = Modifier
+) {
+    val annotatedString = androidx.compose.ui.text.buildAnnotatedString {
+        val boldRegex = Regex("""\*\*(.+?)\*\*""")
+        val underscoreRegex = Regex("""__(.+?)__""")
+        
+        val allMatches = mutableListOf<Triple<Int, Int, String>>()
+        
+        boldRegex.findAll(text).forEach { match ->
+            allMatches.add(Triple(match.range.first, match.range.last + 1, match.groupValues[1]))
+        }
+        underscoreRegex.findAll(text).forEach { match ->
+            allMatches.add(Triple(match.range.first, match.range.last + 1, match.groupValues[1]))
+        }
+        
+        allMatches.sortBy { it.first }
+        
+        if (allMatches.isEmpty()) {
+            append(text)
+        } else {
+            var lastIndex = 0
+            allMatches.forEach { (start, end, innerText) ->
+                if (start > lastIndex) {
+                    append(text.substring(lastIndex, start))
+                }
+                
+                pushStyle(androidx.compose.ui.text.SpanStyle(fontWeight = FontWeight.Bold))
+                append(innerText)
+                pop()
+                
+                lastIndex = end
+            }
+            
+            if (lastIndex < text.length) {
+                append(text.substring(lastIndex))
+            }
+        }
+    }
+    
+    Text(
+        text = annotatedString,
+        style = style,
+        color = color,
+        modifier = modifier
+    )
 }

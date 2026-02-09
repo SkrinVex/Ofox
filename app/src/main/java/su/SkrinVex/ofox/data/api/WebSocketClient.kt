@@ -76,6 +76,38 @@ class WebSocketClient(private val context: Context) {
                             _events.value = WSEvent.ChatUpdate(chatId, lastMessage, timestamp)
                             Log.d("WebSocket", "Chat update event: chatId=$chatId")
                         }
+                        "NEW_COMMENT" -> {
+                            val postId = json.getInt("postId")
+                            val commentObj = json.getJSONObject("comment")
+                            val badgesArray = commentObj.optJSONArray("author_badges")
+                            val badges = if (badgesArray != null) {
+                                (0 until badgesArray.length()).map { i ->
+                                    val obj = badgesArray.getJSONObject(i)
+                                    su.SkrinVex.ofox.data.api.models.BadgeResponse(
+                                        badge_type = obj.getString("badge_type"),
+                                        description = obj.getString("description")
+                                    )
+                                }
+                            } else emptyList()
+                            
+                            val comment = su.SkrinVex.ofox.data.api.models.CommentResponse(
+                                id = commentObj.getInt("id"),
+                                post_id = commentObj.getInt("post_id"),
+                                author_id = commentObj.getInt("author_id"),
+                                author_name = commentObj.getString("author_name"),
+                                author_badges = badges,
+                                content = commentObj.getString("content"),
+                                created_at = commentObj.getString("created_at")
+                            )
+                            _events.value = WSEvent.NewComment(postId, comment)
+                            Log.d("WebSocket", "New comment event: postId=$postId")
+                        }
+                        "DELETE_COMMENT" -> {
+                            val postId = json.getInt("postId")
+                            val commentId = json.getInt("commentId")
+                            _events.value = WSEvent.DeleteComment(postId, commentId)
+                            Log.d("WebSocket", "Delete comment event: postId=$postId, commentId=$commentId")
+                        }
                     }
                 } catch (e: Exception) {
                     Log.e("WebSocket", "Error parsing message", e)
@@ -122,6 +154,8 @@ sealed class WSEvent {
     data class NewPost(val postId: Int) : WSEvent()
     data class NewMessage(val chatId: Int, val message: String, val timestamp: Long) : WSEvent()
     data class ChatUpdate(val chatId: Int, val lastMessage: String, val timestamp: Long) : WSEvent()
+    data class NewComment(val postId: Int, val comment: su.SkrinVex.ofox.data.api.models.CommentResponse) : WSEvent()
+    data class DeleteComment(val postId: Int, val commentId: Int) : WSEvent()
 }
 
 data class Badge(

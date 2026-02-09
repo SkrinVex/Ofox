@@ -28,6 +28,7 @@ import kotlinx.coroutines.launch
 import su.SkrinVex.ofox.components.CreativePostCard
 import su.SkrinVex.ofox.components.ShareBottomSheet
 import su.SkrinVex.ofox.components.PostMenuBottomSheet
+import su.SkrinVex.ofox.components.CommentsBottomSheet
 import su.SkrinVex.ofox.data.Repository
 import su.SkrinVex.ofox.utils.formatTime
 
@@ -43,10 +44,13 @@ fun HomeScreen(
     var showCreatePost by remember { mutableStateOf(false) }
     var showDeleteDialog by remember { mutableStateOf(false) }
     var showHashtagSearch by remember { mutableStateOf(false) }
+    var showComments by remember { mutableStateOf(false) }
     var selectedHashtag by remember { mutableStateOf("") }
     var hashtagPosts by remember { mutableStateOf(listOf<su.SkrinVex.ofox.data.Post>()) }
     var selectedPostId by remember { mutableStateOf(0) }
     var selectedPost by remember { mutableStateOf<su.SkrinVex.ofox.data.Post?>(null) }
+    var comments by remember { mutableStateOf(listOf<su.SkrinVex.ofox.data.api.models.CommentResponse>()) }
+    val commentDrafts = remember { mutableMapOf<Int, String>() }
     val posts = remember { androidx.compose.runtime.snapshots.SnapshotStateList<su.SkrinVex.ofox.data.Post>() }
     var currentUser by remember { mutableStateOf<su.SkrinVex.ofox.data.User?>(null) }
     var isInitialized by remember { mutableStateOf(false) }
@@ -201,6 +205,20 @@ fun HomeScreen(
                 }
                 is su.SkrinVex.ofox.data.api.WSEvent.NewMessage,
                 is su.SkrinVex.ofox.data.api.WSEvent.ChatUpdate -> {}
+                is su.SkrinVex.ofox.data.api.WSEvent.NewComment -> {
+                    android.util.Log.d("HomeScreen", "New comment for post ${event.postId}")
+                    if (showComments && selectedPostId == event.postId) {
+                        if (comments.none { it.id == event.comment.id }) {
+                            comments = comments + event.comment
+                        }
+                    }
+                }
+                is su.SkrinVex.ofox.data.api.WSEvent.DeleteComment -> {
+                    android.util.Log.d("HomeScreen", "Delete comment ${event.commentId} from post ${event.postId}")
+                    if (showComments && selectedPostId == event.postId) {
+                        comments = comments.filter { it.id != event.commentId }
+                    }
+                }
                 null -> {}
             }
         }
@@ -281,7 +299,13 @@ fun HomeScreen(
                                 }
                             }
                         },
-                        onComment = { },
+                        onComment = {
+                            selectedPostId = post.id
+                            scope.launch {
+                                comments = repository.getComments(post.id)
+                                showComments = true
+                            }
+                        },
                         onShare = { 
                             selectedPostId = post.id
                             showShareMenu = true 
@@ -507,6 +531,44 @@ fun HomeScreen(
             },
             onAuthorClick = { authorId ->
                 showHashtagSearch = false
+                navController?.navigate("user_profile/$authorId")
+            }
+        )
+    }
+
+    if (showComments) {
+        su.SkrinVex.ofox.components.CommentsBottomSheet(
+            postId = selectedPostId,
+            comments = comments,
+            currentUserId = currentUser?.id,
+            commentDrafts = commentDrafts,
+            repository = repository,
+            onDismiss = { 
+                showComments = false
+                scope.launch {
+                    repository.getPostById(selectedPostId)?.let { updatedPost ->
+                        val index = posts.indexOfFirst { it.id == selectedPostId }
+                        if (index != -1) {
+                            posts[index] = updatedPost
+                        }
+                    }
+                }
+            },
+            onSendComment = { content ->
+                scope.launch {
+                    repository.createComment(selectedPostId, content)
+                }
+            },
+            onDeleteComment = { commentId ->
+                android.util.Log.d("HomeScreen", "onDeleteComment called with id: $commentId")
+                scope.launch {
+                    android.util.Log.d("HomeScreen", "Calling repository.deleteComment($commentId)")
+                    repository.deleteComment(commentId)
+                    android.util.Log.d("HomeScreen", "deleteComment completed")
+                }
+            },
+            onAuthorClick = { authorId ->
+                showComments = false
                 navController?.navigate("user_profile/$authorId")
             }
         )

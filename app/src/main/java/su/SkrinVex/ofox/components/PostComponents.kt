@@ -27,6 +27,9 @@ import kotlinx.coroutines.launch
 import su.SkrinVex.ofox.screens.CreativePost
 import su.SkrinVex.ofox.screens.PostType
 import su.SkrinVex.ofox.utils.formatTime
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.ui.text.style.TextOverflow
 
 @Composable
 fun HashtagText(
@@ -41,7 +44,7 @@ fun HashtagText(
     val annotatedString = buildAnnotatedString {
         val regex = Regex("""(#\w+)|(\s+)|(\n)""")
         var lastIndex = 0
-        
+
         regex.findAll(text).forEach { match ->
             // Добавляем текст до совпадения
             if (match.range.first > lastIndex) {
@@ -49,7 +52,7 @@ fun HashtagText(
                     append(text.substring(lastIndex, match.range.first))
                 }
             }
-            
+
             when {
                 match.value.startsWith("#") -> {
                     pushStringAnnotation(tag = "HASHTAG", annotation = match.value)
@@ -62,7 +65,7 @@ fun HashtagText(
             }
             lastIndex = match.range.last + 1
         }
-        
+
         // Добавляем оставшийся текст
         if (lastIndex < text.length) {
             withStyle(style = SpanStyle(color = color)) {
@@ -70,7 +73,7 @@ fun HashtagText(
             }
         }
     }
-    
+
     ClickableText(
         text = annotatedString,
         style = style,
@@ -85,6 +88,7 @@ fun HashtagText(
     )
 }
 
+@OptIn(ExperimentalLayoutApi::class) // Важно для FlowRow
 @Composable
 fun CreativePostCard(
     post: CreativePost,
@@ -106,7 +110,7 @@ fun CreativePostCard(
     LaunchedEffect(isLiked) {
         liked = isLiked
     }
-    
+
     LaunchedEffect(isHighlighted) {
         if (isHighlighted) {
             shouldHighlight = true
@@ -114,7 +118,7 @@ fun CreativePostCard(
             shouldHighlight = false
         }
     }
-    
+
     val animatedAlpha by androidx.compose.animation.core.animateFloatAsState(
         targetValue = if (shouldHighlight) 0.2f else 0f,
         animationSpec = androidx.compose.animation.core.tween(500)
@@ -137,9 +141,9 @@ fun CreativePostCard(
         Column(
             modifier = Modifier.padding(16.dp)
         ) {
-            // Header
+            // --- HEADER START ---
             Row(
-                verticalAlignment = Alignment.CenterVertically,
+                verticalAlignment = Alignment.Top, // ИСПРАВЛЕНО: было crossAxisAlignment
                 modifier = Modifier
                     .fillMaxWidth()
                     .clickable(onClick = onAuthorClick)
@@ -161,26 +165,40 @@ fun CreativePostCard(
                 Spacer(modifier = Modifier.width(12.dp))
 
                 Column(modifier = Modifier.weight(1f)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
+                    // Используем FlowRow для умного переноса элементов
+                    FlowRow(
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        // Имя автора
                         Text(
                             text = post.author,
                             style = MaterialTheme.typography.titleSmall,
                             color = MaterialTheme.colorScheme.onSurface,
-                            fontWeight = FontWeight.SemiBold
+                            fontWeight = FontWeight.SemiBold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.align(Alignment.CenterVertically)
                         )
+
+                        // Бейджи пользователя
                         if (post.authorBadges.isNotEmpty()) {
-                            Spacer(modifier = Modifier.width(6.dp))
-                            UserBadges(badges = post.authorBadges)
+                            Box(modifier = Modifier.align(Alignment.CenterVertically)) {
+                                UserBadges(badges = post.authorBadges)
+                            }
                         }
+
+                        // Бейдж типа поста
                         if (post.type != PostType.TEXT) {
-                            Spacer(modifier = Modifier.width(8.dp))
                             Badge(
                                 containerColor = when (post.type) {
                                     PostType.MOOD -> Color(0xFFFFB74D)
                                     PostType.QUOTE -> Color(0xFF81C784)
                                     PostType.POLL -> Color(0xFF64B5F6)
                                     else -> MaterialTheme.colorScheme.primary
-                                }
+                                },
+                                modifier = Modifier.align(Alignment.CenterVertically)
                             ) {
                                 Text(
                                     text = when (post.type) {
@@ -193,30 +211,48 @@ fun CreativePostCard(
                                 )
                             }
                         }
+
+                        // Бейдж открытия (#Hashtag)
                         if (post.discoveryId > 0 && post.discoveryColor.isNotBlank()) {
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Badge(
-                                containerColor = try {
-                                    Color(android.graphics.Color.parseColor(post.discoveryColor))
-                                } catch (e: Exception) {
-                                    MaterialTheme.colorScheme.primary
-                                }
+                            val bgColor = try {
+                                Color(android.graphics.Color.parseColor(post.discoveryColor))
+                            } catch (e: Exception) {
+                                MaterialTheme.colorScheme.primary
+                            }
+
+                            // Используем Surface вместо Badge для создания "Тега"
+                            Surface(
+                                color = bgColor,
+                                shape = RoundedCornerShape(16.dp), // Сильное закругление (как у чипов)
+                                modifier = Modifier.align(Alignment.CenterVertically)
                             ) {
                                 Text(
                                     text = "#${post.discoveryTitle}",
-                                    style = MaterialTheme.typography.labelSmall
+                                    style = MaterialTheme.typography.labelSmall.copy(
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color.White // Белый текст читается лучше на цветных плашках
+                                    ),
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp) // Компактные отступы
+                                    // Убрали maxLines и overflow, теперь текст будет показываться полностью
+                                    // и переноситься на новую строку внутри FlowRow, если нужно
                                 )
                             }
                         }
                     }
+
+                    // Время поста
                     Text(
                         text = post.time,
                         style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
+                        modifier = Modifier.padding(top = 2.dp)
                     )
                 }
 
-                IconButton(onClick = onMoreClick) {
+                IconButton(
+                    onClick = onMoreClick,
+                    modifier = Modifier.size(24.dp)
+                ) {
                     Icon(
                         Icons.Default.MoreVert,
                         contentDescription = "Меню",
@@ -224,10 +260,11 @@ fun CreativePostCard(
                     )
                 }
             }
+            // --- HEADER END ---
 
             Spacer(modifier = Modifier.height(12.dp))
 
-            // Content with hashtag highlighting and "Read more"
+            // Content
             var isExpanded by remember { mutableStateOf(false) }
             val hasOverflow = remember { mutableStateOf(false) }
 
@@ -261,7 +298,7 @@ fun CreativePostCard(
                 }
             }
 
-            // Poll options (if poll)
+            // Polls
             if (post.type == PostType.POLL && post.pollOptions.isNotEmpty()) {
                 Spacer(modifier = Modifier.height(12.dp))
                 val totalVotes = post.pollVotes.sum()
@@ -285,7 +322,6 @@ fun CreativePostCard(
                             )
                         ) {
                             Box(modifier = Modifier.fillMaxWidth()) {
-                                // Progress bar
                                 if (hasVoted) {
                                     Box(
                                         modifier = Modifier
@@ -454,7 +490,7 @@ fun ShareBottomSheet(
                     style = MaterialTheme.typography.bodyMedium
                 )
             }
-            
+
             if (showSnackbar) {
                 Spacer(modifier = Modifier.height(8.dp))
                 androidx.compose.material3.Card(
@@ -601,7 +637,7 @@ fun ShareDiscoveryBottomSheet(
                     style = MaterialTheme.typography.bodyMedium
                 )
             }
-            
+
             if (showSnackbar) {
                 Spacer(modifier = Modifier.height(8.dp))
                 androidx.compose.material3.Card(
@@ -654,7 +690,7 @@ fun HashtagSearchDialog(
                 fontWeight = FontWeight.Bold,
                 modifier = Modifier.padding(bottom = 16.dp)
             )
-            
+
             if (posts.isEmpty()) {
                 Box(
                     modifier = Modifier.fillMaxSize(),
@@ -687,7 +723,7 @@ fun HashtagSearchDialog(
                         } catch (e: Exception) {
                             emptyList()
                         }
-                        
+
                         CreativePostCard(
                             post = CreativePost(
                                 post.authorName,

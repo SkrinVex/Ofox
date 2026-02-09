@@ -44,6 +44,7 @@ data class PostResponse(
     val type: String?,
     val likes: Int?,
     val shares: Int?,
+    val comments: Int?,
     val is_liked: Boolean?,
     val poll_options: List<String>?,
     val poll_votes: List<Int>?,
@@ -94,5 +95,17 @@ data class MessageResponse(
 )
 
 data class SendMessageRequest(val text: String)
+
+data class CommentResponse(
+    val id: Int,
+    val post_id: Int,
+    val author_id: Int,
+    val author_name: String,
+    val author_badges: List<BadgeResponse>?,
+    val content: String,
+    val created_at: String
+)
+
+data class CreateCommentRequest(val content: String)
 
 data class AppInfoResponse(val content: String)

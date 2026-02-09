@@ -302,6 +302,43 @@ class Repository(private val context: Context) {
         }
     }
 
+    suspend fun getPostById(postId: Int): Post? = withContext(Dispatchers.IO) {
+        try {
+            val response = apiClient.api.getPostById(postId)
+            response.toPost()
+        } catch (e: Exception) {
+            android.util.Log.e("Repository", "getPostById error", e)
+            null
+        }
+    }
+
+    // Comments
+    suspend fun getComments(postId: Int): List<CommentResponse> = withContext(Dispatchers.IO) {
+        try {
+            apiClient.api.getComments(postId)
+        } catch (e: Exception) {
+            android.util.Log.e("Repository", "getComments error", e)
+            emptyList()
+        }
+    }
+
+    suspend fun createComment(postId: Int, content: String): CommentResponse? = withContext(Dispatchers.IO) {
+        try {
+            apiClient.api.createComment(postId, CreateCommentRequest(content))
+        } catch (e: Exception) {
+            android.util.Log.e("Repository", "createComment error", e)
+            null
+        }
+    }
+
+    suspend fun deleteComment(commentId: Int) = withContext(Dispatchers.IO) {
+        try {
+            apiClient.api.deleteComment(commentId)
+        } catch (e: Exception) {
+            android.util.Log.e("Repository", "deleteComment error", e)
+        }
+    }
+
     // Discoveries
     suspend fun getAllDiscoveries(): List<Discovery> = withContext(Dispatchers.IO) {
         try {
@@ -474,6 +511,33 @@ class Repository(private val context: Context) {
         }
     }
 
+    suspend fun getCommentRules(): String = withContext(Dispatchers.IO) {
+        try {
+            apiClient.api.getCommentRules().content
+        } catch (e: Exception) {
+            android.util.Log.e("Repository", "Failed to load comment rules", e)
+            "# Правила недоступны\n\nНе удалось загрузить правила комментариев. Проверьте подключение к интернету."
+        }
+    }
+
+    suspend fun getOfoxRules(): String = withContext(Dispatchers.IO) {
+        try {
+            apiClient.api.getOfoxRules().content
+        } catch (e: Exception) {
+            android.util.Log.e("Repository", "Failed to load ofox rules", e)
+            "# Правила недоступны\n\nНе удалось загрузить правила Ofox. Проверьте подключение к интернету."
+        }
+    }
+
+    suspend fun getPrivacyPolicy(): String = withContext(Dispatchers.IO) {
+        try {
+            apiClient.api.getPrivacyPolicy().content
+        } catch (e: Exception) {
+            android.util.Log.e("Repository", "Failed to load privacy policy", e)
+            "# Политика недоступна\n\nНе удалось загрузить политику конфиденциальности. Проверьте подключение к интернету."
+        }
+    }
+
     suspend fun createChat(userId: Int, userName: String): Long? = withContext(Dispatchers.IO) {
         try {
             android.util.Log.d("Repository", "Creating chat with user $userId ($userName)")
@@ -517,6 +581,7 @@ class Repository(private val context: Context) {
         authorName = author_name ?: "Unknown",
         content = content ?: "",
         likes = likes ?: 0,
+        comments = comments ?: 0,
         shares = shares ?: 0,
         timestamp = created_timestamp ?: parseTimestamp(created_at),
         type = type ?: "TEXT",
