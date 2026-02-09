@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.ClickableText
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -25,6 +26,7 @@ import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
 import su.SkrinVex.ofox.screens.CreativePost
 import su.SkrinVex.ofox.screens.PostType
+import su.SkrinVex.ofox.utils.formatTime
 
 @Composable
 fun HashtagText(
@@ -33,24 +35,54 @@ fun HashtagText(
     color: Color,
     hashtagColor: Color,
     maxLines: Int = Int.MAX_VALUE,
-    onTextLayout: (androidx.compose.ui.text.TextLayoutResult) -> Unit = {}
+    onTextLayout: (androidx.compose.ui.text.TextLayoutResult) -> Unit = {},
+    onHashtagClick: (String) -> Unit = {}
 ) {
     val annotatedString = buildAnnotatedString {
-        val words = text.split(" ")
-        words.forEachIndexed { index, word ->
-            if (word.startsWith("#") && word.length > 1) {
-                withStyle(style = SpanStyle(color = hashtagColor, fontWeight = FontWeight.SemiBold)) {
-                    append(word)
-                }
-            } else {
+        val regex = Regex("""(#\w+)|(\s+)|(\n)""")
+        var lastIndex = 0
+        
+        regex.findAll(text).forEach { match ->
+            // Добавляем текст до совпадения
+            if (match.range.first > lastIndex) {
                 withStyle(style = SpanStyle(color = color)) {
-                    append(word)
+                    append(text.substring(lastIndex, match.range.first))
                 }
             }
-            if (index < words.size - 1) append(" ")
+            
+            when {
+                match.value.startsWith("#") -> {
+                    pushStringAnnotation(tag = "HASHTAG", annotation = match.value)
+                    withStyle(style = SpanStyle(color = hashtagColor, fontWeight = FontWeight.SemiBold)) {
+                        append(match.value)
+                    }
+                    pop()
+                }
+                else -> append(match.value)
+            }
+            lastIndex = match.range.last + 1
+        }
+        
+        // Добавляем оставшийся текст
+        if (lastIndex < text.length) {
+            withStyle(style = SpanStyle(color = color)) {
+                append(text.substring(lastIndex))
+            }
         }
     }
-    Text(text = annotatedString, style = style, maxLines = maxLines, onTextLayout = onTextLayout)
+    
+    ClickableText(
+        text = annotatedString,
+        style = style,
+        maxLines = maxLines,
+        onTextLayout = onTextLayout,
+        onClick = { offset ->
+            annotatedString.getStringAnnotations(tag = "HASHTAG", start = offset, end = offset)
+                .firstOrNull()?.let { annotation ->
+                    onHashtagClick(annotation.item)
+                }
+        }
+    )
 }
 
 @Composable
@@ -63,7 +95,8 @@ fun CreativePostCard(
     onShare: () -> Unit,
     onMoreClick: () -> Unit,
     onVote: (Int) -> Unit = {},
-    onAuthorClick: () -> Unit = {}
+    onAuthorClick: () -> Unit = {},
+    onHashtagClick: (String) -> Unit = {}
 ) {
     var liked by remember { mutableStateOf(isLiked) }
     var likesCount by remember { mutableStateOf(post.likes) }
@@ -209,7 +242,8 @@ fun CreativePostCard(
                         if (!isExpanded && !hasOverflow.value) {
                             hasOverflow.value = result.hasVisualOverflow
                         }
-                    }
+                    },
+                    onHashtagClick = onHashtagClick
                 )
 
                 if (hasOverflow.value) {
@@ -585,6 +619,108 @@ fun ShareDiscoveryBottomSheet(
             }
 
             Spacer(modifier = Modifier.height(16.dp))
+        }
+    }
+}
+
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun HashtagSearchDialog(
+    hashtag: String,
+    posts: List<su.SkrinVex.ofox.data.Post>,
+    currentUserId: Int?,
+    onDismiss: () -> Unit,
+    onPostClick: (Int) -> Unit,
+    onLike: (su.SkrinVex.ofox.data.Post) -> Unit,
+    onShare: (Int) -> Unit,
+    onMoreClick: (su.SkrinVex.ofox.data.Post) -> Unit,
+    onVote: (Int, Int) -> Unit,
+    onAuthorClick: (Int) -> Unit
+) {
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        containerColor = MaterialTheme.colorScheme.surface
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .fillMaxHeight(0.9f)
+                .padding(horizontal = 16.dp)
+        ) {
+            Text(
+                text = "Посты с $hashtag",
+                style = MaterialTheme.typography.headlineSmall,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.padding(bottom = 16.dp)
+            )
+            
+            if (posts.isEmpty()) {
+                Box(
+                    modifier = Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = "Постов с этим хештегом не найдено",
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                    )
+                }
+            } else {
+                androidx.compose.foundation.lazy.LazyColumn(
+                    verticalArrangement = Arrangement.spacedBy(16.dp),
+                    contentPadding = PaddingValues(bottom = 16.dp)
+                ) {
+                    items(posts.size) { index ->
+                        val post = posts[index]
+                        val badges = try {
+                            if (post.authorBadges.isNotEmpty()) {
+                                val jsonArray = org.json.JSONArray(post.authorBadges)
+                                (0 until jsonArray.length()).map { i ->
+                                    val obj = jsonArray.getJSONObject(i)
+                                    su.SkrinVex.ofox.data.api.models.BadgeResponse(
+                                        badge_type = obj.getString("badge_type"),
+                                        description = obj.getString("description")
+                                    )
+                                }
+                            } else emptyList()
+                        } catch (e: Exception) {
+                            emptyList()
+                        }
+                        
+                        CreativePostCard(
+                            post = CreativePost(
+                                post.authorName,
+                                post.content,
+                                post.likes,
+                                post.comments,
+                                post.shares,
+                                formatTime(post.timestamp),
+                                PostType.valueOf(post.type),
+                                post.pollOptions.split("|||").filter { it.isNotEmpty() },
+                                post.pollVotes.split(",").mapNotNull { it.toIntOrNull() },
+                                post.userVote,
+                                post.authorId,
+                                post.discoveryId,
+                                post.discoveryTitle,
+                                post.discoveryColor,
+                                badges
+                            ),
+                            isLiked = post.isLiked,
+                            onLike = { onLike(post) },
+                            onComment = { },
+                            onShare = { onShare(post.id) },
+                            onMoreClick = { onMoreClick(post) },
+                            onVote = { optionIndex -> onVote(post.id, optionIndex) },
+                            onAuthorClick = {
+                                if (post.authorId != currentUserId) {
+                                    onAuthorClick(post.authorId)
+                                }
+                            }
+                        )
+                    }
+                }
+            }
         }
     }
 }

@@ -42,6 +42,9 @@ fun HomeScreen(
     var showPostMenu by remember { mutableStateOf(false) }
     var showCreatePost by remember { mutableStateOf(false) }
     var showDeleteDialog by remember { mutableStateOf(false) }
+    var showHashtagSearch by remember { mutableStateOf(false) }
+    var selectedHashtag by remember { mutableStateOf("") }
+    var hashtagPosts by remember { mutableStateOf(listOf<su.SkrinVex.ofox.data.Post>()) }
     var selectedPostId by remember { mutableStateOf(0) }
     var selectedPost by remember { mutableStateOf<su.SkrinVex.ofox.data.Post?>(null) }
     val posts = remember { androidx.compose.runtime.snapshots.SnapshotStateList<su.SkrinVex.ofox.data.Post>() }
@@ -65,9 +68,16 @@ fun HomeScreen(
     }
 
     fun loadPosts(offset: Int = 0, force: Boolean = false) {
+        if (offset == 0) {
+            if (isLoading) return
+            isLoading = true
+        } else {
+            if (isLoadingMore) return
+            isLoadingMore = true
+        }
+        
         scope.launch {
             try {
-                if (offset == 0) isLoading = true else isLoadingMore = true
                 val newPosts = repository.getAllPosts(limit = 20, offset = offset)
                 if (offset == 0 && force) {
                     posts.clear()
@@ -199,7 +209,7 @@ fun HomeScreen(
     LaunchedEffect(listState) {
         snapshotFlow { listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index }
             .collect { lastIndex ->
-                if (lastIndex != null && lastIndex >= posts.size - 3 && !isLoadingMore && hasMore) {
+                if (lastIndex != null && lastIndex >= posts.size - 3 && !isLoadingMore && !isLoading && hasMore) {
                     loadPosts(posts.size)
                 }
             }
@@ -293,6 +303,11 @@ fun HomeScreen(
                             if (post.authorId != currentUser?.id) {
                                 navController?.navigate("user_profile/${post.authorId}")
                             }
+                        },
+                        onHashtagClick = { hashtag ->
+                            selectedHashtag = hashtag
+                            hashtagPosts = posts.filter { it.content.contains(hashtag) }
+                            showHashtagSearch = true
                         }
                     )
                 }
@@ -321,6 +336,7 @@ fun HomeScreen(
         ) {
             Icon(Icons.Default.Add, contentDescription = "Создать пост")
         }
+    }
     }
     
     if (showShareMenu) {
@@ -445,7 +461,55 @@ fun HomeScreen(
                 }
             }
         )
-        }
+    }
+    
+    if (showHashtagSearch) {
+        su.SkrinVex.ofox.components.HashtagSearchDialog(
+            hashtag = selectedHashtag,
+            posts = hashtagPosts,
+            currentUserId = currentUser?.id,
+            onDismiss = { showHashtagSearch = false },
+            onPostClick = { },
+            onLike = { post ->
+                scope.launch {
+                    repository.toggleLike(post)?.let { updatedPost ->
+                        val index = posts.indexOfFirst { it.id == updatedPost.id }
+                        if (index != -1) posts[index] = updatedPost
+                        val hashIndex = hashtagPosts.indexOfFirst { it.id == updatedPost.id }
+                        if (hashIndex != -1) {
+                            hashtagPosts = hashtagPosts.toMutableList().apply { this[hashIndex] = updatedPost }
+                        }
+                    }
+                }
+            },
+            onShare = { postId ->
+                selectedPostId = postId
+                showHashtagSearch = false
+                showShareMenu = true
+            },
+            onMoreClick = { post ->
+                selectedPost = post
+                selectedPostId = post.id
+                showHashtagSearch = false
+                showPostMenu = true
+            },
+            onVote = { postId, optionIndex ->
+                scope.launch {
+                    repository.voteOnPoll(postId, optionIndex)?.let { updatedPost ->
+                        val index = posts.indexOfFirst { it.id == updatedPost.id }
+                        if (index != -1) posts[index] = updatedPost
+                        val hashIndex = hashtagPosts.indexOfFirst { it.id == updatedPost.id }
+                        if (hashIndex != -1) {
+                            hashtagPosts = hashtagPosts.toMutableList().apply { this[hashIndex] = updatedPost }
+                        }
+                    }
+                }
+            },
+            onAuthorClick = { authorId ->
+                showHashtagSearch = false
+                navController?.navigate("user_profile/$authorId")
+            }
+        )
     }
 }
 
