@@ -109,3 +109,24 @@ data class CommentResponse(
 data class CreateCommentRequest(val content: String)
 
 data class AppInfoResponse(val content: String)
+
+data class WarningResponse(
+    val id: Int,
+    val reason: String,
+    val warningNumber: Int,
+    val totalWarnings: Int
+)
+
+data class BanResponse(
+    val reason: String,
+    val expiresAt: String?
+)
+
+data class DeletedContentResponse(
+    val id: Int,
+    @com.google.gson.annotations.SerializedName("content_type")
+    val contentType: String,
+    @com.google.gson.annotations.SerializedName("content_id")
+    val contentId: Int,
+    val reason: String
+)

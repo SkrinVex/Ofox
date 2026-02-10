@@ -131,7 +131,7 @@ interface PostDao {
     @Query("SELECT * FROM posts WHERE discoveryId = :discoveryId ORDER BY timestamp DESC")
     suspend fun getPostsByDiscovery(discoveryId: Int): List<Post>
 
-    @Insert
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertPost(post: Post)
 
     @Query("UPDATE posts SET likes = :likes, isLiked = :isLiked WHERE id = :postId")

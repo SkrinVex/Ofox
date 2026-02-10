@@ -107,4 +107,19 @@ interface ApiService {
     
     @GET("privacy-policy")
     suspend fun getPrivacyPolicy(): AppInfoResponse
+    
+    @GET("moderation/warnings/{userId}")
+    suspend fun getWarnings(@Path("userId") userId: Int): List<WarningResponse>
+    
+    @POST("moderation/warnings/{id}/delivered")
+    suspend fun markWarningDelivered(@Path("id") warningId: Int): SimpleMessageResponse
+    
+    @GET("moderation/bans/{userId}")
+    suspend fun getBan(@Path("userId") userId: Int): BanResponse?
+    
+    @GET("moderation/deleted-content")
+    suspend fun getDeletedContent(): List<DeletedContentResponse>
+    
+    @POST("moderation/deleted-content/{id}/viewed")
+    suspend fun markContentViewed(@Path("id") contentId: Int): SimpleMessageResponse
 }

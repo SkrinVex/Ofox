@@ -60,21 +60,24 @@ fun EditProfileScreen(repository: Repository, onBack: () -> Unit) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
+                .verticalScroll(rememberScrollState())
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             OutlinedTextField(
                 value = name,
-                onValueChange = { name = it },
+                onValueChange = { if (it.length <= 50) name = it },
                 label = { Text("Имя") },
+                supportingText = { Text("${name.length}/50") },
                 modifier = Modifier.fillMaxWidth(),
                 shape = MaterialTheme.shapes.medium
             )
 
             OutlinedTextField(
                 value = bio,
-                onValueChange = { bio = it },
+                onValueChange = { if (it.length <= 450) bio = it },
                 label = { Text("О себе") },
+                supportingText = { Text("${bio.length}/450") },
                 modifier = Modifier.fillMaxWidth(),
                 shape = MaterialTheme.shapes.medium,
                 minLines = 3

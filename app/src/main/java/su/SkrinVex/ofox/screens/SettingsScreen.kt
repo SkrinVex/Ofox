@@ -22,7 +22,12 @@ import su.SkrinVex.ofox.data.Repository
 data class SettingItem(val title: String, val subtitle: String, val icon: ImageVector, val route: String?)
 
 @Composable
-fun SettingsScreen(repository: Repository, navController: NavController, onLogout: () -> Unit) {
+fun SettingsScreen(
+    repository: Repository, 
+    navController: NavController, 
+    onLogout: () -> Unit,
+    hasUndeliveredWarnings: Boolean = false
+) {
     var showLogoutDialog by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     
@@ -70,12 +75,22 @@ fun SettingsScreen(repository: Repository, navController: NavController, onLogou
                             .padding(16.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Icon(
-                            imageVector = setting.icon,
-                            contentDescription = setting.title,
-                            tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(24.dp)
-                        )
+                        BadgedBox(
+                            badge = {
+                                if (setting.route == "edit_profile" && hasUndeliveredWarnings) {
+                                    Badge(
+                                        containerColor = MaterialTheme.colorScheme.error
+                                    )
+                                }
+                            }
+                        ) {
+                            Icon(
+                                imageVector = setting.icon,
+                                contentDescription = setting.title,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(24.dp)
+                            )
+                        }
                         
                         Spacer(modifier = Modifier.width(16.dp))
                         

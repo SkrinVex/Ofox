@@ -108,6 +108,33 @@ class WebSocketClient(private val context: Context) {
                             _events.value = WSEvent.DeleteComment(postId, commentId)
                             Log.d("WebSocket", "Delete comment event: postId=$postId, commentId=$commentId")
                         }
+                        "warning" -> {
+                            val data = json.getJSONObject("data")
+                            _events.value = WSEvent.Warning(
+                                id = data.getInt("id"),
+                                reason = data.getString("reason"),
+                                warningNumber = data.getInt("warningNumber"),
+                                totalWarnings = data.getInt("totalWarnings")
+                            )
+                            Log.d("WebSocket", "Warning event received")
+                        }
+                        "ban" -> {
+                            val data = json.getJSONObject("data")
+                            _events.value = WSEvent.Ban(
+                                reason = data.getString("reason"),
+                                expiresAt = if (data.isNull("expiresAt")) null else data.getString("expiresAt")
+                            )
+                            Log.d("WebSocket", "Ban event received")
+                        }
+                        "content_deleted" -> {
+                            val data = json.getJSONObject("data")
+                            _events.value = WSEvent.ContentDeleted(
+                                contentType = data.getString("contentType"),
+                                contentId = data.getInt("contentId"),
+                                reason = data.getString("reason")
+                            )
+                            Log.d("WebSocket", "Content deleted event received")
+                        }
                     }
                 } catch (e: Exception) {
                     Log.e("WebSocket", "Error parsing message", e)
@@ -156,6 +183,9 @@ sealed class WSEvent {
     data class ChatUpdate(val chatId: Int, val lastMessage: String, val timestamp: Long) : WSEvent()
     data class NewComment(val postId: Int, val comment: su.SkrinVex.ofox.data.api.models.CommentResponse) : WSEvent()
     data class DeleteComment(val postId: Int, val commentId: Int) : WSEvent()
+    data class Warning(val id: Int, val reason: String, val warningNumber: Int, val totalWarnings: Int) : WSEvent()
+    data class Ban(val reason: String, val expiresAt: String?) : WSEvent()
+    data class ContentDeleted(val contentType: String, val contentId: Int, val reason: String) : WSEvent()
 }
 
 data class Badge(

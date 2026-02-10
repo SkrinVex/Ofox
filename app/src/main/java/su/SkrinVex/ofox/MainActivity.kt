@@ -57,6 +57,114 @@ class MainActivity : ComponentActivity() {
             OfoxTheme {
                 var isAuthenticated by remember { mutableStateOf(repository.isLoggedIn()) }
                 val deepLink by pendingDeepLink
+                var currentBan by remember { mutableStateOf<su.SkrinVex.ofox.data.api.models.BanResponse?>(null) }
+                var currentWarning by remember { mutableStateOf<su.SkrinVex.ofox.data.api.models.WarningResponse?>(null) }
+                var hasUndeliveredWarnings by remember { mutableStateOf(false) }
+                var deletedContent by remember { mutableStateOf<Pair<Int, Triple<String, Int, String>>?>(null) }
+                val scope = rememberCoroutineScope()
+                
+                // Проверка бана при запуске
+                LaunchedEffect(isAuthenticated) {
+                    if (isAuthenticated) {
+                        kotlinx.coroutines.delay(500)
+                        currentBan = repository.getBan()
+                        
+                        val warnings = repository.getWarnings()
+                        hasUndeliveredWarnings = warnings.isNotEmpty()
+                        if (warnings.isNotEmpty()) {
+                            val warning = warnings.first()
+                            currentWarning = su.SkrinVex.ofox.data.api.models.WarningResponse(
+                                id = warning.id,
+                                reason = warning.reason,
+                                warningNumber = warning.warningNumber,
+                                totalWarnings = 3
+                            )
+                        }
+                        
+                        // Проверяем удаленный контент
+                        val deletedContentList = repository.getDeletedContent()
+                        android.util.Log.d("OFOX", "Deleted content: ${deletedContentList.size} items")
+                        if (deletedContentList.isNotEmpty()) {
+                            val content = deletedContentList.first()
+                            android.util.Log.d("OFOX", "Showing deleted content: ${content.contentType} #${content.contentId}")
+                            deletedContent = Pair(content.id, Triple(content.contentType, content.contentId, content.reason))
+                        }
+                    }
+                }
+                
+                // WebSocket события для модерации
+                val wsClient = remember { su.SkrinVex.ofox.data.api.WebSocketClient.getInstance(this@MainActivity) }
+                LaunchedEffect(wsClient.events) {
+                    wsClient.events.collect { event ->
+                        when (event) {
+                            is su.SkrinVex.ofox.data.api.WSEvent.Warning -> {
+                                currentWarning = su.SkrinVex.ofox.data.api.models.WarningResponse(
+                                    id = event.id,
+                                    reason = event.reason,
+                                    warningNumber = event.warningNumber,
+                                    totalWarnings = event.totalWarnings
+                                )
+                                hasUndeliveredWarnings = true
+                            }
+                            is su.SkrinVex.ofox.data.api.WSEvent.Ban -> {
+                                currentBan = su.SkrinVex.ofox.data.api.models.BanResponse(
+                                    reason = event.reason,
+                                    expiresAt = event.expiresAt
+                                )
+                            }
+                            is su.SkrinVex.ofox.data.api.WSEvent.ContentDeleted -> {
+                                deletedContent = Pair(-1, Triple(event.contentType, event.contentId, event.reason))
+                            }
+                            else -> {}
+                        }
+                    }
+                }
+                
+                // Диалог бана (блокирует все)
+                currentBan?.let { ban ->
+                    su.SkrinVex.ofox.components.BanDialog(
+                        reason = ban.reason,
+                        expiresAt = ban.expiresAt
+                    )
+                }
+                
+                // Диалог предупреждения
+                currentWarning?.let { warning ->
+                    su.SkrinVex.ofox.components.WarningDialog(
+                        warningNumber = warning.warningNumber,
+                        totalWarnings = warning.totalWarnings,
+                        reason = warning.reason,
+                        onDismiss = {
+                            lifecycleScope.launch {
+                                repository.markWarningDelivered(warning.id)
+                                currentWarning = null
+                                hasUndeliveredWarnings = false
+                            }
+                        }
+                    )
+                }
+                
+                // Диалог удаления контента
+                deletedContent?.let { (dbId, data) ->
+                    val (type, contentId, reason) = data
+                    su.SkrinVex.ofox.components.ContentDeletedDialog(
+                        contentType = type,
+                        contentId = contentId,
+                        reason = reason,
+                        onDismiss = { 
+                            if (dbId > 0) {
+                                scope.launch {
+                                    try {
+                                        repository.markContentViewed(dbId)
+                                    } catch (e: Exception) {
+                                        android.util.Log.e("OFOX", "Error marking content viewed", e)
+                                    }
+                                }
+                            }
+                            deletedContent = null 
+                        }
+                    )
+                }
                 
                 android.util.Log.d("OFOX", "Compose: isAuthenticated=$isAuthenticated, deepLink=$deepLink")
                 
@@ -153,6 +261,11 @@ class MainActivity : ComponentActivity() {
                                                                 Text(if (totalUnread > 9) "9+" else totalUnread.toString())
                                                             }
                                                         }
+                                                        if (screen.route == Screen.Settings.route && hasUndeliveredWarnings) {
+                                                            Badge(
+                                                                containerColor = MaterialTheme.colorScheme.error
+                                                            )
+                                                        }
                                                     }
                                                 ) {
                                                     Icon(
@@ -233,7 +346,8 @@ class MainActivity : ComponentActivity() {
                                 SettingsScreen(
                                     repository = repository,
                                     navController = navController,
-                                    onLogout = { isAuthenticated = false }
+                                    onLogout = { isAuthenticated = false },
+                                    hasUndeliveredWarnings = hasUndeliveredWarnings
                                 ) 
                             }
                             composable("edit_profile") {

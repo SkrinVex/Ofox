@@ -176,7 +176,7 @@ class Repository(private val context: Context) {
     // Posts with cache and pagination
     suspend fun getAllPosts(limit: Int = 20, offset: Int = 0): List<Post> = withContext(Dispatchers.IO) {
         try {
-            val posts = apiClient.api.getPosts(limit = limit, offset = offset).map { it.toPost() }
+            val posts = apiClient.api.getPosts(limit = limit, offset = offset).map { it.toPost() }.distinctBy { it.id }
             posts.forEach { 
                 try {
                     db.postDao().insertPost(it)
@@ -189,7 +189,7 @@ class Repository(private val context: Context) {
             android.util.Log.e("Repository", "Error fetching posts from API", e)
             if (offset == 0) {
                 try {
-                    db.postDao().getAllPosts()
+                    db.postDao().getAllPosts().distinctBy { it.id }
                 } catch (dbError: Exception) {
                     android.util.Log.e("Repository", "Error fetching posts from DB", dbError)
                     emptyList()
@@ -535,6 +535,60 @@ class Repository(private val context: Context) {
         } catch (e: Exception) {
             android.util.Log.e("Repository", "Failed to load privacy policy", e)
             "# Политика недоступна\n\nНе удалось загрузить политику конфиденциальности. Проверьте подключение к интернету."
+        }
+    }
+
+    suspend fun getWarnings(): List<su.SkrinVex.ofox.data.api.models.WarningResponse> = withContext(Dispatchers.IO) {
+        try {
+            val userId = getCurrentUserId() ?: return@withContext emptyList()
+            apiClient.api.getWarnings(userId)
+        } catch (e: Exception) {
+            android.util.Log.e("Repository", "Failed to load warnings", e)
+            emptyList()
+        }
+    }
+
+    suspend fun markWarningDelivered(warningId: Int) = withContext(Dispatchers.IO) {
+        try {
+            apiClient.api.markWarningDelivered(warningId)
+        } catch (e: Exception) {
+            android.util.Log.e("Repository", "Failed to mark warning delivered", e)
+        }
+    }
+
+    suspend fun getBan(): su.SkrinVex.ofox.data.api.models.BanResponse? = withContext(Dispatchers.IO) {
+        try {
+            val userId = getCurrentUserId() ?: return@withContext null
+            val response = apiClient.api.getBan(userId)
+            response
+        } catch (e: retrofit2.HttpException) {
+            if (e.code() == 404) null else {
+                android.util.Log.e("Repository", "Failed to load ban", e)
+                null
+            }
+        } catch (e: Exception) {
+            android.util.Log.e("Repository", "Failed to load ban", e)
+            null
+        }
+    }
+
+    suspend fun getDeletedContent(): List<su.SkrinVex.ofox.data.api.models.DeletedContentResponse> = withContext(Dispatchers.IO) {
+        try {
+            android.util.Log.d("Repository", "Fetching deleted content...")
+            val result = apiClient.api.getDeletedContent()
+            android.util.Log.d("Repository", "Deleted content: ${result.size} items")
+            result
+        } catch (e: Exception) {
+            android.util.Log.e("Repository", "Failed to load deleted content", e)
+            emptyList()
+        }
+    }
+
+    suspend fun markContentViewed(contentId: Int) = withContext(Dispatchers.IO) {
+        try {
+            apiClient.api.markContentViewed(contentId)
+        } catch (e: Exception) {
+            android.util.Log.e("Repository", "Failed to mark content viewed", e)
         }
     }
 

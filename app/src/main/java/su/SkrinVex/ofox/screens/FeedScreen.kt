@@ -43,6 +43,10 @@ fun FeedScreen(
     var filteredDiscoveries by remember { mutableStateOf(listOf<su.SkrinVex.ofox.data.Discovery>()) }
     var searchQuery by remember { mutableStateOf("") }
     var showCreateDialog by remember { mutableStateOf(false) }
+    var discoveryDraftTitle by remember { mutableStateOf("") }
+    var discoveryDraftDescription by remember { mutableStateOf("") }
+    var discoveryDraftCategory by remember { mutableStateOf("Технологии") }
+    var discoveryDraftColor by remember { mutableStateOf("FF4CAF50") }
     var isLoading by remember { mutableStateOf(false) }
     var isInitialized by remember { mutableStateOf(false) }
     var localHighlightDiscoveryId by remember { mutableStateOf<Int?>(null) }
@@ -317,11 +321,25 @@ fun FeedScreen(
     
     if (showCreateDialog) {
         CreateDiscoveryDialog(
+            initialTitle = discoveryDraftTitle,
+            initialDescription = discoveryDraftDescription,
+            initialCategory = discoveryDraftCategory,
+            initialColor = discoveryDraftColor,
             onDismiss = { showCreateDialog = false },
+            onDraftChange = { title, description, category, color ->
+                discoveryDraftTitle = title
+                discoveryDraftDescription = description
+                discoveryDraftCategory = category
+                discoveryDraftColor = color
+            },
             onCreate = { title, description, category, color ->
                 scope.launch {
                     val created = repository.createDiscovery(title, description, category, color)
                     showCreateDialog = false
+                    discoveryDraftTitle = ""
+                    discoveryDraftDescription = ""
+                    discoveryDraftCategory = "Технологии"
+                    discoveryDraftColor = "FF4CAF50"
                     if (created != null) {
                         loadDiscoveries()
                     }
@@ -335,15 +353,24 @@ fun FeedScreen(
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun CreateDiscoveryDialog(
+    initialTitle: String = "",
+    initialDescription: String = "",
+    initialCategory: String = "Технологии",
+    initialColor: String = "FF4CAF50",
     onDismiss: () -> Unit,
+    onDraftChange: (String, String, String, String) -> Unit = { _, _, _, _ -> },
     onCreate: (String, String, String, String) -> Unit
 ) {
-    var title by remember { mutableStateOf("") }
-    var description by remember { mutableStateOf("") }
-    var selectedCategory by remember { mutableStateOf("Технологии") }
-    var selectedColor by remember { mutableStateOf("FF4CAF50") }
+    var title by remember { mutableStateOf(initialTitle) }
+    var description by remember { mutableStateOf(initialDescription) }
+    var selectedCategory by remember { mutableStateOf(initialCategory) }
+    var selectedColor by remember { mutableStateOf(initialColor) }
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val pagerState = rememberPagerState(pageCount = { 3 })
+    
+    LaunchedEffect(title, description, selectedCategory, selectedColor) {
+        onDraftChange(title, description, selectedCategory, selectedColor)
+    }
     
     val categories = listOf(
         listOf("Технологии" to "FF4CAF50", "Наука" to "FF2196F3"),

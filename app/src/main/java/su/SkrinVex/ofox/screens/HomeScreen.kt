@@ -51,6 +51,10 @@ fun HomeScreen(
     var selectedPost by remember { mutableStateOf<su.SkrinVex.ofox.data.Post?>(null) }
     var comments by remember { mutableStateOf(listOf<su.SkrinVex.ofox.data.api.models.CommentResponse>()) }
     val commentDrafts = remember { mutableMapOf<Int, String>() }
+    var postDraftContent by remember { mutableStateOf("") }
+    var postDraftType by remember { mutableStateOf("TEXT") }
+    var postDraftPollOptions by remember { mutableStateOf(listOf("", "")) }
+    var postDraftDiscovery by remember { mutableStateOf<su.SkrinVex.ofox.data.Discovery?>(null) }
     val posts = remember { androidx.compose.runtime.snapshots.SnapshotStateList<su.SkrinVex.ofox.data.Post>() }
     var currentUser by remember { mutableStateOf<su.SkrinVex.ofox.data.User?>(null) }
     var isInitialized by remember { mutableStateOf(false) }
@@ -87,16 +91,14 @@ fun HomeScreen(
                     posts.clear()
                     posts.addAll(newPosts)
                 } else if (offset == 0) {
-                    newPosts.forEach { newPost ->
-                        val index = posts.indexOfFirst { it.id == newPost.id }
-                        if (index != -1) {
-                            posts[index] = newPost
-                        } else {
-                            posts.add(newPost)
-                        }
-                    }
+                    // Обновление: мержим с существующими
+                    val merged = (newPosts + posts).distinctBy { it.id }
+                    posts.clear()
+                    posts.addAll(merged)
                 } else {
-                    posts.addAll(newPosts)
+                    // Пагинация
+                    val existingIds = posts.map { it.id }.toSet()
+                    newPosts.filter { it.id !in existingIds }.forEach { posts.add(it) }
                 }
                 hasMore = newPosts.size == 20
             } catch (e: Exception) {
@@ -186,7 +188,10 @@ fun HomeScreen(
                         val post = posts[index]
                         posts[index] = post.copy(
                             likes = if (event.likes >= 0) event.likes else post.likes,
-                            shares = if (event.shares >= 0) event.shares else post.shares
+                            shares = if (event.shares >= 0) event.shares else post.shares,
+                            // Сохраняем userVote и другие поля
+                            userVote = post.userVote,
+                            isLiked = post.isLiked
                         )
                         android.util.Log.d("HomeScreen", "Updated post ${event.postId}")
                     }
@@ -194,6 +199,11 @@ fun HomeScreen(
                 is su.SkrinVex.ofox.data.api.WSEvent.NewPost -> {
                     scope.launch {
                         try {
+                            // Проверяем, нет ли уже этого поста
+                            if (posts.any { it.id == event.postId }) {
+                                android.util.Log.d("HomeScreen", "Post ${event.postId} already exists")
+                                return@launch
+                            }
                             val newPosts = repository.getAllPosts(limit = 1, offset = 0)
                             if (newPosts.isNotEmpty() && newPosts[0].id == event.postId) {
                                 posts.add(0, newPosts[0])
@@ -204,7 +214,14 @@ fun HomeScreen(
                     }
                 }
                 is su.SkrinVex.ofox.data.api.WSEvent.NewMessage,
-                is su.SkrinVex.ofox.data.api.WSEvent.ChatUpdate -> {}
+                is su.SkrinVex.ofox.data.api.WSEvent.ChatUpdate,
+                is su.SkrinVex.ofox.data.api.WSEvent.Warning,
+                is su.SkrinVex.ofox.data.api.WSEvent.Ban -> {}
+                is su.SkrinVex.ofox.data.api.WSEvent.ContentDeleted -> {
+                    if (event.contentType == "post") {
+                        posts.removeAll { it.id == event.contentId }
+                    }
+                }
                 is su.SkrinVex.ofox.data.api.WSEvent.NewComment -> {
                     android.util.Log.d("HomeScreen", "New comment for post ${event.postId}")
                     if (showComments && selectedPostId == event.postId) {
@@ -247,13 +264,16 @@ fun HomeScreen(
                 .fillMaxSize()
                 .background(MaterialTheme.colorScheme.background)
         ) {
+            val uniquePosts by remember { 
+                derivedStateOf { posts.distinctBy { it.id } }
+            }
             
             LazyColumn(
                 state = listState,
                 verticalArrangement = Arrangement.spacedBy(16.dp),
                 contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp)
             ) {
-                items(posts, key = { it.id }) { post ->
+                items(uniquePosts, key = { it.id }) { post ->
                     val badges = try {
                         if (post.authorBadges.isNotEmpty()) {
                             val jsonArray = org.json.JSONArray(post.authorBadges)
@@ -466,10 +486,24 @@ fun HomeScreen(
 
     if (showCreatePost) {
         CreatePostDialog(
+            initialContent = postDraftContent,
+            initialType = postDraftType,
+            initialPollOptions = postDraftPollOptions,
+            initialDiscovery = postDraftDiscovery,
             onDismiss = { showCreatePost = false },
+            onDraftChange = { content, type, pollOptions, discovery ->
+                postDraftContent = content
+                postDraftType = type
+                postDraftPollOptions = pollOptions
+                postDraftDiscovery = discovery
+            },
             repository = repository,
             onCreate = { content, type, pollOptions, discovery ->
                 showCreatePost = false
+                postDraftContent = ""
+                postDraftType = "TEXT"
+                postDraftPollOptions = listOf("", "")
+                postDraftDiscovery = null
                 scope.launch {
                     try {
                         val newPost = if (type == "POLL" && pollOptions.isNotEmpty()) {
@@ -578,15 +612,20 @@ fun HomeScreen(
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun CreatePostDialog(
-    onDismiss: () -> Unit, 
+    initialContent: String = "",
+    initialType: String = "TEXT",
+    initialPollOptions: List<String> = listOf("", ""),
+    initialDiscovery: su.SkrinVex.ofox.data.Discovery? = null,
+    onDismiss: () -> Unit,
+    onDraftChange: (String, String, List<String>, su.SkrinVex.ofox.data.Discovery?) -> Unit = { _, _, _, _ -> },
     onCreate: (String, String, List<String>, su.SkrinVex.ofox.data.Discovery?) -> Unit,
     repository: Repository
 ) {
-    var content by remember { mutableStateOf("") }
-    var selectedType by remember { mutableStateOf("TEXT") }
-    var pollOptions by remember { mutableStateOf(listOf("", "")) }
+    var content by remember { mutableStateOf(initialContent) }
+    var selectedType by remember { mutableStateOf(initialType) }
+    var pollOptions by remember { mutableStateOf(initialPollOptions) }
+    var selectedDiscovery by remember { mutableStateOf(initialDiscovery) }
     var discoveries by remember { mutableStateOf(listOf<su.SkrinVex.ofox.data.Discovery>()) }
-    var selectedDiscovery by remember { mutableStateOf<su.SkrinVex.ofox.data.Discovery?>(null) }
     val scope = rememberCoroutineScope()
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     
@@ -596,6 +635,10 @@ fun CreatePostDialog(
         } catch (e: Exception) {
             discoveries = emptyList()
         }
+    }
+    
+    LaunchedEffect(content, selectedType, pollOptions, selectedDiscovery) {
+        onDraftChange(content, selectedType, pollOptions, selectedDiscovery)
     }
     
     val postTypes = listOf(
