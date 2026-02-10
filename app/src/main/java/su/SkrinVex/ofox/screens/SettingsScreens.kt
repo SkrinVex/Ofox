@@ -196,7 +196,8 @@ fun OldThemeScreen(onBack: () -> Unit) {
 fun AboutScreen(repository: Repository, onBack: () -> Unit) {
     var showAppInfo by remember { mutableStateOf(false) }
     var appInfoContent by remember { mutableStateOf("") }
-    var isLoading by remember { mutableStateOf(false) }
+    var appInfoTitle by remember { mutableStateOf("") }
+    var isLoading by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
@@ -257,9 +258,10 @@ fun AboutScreen(repository: Repository, onBack: () -> Unit) {
                     .fillMaxWidth()
                     .clickable {
                         scope.launch {
-                            isLoading = true
+                            isLoading = "appInfo"
+                            appInfoTitle = "Важная информация"
                             appInfoContent = repository.getAppInfo()
-                            isLoading = false
+                            isLoading = null
                             showAppInfo = true
                         }
                     },
@@ -287,7 +289,7 @@ fun AboutScreen(repository: Repository, onBack: () -> Unit) {
                             color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
                         )
                     }
-                    if (isLoading) {
+                    if (isLoading == "appInfo") {
                         CircularProgressIndicator(modifier = Modifier.size(24.dp))
                     } else {
                         Icon(
@@ -304,9 +306,10 @@ fun AboutScreen(repository: Repository, onBack: () -> Unit) {
                     .fillMaxWidth()
                     .clickable {
                         scope.launch {
-                            isLoading = true
+                            isLoading = "rules"
+                            appInfoTitle = "Правила Ofox"
                             appInfoContent = repository.getOfoxRules()
-                            isLoading = false
+                            isLoading = null
                             showAppInfo = true
                         }
                     },
@@ -334,11 +337,15 @@ fun AboutScreen(repository: Repository, onBack: () -> Unit) {
                             color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
                         )
                     }
-                    Icon(
-                        Icons.AutoMirrored.Filled.ArrowForward,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
-                    )
+                    if (isLoading == "rules") {
+                        CircularProgressIndicator(modifier = Modifier.size(24.dp))
+                    } else {
+                        Icon(
+                            Icons.AutoMirrored.Filled.ArrowForward,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
+                        )
+                    }
                 }
             }
 
@@ -347,9 +354,10 @@ fun AboutScreen(repository: Repository, onBack: () -> Unit) {
                     .fillMaxWidth()
                     .clickable {
                         scope.launch {
-                            isLoading = true
+                            isLoading = "privacy"
+                            appInfoTitle = "Политика конфиденциальности"
                             appInfoContent = repository.getPrivacyPolicy()
-                            isLoading = false
+                            isLoading = null
                             showAppInfo = true
                         }
                     },
@@ -377,11 +385,15 @@ fun AboutScreen(repository: Repository, onBack: () -> Unit) {
                             color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
                         )
                     }
-                    Icon(
-                        Icons.AutoMirrored.Filled.ArrowForward,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
-                    )
+                    if (isLoading == "privacy") {
+                        CircularProgressIndicator(modifier = Modifier.size(24.dp))
+                    } else {
+                        Icon(
+                            Icons.AutoMirrored.Filled.ArrowForward,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
+                        )
+                    }
                 }
             }
 
@@ -448,12 +460,6 @@ fun AboutScreen(repository: Repository, onBack: () -> Unit) {
                     .padding(horizontal = 24.dp)
                     .padding(bottom = 32.dp)
             ) {
-                Text(
-                    text = "Важная информация",
-                    style = MaterialTheme.typography.headlineSmall,
-                    fontWeight = FontWeight.Bold,
-                    modifier = Modifier.padding(bottom = 16.dp)
-                )
                 MarkdownText(appInfoContent)
             }
         }
@@ -568,33 +574,22 @@ fun FormattedText(
 ) {
     val annotatedString = androidx.compose.ui.text.buildAnnotatedString {
         val boldRegex = Regex("""\*\*(.+?)\*\*""")
-        val underscoreRegex = Regex("""__(.+?)__""")
-        
-        val allMatches = mutableListOf<Triple<Int, Int, String>>()
-        
-        boldRegex.findAll(text).forEach { match ->
-            allMatches.add(Triple(match.range.first, match.range.last + 1, match.groupValues[1]))
-        }
-        underscoreRegex.findAll(text).forEach { match ->
-            allMatches.add(Triple(match.range.first, match.range.last + 1, match.groupValues[1]))
-        }
-        
-        allMatches.sortBy { it.first }
+        val allMatches = boldRegex.findAll(text).toList()
         
         if (allMatches.isEmpty()) {
             append(text)
         } else {
             var lastIndex = 0
-            allMatches.forEach { (start, end, innerText) ->
-                if (start > lastIndex) {
-                    append(text.substring(lastIndex, start))
+            allMatches.forEach { match ->
+                if (match.range.first > lastIndex) {
+                    append(text.substring(lastIndex, match.range.first))
                 }
                 
                 pushStyle(androidx.compose.ui.text.SpanStyle(fontWeight = FontWeight.Bold))
-                append(innerText)
+                append(match.groupValues[1])
                 pop()
                 
-                lastIndex = end
+                lastIndex = match.range.last + 1
             }
             
             if (lastIndex < text.length) {

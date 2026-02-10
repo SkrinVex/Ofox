@@ -461,12 +461,6 @@ fun CommentRulesBottomSheet(
                 .padding(horizontal = 24.dp)
                 .padding(bottom = 32.dp)
         ) {
-            Text(
-                text = "Правила комментариев",
-                style = MaterialTheme.typography.headlineSmall,
-                fontWeight = FontWeight.Bold,
-                modifier = Modifier.padding(bottom = 16.dp)
-            )
             if (rulesContent.isEmpty()) {
                 Box(
                     modifier = Modifier
