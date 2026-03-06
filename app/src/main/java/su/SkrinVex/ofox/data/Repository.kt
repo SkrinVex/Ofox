@@ -249,10 +249,11 @@ class Repository(private val context: Context) {
     suspend fun toggleLike(post: Post): Post? = withContext(Dispatchers.IO) {
         try {
             val response = apiClient.api.toggleLike(post.id)
-            val updatedPost = response.toPost()
-            android.util.Log.d("Repository", "toggleLike response: likes=${updatedPost.likes}, isLiked=${updatedPost.isLiked}, pollVotes=${updatedPost.pollVotes}, userVote=${updatedPost.userVote}")
-            db.postDao().insertPost(updatedPost)
-            updatedPost
+            val newLikes = response.likes ?: post.likes
+            val newLiked = response.is_liked ?: !post.isLiked
+            android.util.Log.d("Repository", "toggleLike response: likes=$newLikes, isLiked=$newLiked")
+            db.postDao().updateLikes(post.id, newLikes, newLiked)
+            post.copy(likes = newLikes, isLiked = newLiked)
         } catch (e: Exception) {
             android.util.Log.e("Repository", "toggleLike error", e)
             val newLiked = !post.isLiked
@@ -265,9 +266,9 @@ class Repository(private val context: Context) {
     suspend fun sharePost(post: Post): Post? = withContext(Dispatchers.IO) {
         try {
             val response = apiClient.api.sharePost(post.id)
-            val updatedPost = response.toPost()
-            db.postDao().insertPost(updatedPost)
-            updatedPost
+            val newShares = response.shares ?: post.shares + 1
+            db.postDao().updateShares(post.id, newShares)
+            post.copy(shares = newShares)
         } catch (e: Exception) {
             val newShares = post.shares + 1
             db.postDao().updateShares(post.id, newShares)
@@ -278,9 +279,11 @@ class Repository(private val context: Context) {
     suspend fun voteOnPoll(postId: Int, optionIndex: Int): Post? = withContext(Dispatchers.IO) {
         try {
             val response = apiClient.api.voteOnPoll(postId, mapOf("optionIndex" to optionIndex))
-            val updatedPost = response.toPost()
-            db.postDao().insertPost(updatedPost)
-            updatedPost
+            val post = db.postDao().getPostById(postId) ?: return@withContext null
+            val newVotes = response.poll_votes?.joinToString(",") ?: post.pollVotes
+            val newUserVote = response.user_vote ?: optionIndex
+            db.postDao().updatePollVote(postId, newVotes, newUserVote)
+            post.copy(pollVotes = newVotes, userVote = newUserVote)
         } catch (e: Exception) {
             val post = db.postDao().getPostById(postId) ?: return@withContext null
             val votes = post.pollVotes.split(",").map { it.toIntOrNull() ?: 0 }.toMutableList()
