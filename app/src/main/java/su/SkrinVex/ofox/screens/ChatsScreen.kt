@@ -280,7 +280,12 @@ fun AddChatDialog(
                     style = MaterialTheme.typography.headlineSmall,
                     fontWeight = FontWeight.Bold
                 )
-                
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = "Для общения вам нужно взаимно подписаться друг на друга",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+                )
                 Spacer(modifier = Modifier.height(16.dp))
                 
                 if (isLoading) {

@@ -37,27 +37,34 @@
 -dontwarn okio.**
 -keepnames class okhttp3.internal.publicsuffix.PublicSuffixDatabase
 
-# Gson
+# Gson - только для сериализации
 -keepattributes Signature
 -keepattributes *Annotation*
 -dontwarn sun.misc.**
--keep class com.google.gson.** { *; }
 -keep class * implements com.google.gson.TypeAdapter
 -keep class * implements com.google.gson.TypeAdapterFactory
 -keep class * implements com.google.gson.JsonSerializer
 -keep class * implements com.google.gson.JsonDeserializer
 
-# Ваши модели данных (замените на ваш пакет)
--keep class su.SkrinVex.ofox.data.model.** { *; }
--keep class su.SkrinVex.ofox.data.api.** { *; }
+# ОБФУСКАЦИЯ: Модели и API клиенты - только поля для Gson
+-keepclassmembers class su.SkrinVex.ofox.data.api.models.** {
+    <fields>;
+}
+-keepclassmembers class su.SkrinVex.ofox.data.api.ApiClient {
+    <fields>;
+}
+-keepclassmembers class su.SkrinVex.ofox.data.api.WebSocketClient {
+    <fields>;
+}
 
-# Сохранить ApiClient и его методы
--keep class su.SkrinVex.ofox.data.api.ApiClient { *; }
--keep class su.SkrinVex.ofox.data.api.ApiService { *; }
--keep class su.SkrinVex.ofox.data.api.ApiConfig { *; }
-
-# Сохранить все классы запросов и ответов
--keep class su.SkrinVex.ofox.data.model.** { *; }
+# Максимальная обфускация
+-repackageclasses ''
+-allowaccessmodification
+-overloadaggressively
+-optimizationpasses 5
+-dontpreverify
+-dontusemixedcaseclassnames
+-verbose
 
 # Kotlin Coroutines
 -keepnames class kotlinx.coroutines.internal.MainDispatcherFactory {}
@@ -66,3 +73,9 @@
 
 # DataStore
 -keep class androidx.datastore.preferences.** { *; }
+
+# AndroidX Test
+-dontwarn com.google.errorprone.annotations.**
+-dontwarn javax.lang.model.element.Modifier
+-keep class com.google.errorprone.annotations.** { *; }
+-dontwarn androidx.test.**

@@ -84,6 +84,9 @@ interface ApiService {
     @GET("subscriptions/{userId}/check")
     suspend fun isSubscribed(@Path("userId") userId: Int): Map<String, Boolean>
     
+    @GET("subscriptions/{userId}/check-reverse")
+    suspend fun isSubscribedToMe(@Path("userId") userId: Int): Map<String, Boolean>
+    
     @GET("subscriptions/{userId}/subscribers/count")
     suspend fun getSubscribersCount(@Path("userId") userId: Int): Map<String, Int>
     

@@ -1,6 +1,7 @@
 package su.SkrinVex.ofox.screens
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -24,21 +25,29 @@ import su.SkrinVex.ofox.data.api.models.BadgeResponse
 fun UserProfileScreen(
     userId: Int,
     repository: Repository,
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    onEditProfile: () -> Unit = {},
+    onPostClick: (Int) -> Unit = {}
 ) {
     var user by remember { mutableStateOf<su.SkrinVex.ofox.data.User?>(null) }
+    var currentUser by remember { mutableStateOf<su.SkrinVex.ofox.data.User?>(null) }
     var userBadges by remember { mutableStateOf<List<BadgeResponse>>(emptyList()) }
     var isSubscribed by remember { mutableStateOf(false) }
+    var isMutualSubscription by remember { mutableStateOf(false) }
     var userPosts by remember { mutableStateOf(listOf<su.SkrinVex.ofox.data.Post>()) }
     var subscribersCount by remember { mutableStateOf(0) }
     val scope = rememberCoroutineScope()
+    val isOwnProfile = remember(currentUser, userId) { currentUser?.id == userId }
     
     LaunchedEffect(userId) {
+        currentUser = repository.getCurrentUser()
         user = repository.getUserById(userId)
         userBadges = repository.getUserBadges(userId)
         isSubscribed = repository.isSubscribed(userId)
+        isMutualSubscription = repository.isSubscribedToMe(userId)
         userPosts = repository.getPostsByUser(userId)
         subscribersCount = repository.getSubscribersCount(userId)
+        android.util.Log.d("UserProfileScreen", "userId=$userId, isSubscribed=$isSubscribed, isMutualSubscription=$isMutualSubscription")
     }
     
     Column(
@@ -158,30 +167,52 @@ fun UserProfileScreen(
                         
                         Spacer(modifier = Modifier.height(16.dp))
                         
-                        Button(
-                            onClick = {
-                                scope.launch {
-                                    val newSubscribed = repository.toggleSubscription(userId)
-                                    isSubscribed = newSubscribed
-                                    subscribersCount = repository.getSubscribersCount(userId)
-                                }
-                            },
-                            modifier = Modifier.fillMaxWidth(),
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = if (isSubscribed)
-                                    MaterialTheme.colorScheme.surfaceVariant
-                                else
-                                    MaterialTheme.colorScheme.primary
-                            ),
-                            shape = MaterialTheme.shapes.medium
-                        ) {
-                            Text(
-                                text = if (isSubscribed) "Отписаться" else "Подписаться",
-                                color = if (isSubscribed)
-                                    MaterialTheme.colorScheme.onSurfaceVariant
-                                else
-                                    MaterialTheme.colorScheme.onPrimary
-                            )
+                        if (isOwnProfile) {
+                            Button(
+                                onClick = onEditProfile,
+                                modifier = Modifier.fillMaxWidth(),
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = MaterialTheme.colorScheme.primary
+                                ),
+                                shape = MaterialTheme.shapes.medium
+                            ) {
+                                Text(
+                                    text = "Редактировать профиль",
+                                    color = MaterialTheme.colorScheme.onPrimary
+                                )
+                            }
+                        } else {
+                            Button(
+                                onClick = {
+                                    scope.launch {
+                                        val newSubscribed = repository.toggleSubscription(userId)
+                                        isSubscribed = newSubscribed
+                                        subscribersCount = repository.getSubscribersCount(userId)
+                                        isMutualSubscription = repository.isSubscribedToMe(userId)
+                                        android.util.Log.d("UserProfileScreen", "After toggle: isSubscribed=$newSubscribed, isMutualSubscription=$isMutualSubscription")
+                                    }
+                                },
+                                modifier = Modifier.fillMaxWidth(),
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = if (isSubscribed)
+                                        MaterialTheme.colorScheme.surfaceVariant
+                                    else
+                                        MaterialTheme.colorScheme.primary
+                                ),
+                                shape = MaterialTheme.shapes.medium
+                            ) {
+                                Text(
+                                    text = if (isSubscribed) {
+                                        if (isMutualSubscription) "Отписаться (взаимно)" else "Отписаться"
+                                    } else {
+                                        if (isMutualSubscription) "Подписаться в ответ" else "Подписаться"
+                                    },
+                                    color = if (isSubscribed)
+                                        MaterialTheme.colorScheme.onSurfaceVariant
+                                    else
+                                        MaterialTheme.colorScheme.onPrimary
+                                )
+                            }
                         }
                     }
                 }
@@ -198,7 +229,12 @@ fun UserProfileScreen(
             
             items(userPosts) { post ->
                 Card(
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { 
+                            android.util.Log.d("UserProfileScreen", "Post clicked: ${post.id}")
+                            onPostClick(post.id) 
+                        },
                     colors = CardDefaults.cardColors(
                         containerColor = MaterialTheme.colorScheme.surface
                     ),

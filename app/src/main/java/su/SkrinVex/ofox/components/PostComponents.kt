@@ -94,13 +94,16 @@ fun CreativePostCard(
     post: CreativePost,
     isLiked: Boolean = false,
     isHighlighted: Boolean = false,
+    isAuthorSubscribedToMe: Boolean = false,
+    currentUserId: Int? = null,
     onLike: () -> Unit,
     onComment: () -> Unit,
     onShare: () -> Unit,
     onMoreClick: () -> Unit,
     onVote: (Int) -> Unit = {},
     onAuthorClick: () -> Unit = {},
-    onHashtagClick: (String) -> Unit = {}
+    onHashtagClick: (String) -> Unit = {},
+    onSubscribe: () -> Unit = {}
 ) {
     var liked by remember { mutableStateOf(isLiked) }
     var likesCount by remember { mutableStateOf(post.likes) }
@@ -148,18 +151,40 @@ fun CreativePostCard(
                     .fillMaxWidth()
                     .clickable(onClick = onAuthorClick)
             ) {
-                Box(
-                    modifier = Modifier
-                        .size(40.dp)
-                        .clip(CircleShape)
-                        .background(MaterialTheme.colorScheme.primary),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        text = post.author.first().toString(),
-                        color = MaterialTheme.colorScheme.onPrimary,
-                        fontWeight = FontWeight.Bold
-                    )
+                Box {
+                    Box(
+                        modifier = Modifier
+                            .size(40.dp)
+                            .clip(CircleShape)
+                            .background(MaterialTheme.colorScheme.primary),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = post.author.first().toString(),
+                            color = MaterialTheme.colorScheme.onPrimary,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                    
+                    // Иконка подписки если автор подписан на меня, но я не подписан на него
+                    if (isAuthorSubscribedToMe && currentUserId != post.authorId) {
+                        Box(
+                            modifier = Modifier
+                                .align(Alignment.BottomEnd)
+                                .size(18.dp)
+                                .clip(CircleShape)
+                                .background(MaterialTheme.colorScheme.primary)
+                                .clickable(onClick = onSubscribe),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Add,
+                                contentDescription = "Подписаться в ответ",
+                                tint = MaterialTheme.colorScheme.onPrimary,
+                                modifier = Modifier.size(12.dp)
+                            )
+                        }
+                    }
                 }
 
                 Spacer(modifier = Modifier.width(12.dp))

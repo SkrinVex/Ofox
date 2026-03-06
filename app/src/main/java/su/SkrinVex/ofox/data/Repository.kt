@@ -469,6 +469,19 @@ class Repository(private val context: Context) {
         }
     }
 
+    suspend fun isSubscribedToMe(userId: Int): Boolean = withContext(Dispatchers.IO) {
+        try {
+            android.util.Log.d("Repository", "Calling isSubscribedToMe for userId: $userId")
+            val response = apiClient.api.isSubscribedToMe(userId)
+            val result = response["subscribed"] ?: false
+            android.util.Log.d("Repository", "isSubscribedToMe($userId): $result, response: $response")
+            result
+        } catch (e: Exception) {
+            android.util.Log.e("Repository", "isSubscribedToMe($userId) error: ${e.message}", e)
+            false
+        }
+    }
+
     suspend fun toggleSubscription(userId: Int): Boolean = withContext(Dispatchers.IO) {
         try {
             val response = apiClient.api.toggleSubscription(userId)

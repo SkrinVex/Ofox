@@ -187,14 +187,15 @@ class MainActivity : ComponentActivity() {
                     }
                     
                     // Навигация при изменении deep link
-                    LaunchedEffect(deepLink) {
-                        deepLink?.let { link ->
-                            android.util.Log.d("OFOX", "Deep link changed: $link, current: $currentRoute")
-                            kotlinx.coroutines.delay(300)
+                    LaunchedEffect(deepLink, pendingDeepLink.value) {
+                        val link = pendingDeepLink.value ?: deepLink
+                        link?.let {
+                            android.util.Log.d("OFOX", "Deep link changed: $it, current: $currentRoute")
                             
-                            when (link) {
+                            when (it) {
                                 is DeepLinkData.Post -> {
                                     if (currentRoute != Screen.Home.route) {
+                                        kotlinx.coroutines.delay(300)
                                         navController.navigate(Screen.Home.route) {
                                             popUpTo(navController.graph.startDestinationId)
                                             launchSingleTop = true
@@ -203,6 +204,7 @@ class MainActivity : ComponentActivity() {
                                 }
                                 is DeepLinkData.Discovery -> {
                                     if (currentRoute != Screen.Feed.route) {
+                                        kotlinx.coroutines.delay(300)
                                         navController.navigate(Screen.Feed.route) {
                                             popUpTo(navController.graph.startDestinationId)
                                             launchSingleTop = true
@@ -301,7 +303,12 @@ class MainActivity : ComponentActivity() {
                             modifier = Modifier.padding(innerPadding)
                         ) {
                             composable(Screen.Home.route) { 
-                                val postId = (deepLink as? DeepLinkData.Post)?.postId
+                                val currentDeepLink by pendingDeepLink
+                                val postId = (currentDeepLink ?: deepLink as? DeepLinkData.Post)?.let { 
+                                    (it as? DeepLinkData.Post)?.postId 
+                                }
+                                
+                                android.util.Log.d("OFOX", "HomeScreen composable: currentDeepLink=$currentDeepLink, deepLink=$deepLink, postId=$postId")
                                 
                                 HomeScreen(
                                     repository = repository, 
@@ -312,7 +319,8 @@ class MainActivity : ComponentActivity() {
                                 if (postId != null) {
                                     LaunchedEffect(postId) {
                                         android.util.Log.d("OFOX", "HomeScreen loaded with postId: $postId")
-                                        kotlinx.coroutines.delay(2500)
+                                        kotlinx.coroutines.delay(5000)
+                                        android.util.Log.d("OFOX", "Clearing pendingDeepLink")
                                         pendingDeepLink.value = null
                                     }
                                 }
@@ -326,7 +334,8 @@ class MainActivity : ComponentActivity() {
                                 )
                             }
                             composable(Screen.Feed.route) { 
-                                val discoveryId = (deepLink as? DeepLinkData.Discovery)?.discoveryId
+                                val currentDeepLink by pendingDeepLink
+                                val discoveryId = (currentDeepLink as? DeepLinkData.Discovery)?.discoveryId
                                 
                                 FeedScreen(
                                     repository = repository, 
@@ -351,7 +360,47 @@ class MainActivity : ComponentActivity() {
                                 ) 
                             }
                             composable("edit_profile") {
-                                EditProfileScreen(repository) { navController.popBackStack() }
+                                val currentUserId = repository.getCurrentUserId()
+                                if (currentUserId != null) {
+                                    UserProfileScreen(
+                                        userId = currentUserId,
+                                        repository = repository,
+                                        onBack = { navController.popBackStack() },
+                                        onEditProfile = { navController.navigate("edit_profile_form") },
+                                        onPostClick = { postId ->
+                                            android.util.Log.d("OFOX", "Profile: clicked post $postId")
+                                            pendingDeepLink.value = DeepLinkData.Post(postId)
+                                            navController.navigate(Screen.Home.route) {
+                                                popUpTo(navController.graph.startDestinationId)
+                                                launchSingleTop = true
+                                            }
+                                        }
+                                    )
+                                }
+                            }
+                            composable("edit_profile_form") {
+                                EditProfileScreen(repository) { 
+                                    navController.popBackStack()
+                                }
+                            }
+                            composable("user_profile/{userId}") { backStackEntry ->
+                                val userId = backStackEntry.arguments?.getString("userId")?.toIntOrNull()
+                                if (userId != null) {
+                                    UserProfileScreen(
+                                        userId = userId,
+                                        repository = repository,
+                                        onBack = { navController.popBackStack() },
+                                        onEditProfile = {},
+                                        onPostClick = { postId ->
+                                            android.util.Log.d("OFOX", "UserProfile: clicked post $postId")
+                                            pendingDeepLink.value = DeepLinkData.Post(postId)
+                                            navController.navigate(Screen.Home.route) {
+                                                popUpTo(navController.graph.startDestinationId)
+                                                launchSingleTop = true
+                                            }
+                                        }
+                                    )
+                                }
                             }
                             composable("customization") {
                                 CustomizationScreen(
@@ -380,7 +429,15 @@ class MainActivity : ComponentActivity() {
                                 UserProfileScreen(
                                     userId = backStackEntry.arguments?.getString("userId")?.toIntOrNull() ?: 0,
                                     repository = repository,
-                                    onBack = { navController.popBackStack() }
+                                    onBack = { navController.popBackStack() },
+                                    onPostClick = { postId ->
+                                        android.util.Log.d("OFOX", "UserProfile2: clicked post $postId")
+                                        pendingDeepLink.value = DeepLinkData.Post(postId)
+                                        navController.navigate(Screen.Home.route) {
+                                            popUpTo(navController.graph.startDestinationId)
+                                            launchSingleTop = true
+                                        }
+                                    }
                                 )
                             }
                             composable("discovery_discussion/{discoveryId}") { backStackEntry ->
@@ -389,10 +446,6 @@ class MainActivity : ComponentActivity() {
                                     repository = repository,
                                     onBack = { navController.popBackStack() },
                                     onNavigateToPost = { postId ->
-                                        navController.navigate(Screen.Home.route) {
-                                            popUpTo(navController.graph.startDestinationId)
-                                            launchSingleTop = true
-                                        }
                                         pendingDeepLink.value = DeepLinkData.Post(postId)
                                     }
                                 )

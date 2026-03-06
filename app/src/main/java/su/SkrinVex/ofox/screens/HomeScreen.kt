@@ -35,7 +35,7 @@ import su.SkrinVex.ofox.utils.formatTime
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HomeScreen(
-    repository: Repository, 
+    repository: Repository,
     navController: androidx.navigation.NavController? = null,
     highlightPostId: Int? = null
 ) {
@@ -62,6 +62,7 @@ fun HomeScreen(
     var isLoadingMore by remember { mutableStateOf(false) }
     var hasMore by remember { mutableStateOf(true) }
     var localHighlightPostId by remember { mutableStateOf<Int?>(null) }
+    val subscribedToMeMap = remember { mutableStateMapOf<Int, Boolean>() }
     val scope = rememberCoroutineScope()
     val listState = rememberLazyListState()
     val context = androidx.compose.ui.platform.LocalContext.current
@@ -70,7 +71,7 @@ fun HomeScreen(
     LaunchedEffect(highlightPostId) {
         if (highlightPostId != null && highlightPostId != localHighlightPostId) {
             localHighlightPostId = highlightPostId
-            kotlinx.coroutines.delay(2500)
+            kotlinx.coroutines.delay(5000)
             localHighlightPostId = null
         }
     }
@@ -83,7 +84,7 @@ fun HomeScreen(
             if (isLoadingMore) return
             isLoadingMore = true
         }
-        
+
         scope.launch {
             try {
                 val newPosts = repository.getAllPosts(limit = 20, offset = offset)
@@ -101,6 +102,20 @@ fun HomeScreen(
                     newPosts.filter { it.id !in existingIds }.forEach { posts.add(it) }
                 }
                 hasMore = newPosts.size == 20
+                
+                // Загружаем информацию о подписках для всех авторов
+                val authorIds = newPosts.map { it.authorId }.distinct()
+                authorIds.forEach { authorId ->
+                    if (!subscribedToMeMap.containsKey(authorId)) {
+                        try {
+                            val subscribedToMe = repository.isSubscribedToMe(authorId)
+                            val iSubscribed = repository.isSubscribed(authorId)
+                            subscribedToMeMap[authorId] = subscribedToMe && !iSubscribed
+                        } catch (e: Exception) {
+                            subscribedToMeMap[authorId] = false
+                        }
+                    }
+                }
             } catch (e: Exception) {
                 android.util.Log.e("HomeScreen", "Error loading posts", e)
             } finally {
@@ -123,21 +138,35 @@ fun HomeScreen(
             android.util.Log.e("HomeScreen", "Error loading user", e)
         }
     }
-    
-    LaunchedEffect(localHighlightPostId, posts.size, isLoading) {
+
+    LaunchedEffect(localHighlightPostId) {
         localHighlightPostId?.let { postId ->
-            if (posts.isNotEmpty() && !isLoading) {
-                val index = posts.indexOfFirst { it.id == postId }
-                if (index != -1) {
-                    kotlinx.coroutines.delay(300)
-                    val itemInfo = listState.layoutInfo.visibleItemsInfo.firstOrNull()
-                    val offset = itemInfo?.size?.div(2) ?: 0
-                    listState.scrollToItem(index, -offset)
+            var index = posts.indexOfFirst { it.id == postId }
+            if (index == -1) {
+                // Пост не найден, загружаем до него
+                var offset = posts.size
+                while (index == -1 && offset < 200) {
+                    try {
+                        val newPosts = repository.getAllPosts(limit = 10, offset = offset)
+                        if (newPosts.isEmpty()) break
+                        val existingIds = posts.map { it.id }.toSet()
+                        newPosts.filter { it.id !in existingIds }.forEach { posts.add(it) }
+                        index = posts.indexOfFirst { it.id == postId }
+                        offset += 10
+                        kotlinx.coroutines.delay(100)
+                    } catch (e: Exception) {
+                        android.util.Log.e("HomeScreen", "Error loading posts for highlight", e)
+                        break
+                    }
                 }
+            }
+            if (index != -1) {
+                kotlinx.coroutines.delay(500)
+                listState.animateScrollToItem(index)
             }
         }
     }
-    
+
     LaunchedEffect(Unit) {
         while (true) {
             kotlinx.coroutines.delay(30000)
@@ -146,8 +175,8 @@ fun HomeScreen(
                     val freshPosts = repository.getAllPosts(limit = posts.size.coerceAtMost(20), offset = 0)
                     freshPosts.forEach { fresh ->
                         val index = posts.indexOfFirst { it.id == fresh.id }
-                        if (index != -1 && (posts[index].likes != fresh.likes || 
-                            posts[index].shares != fresh.shares || 
+                        if (index != -1 && (posts[index].likes != fresh.likes ||
+                            posts[index].shares != fresh.shares ||
                             posts[index].authorBadges != fresh.authorBadges)) {
                             posts[index] = fresh
                         }
@@ -158,7 +187,7 @@ fun HomeScreen(
             }
         }
     }
-    
+
     LaunchedEffect(wsClient.events) {
         wsClient.events.collect { event ->
             android.util.Log.d("HomeScreen", "Received event: $event")
@@ -171,7 +200,7 @@ fun HomeScreen(
                             put("description", badge.description)
                         }
                     }).toString()
-                    
+
                     var updatedCount = 0
                     posts.indices.forEach { index ->
                         if (posts[index].authorId == event.userId) {
@@ -258,16 +287,44 @@ fun HomeScreen(
             ) {
                 CircularProgressIndicator()
             }
+        } else if (!isLoading && posts.isEmpty()) {
+            Box(
+                modifier = Modifier.fillMaxSize(),
+                contentAlignment = Alignment.Center
+            ) {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Add,
+                        contentDescription = null,
+                        modifier = Modifier.size(64.dp),
+                        tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.3f)
+                    )
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Text(
+                        text = "Нет постов",
+                        style = MaterialTheme.typography.titleMedium,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                    )
+                    Text(
+                        text = "Создайте первый пост",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f)
+                    )
+                }
+            }
         } else {
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .background(MaterialTheme.colorScheme.background)
         ) {
-            val uniquePosts by remember { 
+            val uniquePosts by remember {
                 derivedStateOf { posts.distinctBy { it.id } }
             }
-            
+
             LazyColumn(
                 state = listState,
                 verticalArrangement = Arrangement.spacedBy(16.dp),
@@ -288,9 +345,12 @@ fun HomeScreen(
                     } catch (e: Exception) {
                         emptyList()
                     }
-                    
+
                     val isHighlighted = localHighlightPostId == post.id
                     
+                    // Получаем информацию о подписке из кеша
+                    val isAuthorSubscribedToMe = subscribedToMeMap[post.authorId] ?: false
+
                     CreativePostCard(
                         post = su.SkrinVex.ofox.screens.CreativePost(
                                 post.authorName,
@@ -311,6 +371,8 @@ fun HomeScreen(
                         ),
                         isLiked = post.isLiked,
                         isHighlighted = isHighlighted,
+                        isAuthorSubscribedToMe = isAuthorSubscribedToMe,
+                        currentUserId = currentUser?.id,
                         onLike = {
                             scope.launch {
                                 repository.toggleLike(post)?.let { updatedPost ->
@@ -326,9 +388,9 @@ fun HomeScreen(
                                 showComments = true
                             }
                         },
-                        onShare = { 
+                        onShare = {
                             selectedPostId = post.id
-                            showShareMenu = true 
+                            showShareMenu = true
                         },
                         onMoreClick = {
                             selectedPost = post
@@ -350,12 +412,21 @@ fun HomeScreen(
                         },
                         onHashtagClick = { hashtag ->
                             selectedHashtag = hashtag
-                            hashtagPosts = posts.filter { it.content.contains(hashtag) }
+                            hashtagPosts = posts.filter { it.content.contains(hashtag) }.distinctBy { it.id }
                             showHashtagSearch = true
+                        },
+                        onSubscribe = {
+                            scope.launch {
+                                repository.toggleSubscription(post.authorId)
+                                // Обновляем статус подписки
+                                val subscribedToMe = repository.isSubscribedToMe(post.authorId)
+                                val iSubscribed = repository.isSubscribed(post.authorId)
+                                subscribedToMeMap[post.authorId] = subscribedToMe && !iSubscribed
+                            }
                         }
                     )
                 }
-                
+
                 if (isLoadingMore) {
                     item {
                         Box(
@@ -382,11 +453,11 @@ fun HomeScreen(
         }
     }
     }
-    
+
     if (showShareMenu) {
         ShareBottomSheet(
             postId = selectedPostId,
-            onDismiss = { 
+            onDismiss = {
                 scope.launch {
                     posts.find { it.id == selectedPostId }?.let {
                         repository.sharePost(it)?.let { updatedPost ->
@@ -399,7 +470,7 @@ fun HomeScreen(
             }
         )
     }
-    
+
     if (showPostMenu) {
         PostMenuBottomSheet(
             isMyPost = selectedPost?.authorId == currentUser?.id,
@@ -437,17 +508,17 @@ fun HomeScreen(
                         style = MaterialTheme.typography.headlineSmall,
                         fontWeight = FontWeight.Bold
                     )
-                    
+
                     Spacer(modifier = Modifier.height(16.dp))
-                    
+
                     Text(
                         text = "Вы уверены, что хотите удалить этот пост? Это действие нельзя отменить.",
                         style = MaterialTheme.typography.bodyLarge,
                         color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f)
                     )
-                    
+
                     Spacer(modifier = Modifier.height(24.dp))
-                    
+
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(12.dp)
@@ -459,11 +530,11 @@ fun HomeScreen(
                         ) {
                             Text("Отмена")
                         }
-                        
+
                         Button(
                             onClick = {
                                 scope.launch {
-                                    selectedPost?.let { 
+                                    selectedPost?.let {
                                         repository.deletePost(it.id)
                                         posts.removeIf { p -> p.id == it.id }
                                     }
@@ -520,7 +591,7 @@ fun HomeScreen(
             }
         )
     }
-    
+
     if (showHashtagSearch) {
         su.SkrinVex.ofox.components.HashtagSearchDialog(
             hashtag = selectedHashtag,
@@ -577,7 +648,7 @@ fun HomeScreen(
             currentUserId = currentUser?.id,
             commentDrafts = commentDrafts,
             repository = repository,
-            onDismiss = { 
+            onDismiss = {
                 showComments = false
                 scope.launch {
                     repository.getPostById(selectedPostId)?.let { updatedPost ->
@@ -628,7 +699,7 @@ fun CreatePostDialog(
     var discoveries by remember { mutableStateOf(listOf<su.SkrinVex.ofox.data.Discovery>()) }
     val scope = rememberCoroutineScope()
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-    
+
     LaunchedEffect(Unit) {
         try {
             discoveries = repository.getAllDiscoveries().filter { it.isJoined }
@@ -636,18 +707,18 @@ fun CreatePostDialog(
             discoveries = emptyList()
         }
     }
-    
+
     LaunchedEffect(content, selectedType, pollOptions, selectedDiscovery) {
         onDraftChange(content, selectedType, pollOptions, selectedDiscovery)
     }
-    
+
     val postTypes = listOf(
         "TEXT" to "Текст",
         "MOOD" to "Настроение",
         "POLL" to "Опрос",
         "QUOTE" to "Цитата"
     )
-    
+
     val placeholder = when(selectedType) {
         "TEXT" -> "Что у вас нового?"
         "MOOD" -> "Какое у вас настроение?"
@@ -677,16 +748,16 @@ fun CreatePostDialog(
                     style = MaterialTheme.typography.headlineSmall,
                     fontWeight = FontWeight.Bold
                 )
-                
+
                 Spacer(modifier = Modifier.height(16.dp))
-                
+
                 Text(
                     text = "Тип поста",
                     style = MaterialTheme.typography.titleSmall
             )
-            
+
             Spacer(modifier = Modifier.height(8.dp))
-            
+
             Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -704,9 +775,9 @@ fun CreatePostDialog(
                         )
                     }
                 }
-                
+
                 Spacer(modifier = Modifier.height(8.dp))
-                
+
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -724,9 +795,9 @@ fun CreatePostDialog(
                         )
                     }
                 }
-                
+
                 Spacer(modifier = Modifier.height(16.dp))
-                
+
                 if (selectedType == "POLL") {
                     OutlinedTextField(
                         value = content,
@@ -736,20 +807,20 @@ fun CreatePostDialog(
                         shape = MaterialTheme.shapes.medium,
                         supportingText = { Text("${content.length}/${su.SkrinVex.ofox.utils.ValidationConstants.MAX_POST_CONTENT_LENGTH}") }
                     )
-                    
+
                     Spacer(modifier = Modifier.height(12.dp))
-                    
+
                     Text(
                         text = "Варианты ответа",
                         style = MaterialTheme.typography.titleSmall
                     )
-                    
+
                     Spacer(modifier = Modifier.height(8.dp))
-                    
+
                     pollOptions.forEachIndexed { index, option ->
                         OutlinedTextField(
                             value = option,
-                            onValueChange = { 
+                            onValueChange = {
                                 if (it.length <= 150) {
                                     pollOptions = pollOptions.toMutableList().apply { this[index] = it }
                                 }
@@ -761,7 +832,7 @@ fun CreatePostDialog(
                         )
                         Spacer(modifier = Modifier.height(8.dp))
                     }
-                    
+
                     if (pollOptions.size < 15) {
                         TextButton(
                             onClick = { pollOptions = pollOptions + "" },
@@ -782,17 +853,17 @@ fun CreatePostDialog(
                         shape = MaterialTheme.shapes.medium
                     )
                 }
-                
+
                 if (discoveries.isNotEmpty()) {
                     Spacer(modifier = Modifier.height(16.dp))
-                    
+
                     Text(
                         text = "Открытие (необязательно)",
                         style = MaterialTheme.typography.titleSmall
                     )
-                    
+
                     Spacer(modifier = Modifier.height(8.dp))
-                    
+
                     FlowRow(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -801,10 +872,10 @@ fun CreatePostDialog(
                         discoveries.forEach { discovery ->
                             FilterChip(
                                 selected = selectedDiscovery?.id == discovery.id,
-                                onClick = { 
+                                onClick = {
                                     selectedDiscovery = if (selectedDiscovery?.id == discovery.id) null else discovery
                                 },
-                                label = { 
+                                label = {
                                     Row(verticalAlignment = Alignment.CenterVertically) {
                                         Box(
                                             modifier = Modifier
@@ -825,9 +896,9 @@ fun CreatePostDialog(
                     }
                 }
             }
-            
+
             HorizontalDivider()
-            
+
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -842,9 +913,9 @@ fun CreatePostDialog(
                 ) {
                     Text("Отмена")
                 }
-                
+
                 Button(
-                    onClick = { 
+                    onClick = {
                         if (content.isNotBlank()) {
                             if (selectedType == "POLL") {
                                 val validOptions = pollOptions.filter { it.isNotBlank() }
