@@ -32,7 +32,7 @@ fun SettingsScreen(
     val scope = rememberCoroutineScope()
     
     val settings = listOf(
-        SettingItem("Профиль", "Управление аккаунтом", Icons.Default.Person, "edit_profile"),
+        SettingItem("Профиль", "Управление аккаунтом", Icons.Default.Person, "my_profile"),
         SettingItem("Уведомления", "Настройка оповещений", Icons.Default.Notifications, null),
         SettingItem("Приватность", "Безопасность и конфиденциальность", Icons.Default.Security, null),
         SettingItem("Кастомизация", "Настройка внешнего вида", Icons.Default.Palette, "customization"),

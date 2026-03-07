@@ -1,6 +1,8 @@
 package su.SkrinVex.ofox.screens
 
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -11,11 +13,14 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Language
+import androidx.compose.material.icons.filled.Tag
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -28,27 +33,42 @@ fun EditProfileScreen(repository: Repository, onBack: () -> Unit) {
     var user by remember { mutableStateOf<su.SkrinVex.ofox.data.User?>(null) }
     var name by remember { mutableStateOf("") }
     var bio by remember { mutableStateOf("") }
+    var tg by remember { mutableStateOf("") }
+    var vk by remember { mutableStateOf("") }
+    var github by remember { mutableStateOf("") }
+    var website by remember { mutableStateOf("") }
+    var youtube by remember { mutableStateOf("") }
+    var bannerColor by remember { mutableStateOf("#4CAF50") }
     val scope = rememberCoroutineScope()
+
+    val colors = listOf("#4CAF50", "#2196F3", "#9C27B0", "#F44336", "#FF9800", "#607D8B", "#000000")
 
     LaunchedEffect(Unit) {
         user = repository.getCurrentUser()
         name = user?.name ?: ""
         bio = user?.bio ?: ""
+        bannerColor = user?.bannerColor ?: "#4CAF50"
+        
+        try {
+            val json = org.json.JSONObject(user?.socialLinks ?: "{}")
+            tg = if (json.has("tg")) json.getString("tg") else ""
+            vk = if (json.has("vk")) json.getString("vk") else ""
+            github = if (json.has("github")) json.getString("github") else ""
+            website = if (json.has("website")) json.getString("website") else ""
+            youtube = if (json.has("youtube")) json.getString("youtube") else ""
+        } catch (e: Exception) {
+            // Use defaults
+        }
     }
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background)
-    ) {
+    Column(modifier = Modifier.fillMaxSize().imePadding()) {
         Row(
             modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 4.dp, vertical = 12.dp),
+                .fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically
         ) {
             IconButton(onClick = onBack) {
-                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Назад")
+                Icon(Icons.AutoMirrored.Filled.ArrowBack, "Назад")
             }
             Text(
                 "Редактирование профиля",
@@ -64,6 +84,8 @@ fun EditProfileScreen(repository: Repository, onBack: () -> Unit) {
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
+            Text("Основная информация", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            
             OutlinedTextField(
                 value = name,
                 onValueChange = { if (it.length <= 50) name = it },
@@ -83,18 +105,63 @@ fun EditProfileScreen(repository: Repository, onBack: () -> Unit) {
                 minLines = 3
             )
 
+            Spacer(modifier = Modifier.height(8.dp))
+            Text("Цвет баннера", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                colors.forEach { color ->
+                    Box(
+                        modifier = Modifier
+                            .size(40.dp)
+                            .clip(CircleShape)
+                            .background(androidx.compose.ui.graphics.Color(android.graphics.Color.parseColor(color)))
+                            .clickable { bannerColor = color }
+                            .then(
+                                if (bannerColor == color) {
+                                    Modifier.border(2.dp, MaterialTheme.colorScheme.onSurface, CircleShape)
+                                } else Modifier
+                            )
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+            Text("Ссылки и соцсети", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            Text("Укажите ваш никнейм или ID", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f))
+
+            SocialEditField("Telegram", tg, su.SkrinVex.ofox.R.drawable.ic_telegram, "Ваш @username") { if (it.length <= 50) tg = it }
+            SocialEditField("VK", vk, su.SkrinVex.ofox.R.drawable.ic_vk, "ID или короткое имя") { if (it.length <= 50) vk = it }
+            SocialEditField("GitHub", github, su.SkrinVex.ofox.R.drawable.ic_github, "Ваш username") { if (it.length <= 50) github = it }
+            SocialEditFieldIcon("Личный сайт", website, Icons.Filled.Language, "Полная ссылка") { if (it.length <= 100) website = it }
+            SocialEditField("YouTube", youtube, su.SkrinVex.ofox.R.drawable.ic_youtube, "Канал или @handle") { if (it.length <= 50) youtube = it }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
             Button(
                 onClick = {
                     scope.launch {
-                        repository.updateUser(name, bio)
+                        val socialLinks = org.json.JSONObject().apply {
+                            put("tg", tg)
+                            put("vk", vk)
+                            put("github", github)
+                            put("website", website)
+                            put("youtube", youtube)
+                        }.toString()
+                        
+                        repository.updateUser(name, bio, socialLinks, bannerColor)
                         onBack()
                     }
                 },
                 modifier = Modifier.fillMaxWidth(),
                 shape = MaterialTheme.shapes.medium
             ) {
-                Text("Сохранить")
+                Text("Сохранить всё")
             }
+            
+            Spacer(modifier = Modifier.height(32.dp))
         }
     }
 }
@@ -606,5 +673,45 @@ fun FormattedText(
         style = style,
         color = color,
         modifier = modifier
+    )
+}
+
+@Composable
+fun SocialEditField(label: String, value: String, iconRes: Int, placeholder: String = "", onValueChange: (String) -> Unit) {
+    OutlinedTextField(
+        value = value,
+        onValueChange = onValueChange,
+        label = { Text(label) },
+        placeholder = { Text(placeholder) },
+        modifier = Modifier.fillMaxWidth(),
+        shape = MaterialTheme.shapes.medium,
+        leadingIcon = { 
+            Image(
+                painter = painterResource(id = iconRes),
+                contentDescription = null,
+                modifier = Modifier.size(24.dp)
+            )
+        },
+        singleLine = true
+    )
+}
+
+@Composable
+fun SocialEditFieldIcon(label: String, value: String, icon: androidx.compose.ui.graphics.vector.ImageVector, placeholder: String = "", onValueChange: (String) -> Unit) {
+    OutlinedTextField(
+        value = value,
+        onValueChange = onValueChange,
+        label = { Text(label) },
+        placeholder = { Text(placeholder) },
+        modifier = Modifier.fillMaxWidth(),
+        shape = MaterialTheme.shapes.medium,
+        leadingIcon = { 
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                modifier = Modifier.size(24.dp)
+            )
+        },
+        singleLine = true
     )
 }

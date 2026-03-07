@@ -6,7 +6,7 @@ import kotlinx.coroutines.flow.Flow
 
 @Database(
     entities = [User::class, Post::class, Chat::class, Message::class, Discovery::class],
-    version = 9
+    version = 13
 )
 abstract class AppDatabase : RoomDatabase() {
     abstract fun userDao(): UserDao
@@ -41,7 +41,9 @@ data class User(
     val email: String,
     val password: String,
     val name: String,
-    val bio: String = ""
+    val bio: String = "",
+    val socialLinks: String = "", // JSON: {"vk": "...", "tg": "...", "github": "..."}
+    val bannerColor: String = "#4CAF50"
 )
 
 @Entity(tableName = "posts")
@@ -62,6 +64,7 @@ data class Post(
     val discoveryId: Int = 0,
     val discoveryTitle: String = "",
     val discoveryColor: String = "",
+    val isDiscoveryPost: Boolean = false,
     val authorBadges: String = "" // JSON array of badges
 )
 
@@ -83,7 +86,8 @@ data class Message(
     val text: String,
     val timestamp: Long,
     val isFromMe: Boolean,
-    val senderId: Int = 0
+    val senderId: Int = 0,
+    val senderName: String = ""
 )
 
 @Entity(tableName = "discoveries")
@@ -96,6 +100,7 @@ data class Discovery(
     val colorHex: String,
     val isJoined: Boolean = false,
     val creatorName: String = "",
+    val creatorId: Int = 0,
     val createdAt: Long = 0
 )
 
@@ -107,11 +112,14 @@ interface UserDao {
     @Insert
     suspend fun register(user: User): Long
 
-    @Insert(onConflict = androidx.room.OnConflictStrategy.IGNORE)
+    @Insert(onConflict = androidx.room.OnConflictStrategy.REPLACE)
     suspend fun insertUser(user: User)
 
     @Query("SELECT * FROM users WHERE id = :id")
     suspend fun getUser(id: Int): User?
+
+    @Query("SELECT * FROM users WHERE id = :id")
+    fun getUserFlow(id: Int): Flow<User?>
 
     @Update
     suspend fun updateUser(user: User)

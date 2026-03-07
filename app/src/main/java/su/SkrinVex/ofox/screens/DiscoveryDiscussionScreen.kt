@@ -4,8 +4,11 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -23,21 +26,26 @@ import su.SkrinVex.ofox.data.Repository
 
 data class TopParticipant(val name: String, val postCount: Int)
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
 fun DiscoveryDiscussionScreen(
     discoveryId: Int,
     repository: Repository,
     onBack: () -> Unit,
-    onNavigateToPost: (Int) -> Unit = {}
+    onNavigateToPost: (Int) -> Unit = {},
+    onNavigateToChat: (Int) -> Unit = {},
+    onNavigateToAchievements: (Int) -> Unit = {}
 ) {
     var discovery by remember { mutableStateOf<su.SkrinVex.ofox.data.Discovery?>(null) }
     var posts by remember { mutableStateOf(listOf<su.SkrinVex.ofox.data.Post>()) }
+    var achievements by remember { mutableStateOf(listOf<su.SkrinVex.ofox.data.api.models.AchievementResponse>()) }
     var showLeaveDialog by remember { mutableStateOf(false) }
     var showMenuSheet by remember { mutableStateOf(false) }
     var showInfoSheet by remember { mutableStateOf(false) }
     var showShareSheet by remember { mutableStateOf(false) }
     var userContribution by remember { mutableStateOf(0) }
+    var currentUserId by remember { mutableStateOf<Int?>(null) }
+    var isCreator by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     val menuSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val infoSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
@@ -46,6 +54,9 @@ fun DiscoveryDiscussionScreen(
         discovery = repository.getDiscoveryById(discoveryId)
         posts = repository.getPostsByDiscovery(discoveryId)
         userContribution = repository.getUserContributionToDiscovery(discoveryId)
+        achievements = repository.getAchievements(discoveryId)
+        currentUserId = repository.getCurrentUser()?.id
+        isCreator = discovery?.creatorId == currentUserId
     }
     
     if (discovery == null) {
@@ -136,6 +147,22 @@ fun DiscoveryDiscussionScreen(
                 }
                 
                 item {
+                    Button(
+                        onClick = {
+                            scope.launch {
+                                val chatId = repository.getOrCreateDiscoveryChat(discoveryId)
+                                chatId?.let { onNavigateToChat(it) }
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Icon(Icons.Default.Chat, null)
+                        Spacer(Modifier.width(8.dp))
+                        Text("Открыть чат")
+                    }
+                }
+                
+                item {
                     Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                         StatCard("Ваш вклад", "$userContribution", Icons.Default.Star, Modifier.weight(1f))
                     }
@@ -146,6 +173,7 @@ fun DiscoveryDiscussionScreen(
                 }
                 
                 item {
+                    // Стандартные достижения
                     Card(
                         modifier = Modifier.fillMaxWidth(),
                         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
@@ -154,6 +182,84 @@ fun DiscoveryDiscussionScreen(
                             AchievementItem("Первый участник", "Присоединились к открытию", discovery?.isJoined == true)
                             AchievementItem("Активист", "Создайте ${if (userContribution >= 1) userContribution else 1} ${if (userContribution >= 1) "постов" else "пост"}", userContribution >= 1)
                             AchievementItem("Лидер", "Создайте 5+ постов", userContribution >= 5)
+                        }
+                    }
+                }
+                
+                // Кастомные достижения
+                if (achievements.isNotEmpty()) {
+                    item {
+                        Text("Особые достижения", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                    }
+                    
+                    item {
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            achievements.forEach { achievement ->
+                                Card(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    colors = CardDefaults.cardColors(
+                                        containerColor = if (achievement.is_earned)
+                                            MaterialTheme.colorScheme.primaryContainer
+                                        else
+                                            MaterialTheme.colorScheme.surface
+                                    )
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(12.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Box(
+                                            modifier = Modifier
+                                                .size(40.dp)
+                                                .clip(CircleShape)
+                                                .background(
+                                                    if (achievement.is_earned)
+                                                        MaterialTheme.colorScheme.primary
+                                                    else
+                                                        MaterialTheme.colorScheme.surfaceVariant
+                                                ),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Text(
+                                                text = achievement.icon ?: "🏆",
+                                                style = MaterialTheme.typography.titleLarge
+                                            )
+                                        }
+                                        Spacer(Modifier.width(12.dp))
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(
+                                                achievement.title,
+                                                style = MaterialTheme.typography.titleSmall,
+                                                fontWeight = FontWeight.Bold
+                                            )
+                                            achievement.description?.let {
+                                                Text(
+                                                    it,
+                                                    style = MaterialTheme.typography.bodySmall,
+                                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
+                                                    maxLines = 1
+                                                )
+                                            }
+                                            achievement.reward_value?.let {
+                                                Text(
+                                                    "🎁 $it",
+                                                    style = MaterialTheme.typography.bodySmall,
+                                                    color = MaterialTheme.colorScheme.primary,
+                                                    fontWeight = FontWeight.SemiBold
+                                                )
+                                            }
+                                        }
+                                        if (achievement.is_earned) {
+                                            Icon(
+                                                Icons.Default.CheckCircle,
+                                                null,
+                                                tint = MaterialTheme.colorScheme.primary,
+                                                modifier = Modifier.size(20.dp)
+                                            )
+                                        }
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -408,6 +514,68 @@ fun MenuButton(
             }
         }
     }
+    
+}
+
+@Composable
+fun CreateAchievementDialog(
+    onDismiss: () -> Unit,
+    onCreate: (String, String, String, String) -> Unit
+) {
+    var title by remember { mutableStateOf("") }
+    var description by remember { mutableStateOf("") }
+    var icon by remember { mutableStateOf("🏆") }
+    var rewardValue by remember { mutableStateOf("") }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Новое достижение", fontWeight = FontWeight.Bold) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                OutlinedTextField(
+                    value = title,
+                    onValueChange = { title = it },
+                    label = { Text("Название") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                OutlinedTextField(
+                    value = description,
+                    onValueChange = { description = it },
+                    label = { Text("Описание") },
+                    minLines = 2,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                OutlinedTextField(
+                    value = icon,
+                    onValueChange = { icon = it },
+                    label = { Text("Иконка (эмодзи)") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                OutlinedTextField(
+                    value = rewardValue,
+                    onValueChange = { rewardValue = it },
+                    label = { Text("Награда") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = { onCreate(title, description, icon, rewardValue) },
+                enabled = title.isNotBlank() && description.isNotBlank()
+            ) {
+                Text("Создать")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Отмена")
+            }
+        }
+    )
 }
 
 @Composable
@@ -452,3 +620,4 @@ fun AchievementItem(title: String, description: String, unlocked: Boolean) {
         }
     }
 }
+

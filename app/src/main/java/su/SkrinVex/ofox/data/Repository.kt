@@ -99,28 +99,39 @@ class Repository(private val context: Context) {
     fun isLoggedIn(): Boolean = prefs.getInt("user_id", -1) != -1
     fun getCurrentUserId(): Int = prefs.getInt("user_id", -1)
 
-    suspend fun getCurrentUser(): User? = withContext(Dispatchers.IO) {
-        val userId = getCurrentUserId()
-        if (userId == -1) return@withContext null
-        try {
-            val response = apiClient.api.getProfile()
-            val user = response.toUser()
-            db.userDao().insertUser(user)
-            user
-        } catch (e: Exception) {
-            db.userDao().getUser(userId)
-        }
-    }
+    fun getUserFlow(userId: Int): Flow<User?> = db.userDao().getUserFlow(userId)
 
-    suspend fun getUserById(userId: Int): User? = withContext(Dispatchers.IO) {
+    suspend fun refreshUser(userId: Int) = withContext(Dispatchers.IO) {
         try {
             val response = apiClient.api.getUserById(userId)
             val user = response.toUser()
             db.userDao().insertUser(user)
-            user
         } catch (e: Exception) {
-            db.userDao().getUser(userId)
+            android.util.Log.e("Repository", "Failed to refresh user $userId", e)
         }
+    }
+
+    suspend fun getCurrentUser(): User? = withContext(Dispatchers.IO) {
+        val userId = getCurrentUserId()
+        if (userId == -1) return@withContext null
+        val cached = db.userDao().getUser(userId)
+        // Обновляем в фоне
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                val response = apiClient.api.getProfile()
+                db.userDao().insertUser(response.toUser())
+            } catch (_: Exception) {}
+        }
+        cached
+    }
+
+    suspend fun getUserById(userId: Int): User? = withContext(Dispatchers.IO) {
+        val cached = db.userDao().getUser(userId)
+        // Обновляем в фоне
+        CoroutineScope(Dispatchers.IO).launch {
+            refreshUser(userId)
+        }
+        cached
     }
 
     suspend fun getUserBadges(userId: Int): List<su.SkrinVex.ofox.data.api.models.BadgeResponse> = withContext(Dispatchers.IO) {
@@ -132,13 +143,18 @@ class Repository(private val context: Context) {
         }
     }
 
-    suspend fun updateUser(name: String, bio: String): User? = withContext(Dispatchers.IO) {
+    suspend fun updateUser(name: String, bio: String, socialLinks: String? = null, bannerColor: String? = null): User? = withContext(Dispatchers.IO) {
         try {
-            val response = apiClient.api.updateProfile(mapOf("name" to name, "bio" to bio))
+            val params = mutableMapOf("name" to name, "bio" to bio)
+            socialLinks?.let { params["socialLinks"] = it }
+            bannerColor?.let { params["bannerColor"] = it }
+            
+            val response = apiClient.api.updateProfile(params)
             val user = response.toUser()
             db.userDao().updateUser(user)
             user
         } catch (e: Exception) {
+            android.util.Log.e("Repository", "updateUser error", e)
             null
         }
     }
@@ -202,7 +218,7 @@ class Repository(private val context: Context) {
 
     suspend fun getPostsByUser(userId: Int): List<Post> = withContext(Dispatchers.IO) {
         try {
-            apiClient.api.getPosts(userId = userId).map { it.toPost() }
+            apiClient.api.getPosts(userId = userId, limit = 101).map { it.toPost() }
         } catch (e: Exception) {
             db.postDao().getPostsByUser(userId)
         }
@@ -643,7 +659,15 @@ class Repository(private val context: Context) {
     // Helpers
     private fun isValidEmail(email: String): Boolean = Patterns.EMAIL_ADDRESS.matcher(email).matches()
 
-    private fun UserResponse.toUser() = User(id, email, "", name, bio)
+    private fun UserResponse.toUser() = User(
+        id = id, 
+        email = email, 
+        password = "", 
+        name = name, 
+        bio = bio,
+        socialLinks = social_links ?: "",
+        bannerColor = banner_color ?: "#4CAF50"
+    )
 
     private fun PostResponse.toPost() = Post(
         id = id,
@@ -662,6 +686,7 @@ class Repository(private val context: Context) {
         discoveryId = discovery_id ?: 0,
         discoveryTitle = discovery_title ?: "",
         discoveryColor = if (discovery_color.isNullOrBlank()) "" else if (discovery_color.startsWith("#")) discovery_color else "#$discovery_color",
+        isDiscoveryPost = is_discovery_post ?: false,
         authorBadges = author_badges?.let { badges ->
             org.json.JSONArray(badges.map { 
                 org.json.JSONObject().apply {
@@ -686,6 +711,7 @@ class Repository(private val context: Context) {
             colorHex = cleanColor,
             isJoined = is_joined,
             creatorName = creator_name ?: "Unknown",
+            creatorId = creator_id ?: 0,
             createdAt = created_at?.let { parseTimestamp(it) } ?: System.currentTimeMillis()
         )
         android.util.Log.d("Repository", "Mapped discovery: $discovery")
@@ -720,7 +746,8 @@ class Repository(private val context: Context) {
         text = text,
         timestamp = parseTimestamp(created_at),
         isFromMe = sender_id == currentUserId,
-        senderId = sender_id
+        senderId = sender_id,
+        senderName = sender_name
     )
 
     private fun parseTimestamp(dateStr: String): Long {
@@ -731,6 +758,64 @@ class Repository(private val context: Context) {
         } catch (e: Exception) {
             android.util.Log.e("Repository", "Failed to parse timestamp: $dateStr", e)
             System.currentTimeMillis()
+        }
+    }
+
+    // Discovery features
+    suspend fun getOrCreateDiscoveryChat(discoveryId: Int): Int? = withContext(Dispatchers.IO) {
+        try {
+            val response = apiClient.api.getOrCreateDiscoveryChat(discoveryId)
+            response.id
+        } catch (e: Exception) {
+            android.util.Log.e("Repository", "Failed to get discovery chat", e)
+            null
+        }
+    }
+
+    suspend fun createAchievement(
+        discoveryId: Int,
+        title: String,
+        description: String,
+        icon: String,
+        rewardType: String,
+        rewardValue: String
+    ): AchievementResponse? = withContext(Dispatchers.IO) {
+        try {
+            apiClient.api.createAchievement(
+                discoveryId,
+                CreateAchievementRequest(title, description, icon, rewardType, rewardValue)
+            )
+        } catch (e: Exception) {
+            android.util.Log.e("Repository", "Failed to create achievement", e)
+            null
+        }
+    }
+
+    suspend fun getAchievements(discoveryId: Int): List<AchievementResponse> = withContext(Dispatchers.IO) {
+        try {
+            apiClient.api.getAchievements(discoveryId)
+        } catch (e: Exception) {
+            android.util.Log.e("Repository", "Failed to get achievements", e)
+            emptyList()
+        }
+    }
+
+    suspend fun grantAchievement(achievementId: Int, userId: Int): Boolean = withContext(Dispatchers.IO) {
+        try {
+            apiClient.api.grantAchievement(achievementId, GrantAchievementRequest(userId))
+            true
+        } catch (e: Exception) {
+            android.util.Log.e("Repository", "Failed to grant achievement", e)
+            false
+        }
+    }
+
+    suspend fun getUserAchievements(userId: Int): List<AchievementResponse> = withContext(Dispatchers.IO) {
+        try {
+            apiClient.api.getUserAchievements(userId)
+        } catch (e: Exception) {
+            android.util.Log.e("Repository", "Failed to get user achievements", e)
+            emptyList()
         }
     }
 }

@@ -20,7 +20,9 @@ data class UserResponse(
     val email: String,
     val name: String,
     val bio: String,
-    val badges: List<BadgeResponse>? = null
+    val badges: List<BadgeResponse>? = null,
+    val social_links: String? = null,
+    val banner_color: String? = null
 )
 
 data class BadgeResponse(
@@ -52,6 +54,7 @@ data class PostResponse(
     val discovery_id: Int?,
     val discovery_title: String?,
     val discovery_color: String?,
+    val is_discovery_post: Boolean?,
     val created_at: String,
     val created_timestamp: Long?
 )
@@ -65,6 +68,7 @@ data class DiscoveryResponse(
     val color_hex: String?,
     val is_joined: Boolean,
     val creator_name: String?,
+    val creator_id: Int?,
     val created_at: String?
 )
 
@@ -130,3 +134,36 @@ data class DeletedContentResponse(
     val contentId: Int,
     val reason: String
 )
+
+data class DiscoveryChatMessage(
+    val id: Int,
+    val discovery_id: Int,
+    val user_id: Int,
+    val user_name: String,
+    val message: String,
+    val created_at: String
+)
+
+data class SendDiscoveryMessageRequest(val message: String)
+
+data class AchievementResponse(
+    val id: Int,
+    val discovery_id: Int,
+    val title: String,
+    val description: String?,
+    val icon: String?,
+    val reward_type: String?,
+    val reward_value: String?,
+    val is_earned: Boolean,
+    val created_at: String
+)
+
+data class CreateAchievementRequest(
+    val title: String,
+    val description: String,
+    val icon: String,
+    val rewardType: String,
+    val rewardValue: String
+)
+
+data class GrantAchievementRequest(val userId: Int)

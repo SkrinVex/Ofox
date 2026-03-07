@@ -373,6 +373,7 @@ fun HomeScreen(
                         isHighlighted = isHighlighted,
                         isAuthorSubscribedToMe = isAuthorSubscribedToMe,
                         currentUserId = currentUser?.id,
+                        isDiscoveryPost = post.isDiscoveryPost,
                         onLike = {
                             scope.launch {
                                 repository.toggleLike(post)?.let { updatedPost ->
@@ -805,14 +806,23 @@ fun CreatePostDialog(
                         label = { Text(placeholder) },
                         modifier = Modifier.fillMaxWidth(),
                         shape = MaterialTheme.shapes.medium,
-                        supportingText = { Text("${content.length}/${su.SkrinVex.ofox.utils.ValidationConstants.MAX_POST_CONTENT_LENGTH}") }
+                        supportingText = { 
+                            Text(
+                                "${content.length}/${su.SkrinVex.ofox.utils.ValidationConstants.MAX_POST_CONTENT_LENGTH}",
+                                color = if (content.length >= su.SkrinVex.ofox.utils.ValidationConstants.MAX_POST_CONTENT_LENGTH) 
+                                    MaterialTheme.colorScheme.error 
+                                else 
+                                    MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                            ) 
+                        }
                     )
 
                     Spacer(modifier = Modifier.height(12.dp))
 
                     Text(
                         text = "Варианты ответа",
-                        style = MaterialTheme.typography.titleSmall
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.SemiBold
                     )
 
                     Spacer(modifier = Modifier.height(8.dp))
@@ -828,7 +838,15 @@ fun CreatePostDialog(
                             label = { Text("Вариант ${index + 1}") },
                             modifier = Modifier.fillMaxWidth(),
                             shape = MaterialTheme.shapes.medium,
-                            supportingText = { Text("${option.length}/150") }
+                            supportingText = { 
+                                Text(
+                                    "${option.length}/150",
+                                    color = if (option.length >= 150) 
+                                        MaterialTheme.colorScheme.error 
+                                    else 
+                                        MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                                ) 
+                            }
                         )
                         Spacer(modifier = Modifier.height(8.dp))
                     }
@@ -838,7 +856,7 @@ fun CreatePostDialog(
                             onClick = { pollOptions = pollOptions + "" },
                             modifier = Modifier.fillMaxWidth()
                         ) {
-                            Icon(Icons.Default.Add, contentDescription = null)
+                            Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(18.dp))
                             Spacer(modifier = Modifier.width(8.dp))
                             Text("Добавить вариант (${pollOptions.size}/15)")
                         }
@@ -846,11 +864,20 @@ fun CreatePostDialog(
                 } else {
                     OutlinedTextField(
                         value = content,
-                        onValueChange = { content = it },
+                        onValueChange = { if (it.length <= su.SkrinVex.ofox.utils.ValidationConstants.MAX_POST_CONTENT_LENGTH) content = it },
                         label = { Text(placeholder) },
                         modifier = Modifier.fillMaxWidth(),
                         minLines = 4,
-                        shape = MaterialTheme.shapes.medium
+                        shape = MaterialTheme.shapes.medium,
+                        supportingText = { 
+                            Text(
+                                "${content.length}/${su.SkrinVex.ofox.utils.ValidationConstants.MAX_POST_CONTENT_LENGTH}",
+                                color = if (content.length >= su.SkrinVex.ofox.utils.ValidationConstants.MAX_POST_CONTENT_LENGTH) 
+                                    MaterialTheme.colorScheme.error 
+                                else 
+                                    MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                            ) 
+                        }
                     )
                 }
 

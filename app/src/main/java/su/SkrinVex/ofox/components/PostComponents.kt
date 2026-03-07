@@ -96,6 +96,7 @@ fun CreativePostCard(
     isHighlighted: Boolean = false,
     isAuthorSubscribedToMe: Boolean = false,
     currentUserId: Int? = null,
+    isDiscoveryPost: Boolean = false,
     onLike: () -> Unit,
     onComment: () -> Unit,
     onShare: () -> Unit,
@@ -132,6 +133,12 @@ fun CreativePostCard(
         colors = CardDefaults.cardColors(
             containerColor = if (animatedAlpha > 0) {
                 MaterialTheme.colorScheme.primary.copy(alpha = animatedAlpha)
+            } else if (isDiscoveryPost && post.discoveryColor.isNotBlank()) {
+                try {
+                    Color(android.graphics.Color.parseColor(post.discoveryColor)).copy(alpha = 0.15f)
+                } catch (e: Exception) {
+                    MaterialTheme.colorScheme.surface
+                }
             } else when (post.type) {
                 PostType.MOOD -> MaterialTheme.colorScheme.primary.copy(alpha = 0.05f)
                 PostType.QUOTE -> MaterialTheme.colorScheme.secondary.copy(alpha = 0.05f)

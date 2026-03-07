@@ -125,4 +125,20 @@ interface ApiService {
     
     @POST("moderation/deleted-content/{id}/viewed")
     suspend fun markContentViewed(@Path("id") contentId: Int): SimpleMessageResponse
+    
+    // Discovery features
+    @GET("discoveries/{discoveryId}/chat")
+    suspend fun getOrCreateDiscoveryChat(@Path("discoveryId") discoveryId: Int): ChatResponse
+    
+    @POST("discoveries/{discoveryId}/achievements")
+    suspend fun createAchievement(@Path("discoveryId") discoveryId: Int, @Body request: CreateAchievementRequest): AchievementResponse
+    
+    @GET("discoveries/{discoveryId}/achievements")
+    suspend fun getAchievements(@Path("discoveryId") discoveryId: Int): List<AchievementResponse>
+    
+    @POST("discoveries/achievements/{achievementId}/grant")
+    suspend fun grantAchievement(@Path("achievementId") achievementId: Int, @Body request: GrantAchievementRequest): SimpleMessageResponse
+    
+    @GET("discoveries/users/{userId}/achievements")
+    suspend fun getUserAchievements(@Path("userId") userId: Int): List<AchievementResponse>
 }

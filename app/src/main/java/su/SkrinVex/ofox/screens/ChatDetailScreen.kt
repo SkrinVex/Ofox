@@ -168,7 +168,7 @@ fun ChatDetailScreen(repository: Repository, chatId: Int, onBack: () -> Unit) {
             contentPadding = PaddingValues(vertical = 16.dp)
         ) {
             items(messages) { message ->
-                MessageBubble(message)
+                MessageBubble(message, chat?.name ?: "")
             }
         }
         
@@ -246,11 +246,40 @@ fun ChatDetailScreen(repository: Repository, chatId: Int, onBack: () -> Unit) {
 }
 
 @Composable
-fun MessageBubble(message: su.SkrinVex.ofox.data.Message) {
+fun MessageBubble(message: su.SkrinVex.ofox.data.Message, chatName: String = "") {
     Column(
         modifier = Modifier.fillMaxWidth(),
         horizontalAlignment = if (message.isFromMe) Alignment.End else Alignment.Start
     ) {
+        if (!message.isFromMe) {
+            Row(
+                modifier = Modifier.padding(start = 4.dp, bottom = 4.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(32.dp)
+                        .clip(CircleShape)
+                        .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.8f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = message.senderName.firstOrNull()?.uppercase() ?: "?",
+                        color = MaterialTheme.colorScheme.onPrimary,
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    text = message.senderName,
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.primary
+                )
+            }
+        }
+        
         Card(
             colors = CardDefaults.cardColors(
                 containerColor = if (message.isFromMe) 
@@ -259,30 +288,37 @@ fun MessageBubble(message: su.SkrinVex.ofox.data.Message) {
                     MaterialTheme.colorScheme.surfaceVariant
             ),
             shape = RoundedCornerShape(
-                topStart = 16.dp,
-                topEnd = 16.dp,
-                bottomStart = if (message.isFromMe) 16.dp else 4.dp,
-                bottomEnd = if (message.isFromMe) 4.dp else 16.dp
+                topStart = if (message.isFromMe) 16.dp else 4.dp,
+                topEnd = if (message.isFromMe) 4.dp else 16.dp,
+                bottomStart = 16.dp,
+                bottomEnd = 16.dp
             ),
-            modifier = Modifier.widthIn(max = 280.dp)
+            modifier = Modifier
+                .widthIn(max = 280.dp)
+                .padding(start = if (message.isFromMe) 0.dp else 40.dp)
         ) {
-            Column(modifier = Modifier.padding(12.dp)) {
+            Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
                 Text(
                     text = message.text,
                     color = if (message.isFromMe) 
                         MaterialTheme.colorScheme.onPrimary 
                     else 
-                        MaterialTheme.colorScheme.onSurface
+                        MaterialTheme.colorScheme.onSurface,
+                    style = MaterialTheme.typography.bodyLarge
                 )
-                Spacer(modifier = Modifier.height(4.dp))
-                Text(
-                    text = formatTime(message.timestamp),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = if (message.isFromMe) 
-                        MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.7f)
-                    else 
-                        MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
-                )
+                Row(
+                    modifier = Modifier.align(Alignment.End),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = formatTime(message.timestamp),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = if (message.isFromMe) 
+                            MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.7f)
+                        else 
+                            MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
+                    )
+                }
             }
         }
     }
