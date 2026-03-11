@@ -358,17 +358,10 @@ fun AddChatDialog(
                                         )
                                     }
                                     Spacer(modifier = Modifier.width(12.dp))
-                                    Column {
-                                        Text(
-                                            text = user.name,
-                                            style = MaterialTheme.typography.bodyLarge
-                                        )
-                                        Text(
-                                            text = user.email,
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
-                                        )
-                                    }
+                                    Text(
+                                        text = user.name,
+                                        style = MaterialTheme.typography.bodyLarge
+                                    )
                                 }
                             }
                         }
