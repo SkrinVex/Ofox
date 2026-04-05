@@ -19,6 +19,9 @@ interface ApiService {
     @PUT("auth/profile")
     suspend fun updateProfile(@Body request: Map<String, String>): UserResponse
     
+    @PUT("auth/fcm-token")
+    suspend fun updateFcmToken(@Body body: Map<String, String>): SimpleMessageResponse
+    
     @GET("auth/users/{id}")
     suspend fun getUserById(@Path("id") userId: Int): UserResponse
     

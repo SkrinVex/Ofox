@@ -1,6 +1,9 @@
 package su.SkrinVex.ofox
 
+import android.app.NotificationChannel
+import android.app.NotificationManager
 import android.content.Intent
+import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -16,6 +19,8 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import com.google.firebase.messaging.FirebaseMessaging
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import su.SkrinVex.ofox.data.Repository
 import su.SkrinVex.ofox.navigation.Screen
@@ -26,6 +31,7 @@ import su.SkrinVex.ofox.ui.theme.OfoxTheme
 class MainActivity : ComponentActivity() {
     private lateinit var repository: Repository
     private val pendingDeepLink = mutableStateOf<DeepLinkData?>(null)
+    private val pendingChatId = mutableStateOf<Int?>(null)
 
     @OptIn(ExperimentalMaterial3Api::class)
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -38,6 +44,28 @@ class MainActivity : ComponentActivity() {
         }
         
         repository = Repository(this)
+        
+        // Создаём канал уведомлений
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val channel = NotificationChannel("chats", "Чаты", NotificationManager.IMPORTANCE_HIGH)
+            getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
+        }
+        
+        // Обновляем FCM токен если залогинен
+        if (repository.isLoggedIn()) {
+            FirebaseMessaging.getInstance().token.addOnSuccessListener { fcmToken ->
+                android.util.Log.d("FCM_TOKEN", "Token: $fcmToken")
+                lifecycleScope.launch {
+                    try {
+                        su.SkrinVex.ofox.data.api.ApiClient.getInstance(this@MainActivity).api
+                            .updateFcmToken(mapOf("token" to fcmToken))
+                        android.util.Log.d("FCM_TOKEN", "Token sent to server OK")
+                    } catch (e: Exception) {
+                        android.util.Log.e("FCM_TOKEN", "Failed to send token: ${e.message}")
+                    }
+                }
+            }
+        }
         
         // Обработка deep link
         handleDeepLink(intent)
@@ -186,7 +214,18 @@ class MainActivity : ComponentActivity() {
                 if (!isAuthenticated) {
                     AuthScreen(
                         repository = repository,
-                        onAuthSuccess = { isAuthenticated = true }
+                        onAuthSuccess = {
+                            isAuthenticated = true
+                            // Регистрируем FCM токен после логина
+                            FirebaseMessaging.getInstance().token.addOnSuccessListener { fcmToken ->
+                                scope.launch {
+                                    try {
+                                        su.SkrinVex.ofox.data.api.ApiClient.getInstance(this@MainActivity).api
+                                            .updateFcmToken(mapOf("token" to fcmToken))
+                                    } catch (_: Exception) {}
+                                }
+                            }
+                        }
                     )
                 } else {
                     val navController = rememberNavController()
@@ -201,6 +240,16 @@ class MainActivity : ComponentActivity() {
                         }
                     }
                     
+                    // Навигация при тапе на FCM уведомление
+                    val chatIdFromNotification by pendingChatId
+                    LaunchedEffect(chatIdFromNotification) {
+                        chatIdFromNotification?.let { id ->
+                            delay(300)
+                            navController.navigate("chat/$id")
+                            pendingChatId.value = null
+                        }
+                    }
+
                     // Навигация при изменении deep link
                     LaunchedEffect(deepLink, pendingDeepLink.value) {
                         val link = pendingDeepLink.value ?: deepLink
@@ -469,6 +518,12 @@ class MainActivity : ComponentActivity() {
     }
     
     private fun handleDeepLink(intent: Intent?) {
+        // Обработка тапа по FCM уведомлению
+        val chatId = intent?.getIntExtra("chat_id", -1) ?: -1
+        if (chatId != -1) {
+            pendingChatId.value = chatId
+        }
+
         intent?.data?.let { uri ->
             android.util.Log.d("OFOX", "Deep link received: $uri")
             android.util.Log.d("OFOX", "URI host: ${uri.host}, path: ${uri.path}, lastSegment: ${uri.lastPathSegment}")
