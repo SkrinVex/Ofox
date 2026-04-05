@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
 import androidx.lifecycle.lifecycleScope
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -73,43 +74,7 @@ class MainActivity : ComponentActivity() {
 
                 // Плашка принудительного обновления
                 if (forceUpdateMessage != null) {
-                    androidx.compose.foundation.layout.Box(
-                        modifier = Modifier.fillMaxSize(),
-                        contentAlignment = androidx.compose.ui.Alignment.Center
-                    ) {
-                        Card(
-                            modifier = Modifier.padding(androidx.compose.ui.unit.dp.times(32f)),
-                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)
-                        ) {
-                            androidx.compose.foundation.layout.Column(
-                                modifier = Modifier.padding(androidx.compose.ui.unit.dp.times(24f)),
-                                horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally,
-                                verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(androidx.compose.ui.unit.dp.times(16f))
-                            ) {
-                                Text(
-                                    "Требуется обновление",
-                                    style = MaterialTheme.typography.titleLarge,
-                                    color = MaterialTheme.colorScheme.onErrorContainer
-                                )
-                                Text(
-                                    forceUpdateMessage!!,
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = MaterialTheme.colorScheme.onErrorContainer,
-                                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
-                                )
-                                Button(
-                                    onClick = {
-                                        val intent = Intent(Intent.ACTION_VIEW,
-                                            android.net.Uri.parse("https://skrinvex.su/ofox"))
-                                        startActivity(intent)
-                                    },
-                                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
-                                ) {
-                                    Text("Обновить", color = MaterialTheme.colorScheme.onError)
-                                }
-                            }
-                        }
-                    }
+                    ForceUpdateScreen(message = forceUpdateMessage!!)
                     return@OfoxTheme
                 }
                 
