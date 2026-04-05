@@ -27,6 +27,7 @@ import kotlinx.coroutines.launch
 import su.SkrinVex.ofox.screens.CreativePost
 import su.SkrinVex.ofox.screens.PostType
 import su.SkrinVex.ofox.utils.formatTime
+import su.SkrinVex.ofox.components.UserAvatar
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.ui.text.style.TextOverflow
@@ -159,19 +160,11 @@ fun CreativePostCard(
                     .clickable(onClick = onAuthorClick)
             ) {
                 Box {
-                    Box(
-                        modifier = Modifier
-                            .size(40.dp)
-                            .clip(CircleShape)
-                            .background(MaterialTheme.colorScheme.primary),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            text = post.author.first().toString(),
-                            color = MaterialTheme.colorScheme.onPrimary,
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
+                    UserAvatar(
+                        name = post.author,
+                        avatarUrl = post.authorAvatarUrl.takeIf { it.isNotBlank() },
+                        size = 40.dp
+                    )
                     
                     // Иконка подписки если автор подписан на меня, но я не подписан на него
                     if (isAuthorSubscribedToMe && currentUserId != post.authorId) {

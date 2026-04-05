@@ -126,19 +126,11 @@ fun ChatDetailScreen(repository: Repository, chatId: Int, onBack: () -> Unit) {
             IconButton(onClick = onBack) {
                 Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Назад")
             }
-            Box(
-                modifier = Modifier
-                    .size(40.dp)
-                    .clip(CircleShape)
-                    .background(MaterialTheme.colorScheme.primary),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    text = chat?.name?.firstOrNull()?.toString() ?: "?",
-                    color = MaterialTheme.colorScheme.onPrimary,
-                    fontWeight = FontWeight.Bold
-                )
-            }
+            su.SkrinVex.ofox.components.UserAvatar(
+                name = chat?.name ?: "?",
+                avatarUrl = chat?.userAvatarUrl?.takeIf { it.isNotBlank() },
+                size = 40.dp
+            )
             Spacer(modifier = Modifier.width(12.dp))
             Column {
                 Row(
@@ -256,20 +248,11 @@ fun MessageBubble(message: su.SkrinVex.ofox.data.Message, chatName: String = "")
                 modifier = Modifier.padding(start = 4.dp, bottom = 4.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Box(
-                    modifier = Modifier
-                        .size(32.dp)
-                        .clip(CircleShape)
-                        .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.8f)),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        text = message.senderName.firstOrNull()?.uppercase() ?: "?",
-                        color = MaterialTheme.colorScheme.onPrimary,
-                        style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.Bold
-                    )
-                }
+                su.SkrinVex.ofox.components.UserAvatar(
+                    name = message.senderName,
+                    avatarUrl = message.senderAvatarUrl.takeIf { it.isNotBlank() },
+                    size = 32.dp
+                )
                 Spacer(Modifier.width(8.dp))
                 Text(
                     text = message.senderName,

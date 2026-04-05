@@ -23,6 +23,7 @@ import kotlinx.coroutines.launch
 import su.SkrinVex.ofox.data.Repository
 import su.SkrinVex.ofox.data.api.models.BadgeResponse
 import su.SkrinVex.ofox.components.UserBadges
+import su.SkrinVex.ofox.components.UserAvatar
 import su.SkrinVex.ofox.utils.formatTime
 
 @Composable
@@ -143,19 +144,11 @@ fun ChatsScreen(repository: Repository, navController: NavController) {
                             .padding(16.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Box(
-                            modifier = Modifier
-                                .size(48.dp)
-                                .clip(CircleShape)
-                                .background(MaterialTheme.colorScheme.primary),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text(
-                                text = chat.name.first().toString(),
-                                color = MaterialTheme.colorScheme.onPrimary,
-                                fontWeight = FontWeight.Bold
-                            )
-                        }
+                        UserAvatar(
+                            name = chat.name,
+                            avatarUrl = chat.userAvatarUrl.takeIf { it.isNotBlank() },
+                            size = 48.dp
+                        )
                         
                         Spacer(modifier = Modifier.width(12.dp))
                         
@@ -344,19 +337,11 @@ fun AddChatDialog(
                                         .padding(12.dp),
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Box(
-                                        modifier = Modifier
-                                            .size(40.dp)
-                                            .clip(CircleShape)
-                                            .background(MaterialTheme.colorScheme.primary),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        Text(
-                                            text = user.name.firstOrNull()?.toString() ?: "?",
-                                            color = MaterialTheme.colorScheme.onPrimary,
-                                            fontWeight = FontWeight.Bold
-                                        )
-                                    }
+                                    UserAvatar(
+                                        name = user.name,
+                                        avatarUrl = user.avatarUrl.takeIf { it.isNotBlank() },
+                                        size = 40.dp
+                                    )
                                     Spacer(modifier = Modifier.width(12.dp))
                                     Text(
                                         text = user.name,

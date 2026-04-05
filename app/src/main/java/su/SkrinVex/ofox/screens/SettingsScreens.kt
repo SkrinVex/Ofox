@@ -1,5 +1,8 @@
 package su.SkrinVex.ofox.screens
 
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -12,6 +15,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
+import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.Tag
@@ -20,11 +24,13 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.launch
+import su.SkrinVex.ofox.components.UserAvatar
 import su.SkrinVex.ofox.data.Repository
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -39,15 +45,65 @@ fun EditProfileScreen(repository: Repository, onBack: () -> Unit) {
     var website by remember { mutableStateOf("") }
     var youtube by remember { mutableStateOf("") }
     var bannerColor by remember { mutableStateOf("#4CAF50") }
+    var avatarUrl by remember { mutableStateOf<String?>(null) }
+    var isUploadingAvatar by remember { mutableStateOf(false) }
+    var avatarError by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
+    val context = LocalContext.current
 
     val colors = listOf("#4CAF50", "#2196F3", "#9C27B0", "#F44336", "#FF9800", "#607D8B", "#000000")
+
+    val imagePicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri: Uri? ->
+        uri ?: return@rememberLauncherForActivityResult
+        scope.launch {
+            isUploadingAvatar = true
+            avatarError = null
+            try {
+                val stream = context.contentResolver.openInputStream(uri)
+                    ?: throw Exception("Не удалось открыть файл")
+                val bytes = stream.readBytes()
+                stream.close()
+                if (bytes.size > 4 * 1024 * 1024) {
+                    avatarError = "Файл слишком большой. Максимум 4 МБ"
+                    isUploadingAvatar = false
+                    return@launch
+                }
+                val result = repository.uploadAvatar(bytes)
+                result.fold(
+                    onSuccess = { url ->
+                        android.util.Log.d("AVATAR", "Upload success, url=$url")
+                        // Инвалидируем старый кэш
+                        val imageLoader = coil.Coil.imageLoader(context)
+                        avatarUrl?.let { oldUrl ->
+                            imageLoader.memoryCache?.remove(coil.memory.MemoryCache.Key(oldUrl))
+                            imageLoader.diskCache?.remove(oldUrl.substringBefore("?"))
+                        }
+                        avatarUrl = url
+                        android.util.Log.d("AVATAR", "avatarUrl set to=$avatarUrl")
+                    },
+                    onFailure = { e ->
+                        avatarError = when {
+                            e.message?.contains("413") == true || e.message?.contains("too large") == true ->
+                                "Файл слишком большой. Максимум 4 МБ"
+                            e.message?.contains("415") == true ->
+                                "Неподдерживаемый формат. Используйте JPG, PNG или WebP"
+                            else -> "Ошибка загрузки. Попробуйте снова"
+                        }
+                    }
+                )
+            } catch (e: Exception) {
+                avatarError = "Ошибка: ${e.message}"
+            }
+            isUploadingAvatar = false
+        }
+    }
 
     LaunchedEffect(Unit) {
         user = repository.getCurrentUser()
         name = user?.name ?: ""
         bio = user?.bio ?: ""
         bannerColor = user?.bannerColor ?: "#4CAF50"
+        avatarUrl = user?.avatarUrl?.takeIf { it.isNotBlank() }
         
         try {
             val json = org.json.JSONObject(user?.socialLinks ?: "{}")
@@ -56,15 +112,12 @@ fun EditProfileScreen(repository: Repository, onBack: () -> Unit) {
             github = if (json.has("github")) json.getString("github") else ""
             website = if (json.has("website")) json.getString("website") else ""
             youtube = if (json.has("youtube")) json.getString("youtube") else ""
-        } catch (e: Exception) {
-            // Use defaults
-        }
+        } catch (e: Exception) {}
     }
 
     Column(modifier = Modifier.fillMaxSize().imePadding()) {
         Row(
-            modifier = Modifier
-                .fillMaxWidth(),
+            modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically
         ) {
             IconButton(onClick = onBack) {
@@ -85,6 +138,54 @@ fun EditProfileScreen(repository: Repository, onBack: () -> Unit) {
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             Text("Основная информация", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            
+            // Аватар
+            Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                Box(contentAlignment = Alignment.BottomEnd) {
+                    UserAvatar(name = name.ifBlank { "?" }, avatarUrl = avatarUrl, size = 96.dp)
+                    Box(
+                        modifier = Modifier
+                            .size(32.dp)
+                            .clip(CircleShape)
+                            .background(MaterialTheme.colorScheme.primary)
+                            .clickable { imagePicker.launch("image/*") },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        if (isUploadingAvatar) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(18.dp),
+                                color = MaterialTheme.colorScheme.onPrimary,
+                                strokeWidth = 2.dp
+                            )
+                        } else {
+                            Icon(
+                                Icons.Default.CameraAlt,
+                                contentDescription = "Сменить фото",
+                                tint = MaterialTheme.colorScheme.onPrimary,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+                    }
+                }
+            }
+
+            if (avatarError != null) {
+                Text(avatarError!!, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+            }
+
+            if (!avatarUrl.isNullOrBlank()) {
+                TextButton(
+                    onClick = {
+                        scope.launch {
+                            repository.deleteAvatar()
+                            avatarUrl = null
+                        }
+                    },
+                    modifier = Modifier.align(Alignment.CenterHorizontally)
+                ) {
+                    Text("Удалить фото", color = MaterialTheme.colorScheme.error)
+                }
+            }
             
             OutlinedTextField(
                 value = name,

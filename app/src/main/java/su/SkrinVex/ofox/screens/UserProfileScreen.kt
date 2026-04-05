@@ -24,6 +24,7 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.launch
 import su.SkrinVex.ofox.data.Repository
 import su.SkrinVex.ofox.components.UserBadges
+import su.SkrinVex.ofox.components.UserAvatar
 import su.SkrinVex.ofox.data.api.models.BadgeResponse
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -133,20 +134,11 @@ fun UserProfileScreen(
                                         .background(MaterialTheme.colorScheme.surface)
                                         .padding(4.dp)
                                 ) {
-                                    Box(
-                                        modifier = Modifier
-                                            .fillMaxSize()
-                                            .clip(CircleShape)
-                                            .background(MaterialTheme.colorScheme.primary),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        Text(
-                                            text = user?.name?.firstOrNull()?.toString()?.uppercase() ?: "?",
-                                            style = MaterialTheme.typography.displayMedium,
-                                            color = MaterialTheme.colorScheme.onPrimary,
-                                            fontWeight = FontWeight.Bold
-                                        )
-                                    }
+                                    UserAvatar(
+                                        name = user?.name ?: "?",
+                                        avatarUrl = user?.avatarUrl?.takeIf { it.isNotBlank() },
+                                        size = 92.dp
+                                    )
                                 }
                             }
                             

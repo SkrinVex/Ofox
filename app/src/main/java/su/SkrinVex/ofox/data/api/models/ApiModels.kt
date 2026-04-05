@@ -28,7 +28,8 @@ data class UserResponse(
     val bio: String,
     val badges: List<BadgeResponse>? = null,
     val social_links: String? = null,
-    val banner_color: String? = null
+    val banner_color: String? = null,
+    val avatar_url: String? = null
 )
 
 data class BadgeResponse(
@@ -48,6 +49,7 @@ data class PostResponse(
     val author_id: Int,
     val author_name: String?,
     val author_badges: List<BadgeResponse>?,
+    val author_avatar_url: String? = null,
     val content: String?,
     val type: String?,
     val likes: Int?,
@@ -86,7 +88,8 @@ data class ChatResponse(
     val other_user_id: Int,
     val other_user_name: String,
     val other_user_badges: List<BadgeResponse>? = null,
-    val unread_count: Int = 0
+    val unread_count: Int = 0,
+    val other_user_avatar: String? = null
 )
 
 data class CreateChatRequest(
@@ -100,6 +103,7 @@ data class MessageResponse(
     val sender_id: Int,
     val sender_name: String,
     val sender_badges: List<BadgeResponse>? = null,
+    val sender_avatar_url: String? = null,
     val text: String,
     val created_at: String
 )
@@ -112,6 +116,7 @@ data class CommentResponse(
     val author_id: Int,
     val author_name: String,
     val author_badges: List<BadgeResponse>?,
+    val author_avatar_url: String? = null,
     val content: String,
     val created_at: String
 )
@@ -173,3 +178,5 @@ data class CreateAchievementRequest(
 )
 
 data class GrantAchievementRequest(val userId: Int)
+
+data class AvatarUploadResponse(val avatar_url: String)

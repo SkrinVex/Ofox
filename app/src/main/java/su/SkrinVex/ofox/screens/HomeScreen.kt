@@ -367,7 +367,8 @@ fun HomeScreen(
                                 post.discoveryId,
                             post.discoveryTitle,
                             post.discoveryColor,
-                            badges
+                            badges,
+                            post.authorAvatarUrl
                         ),
                         isLiked = post.isLiked,
                         isHighlighted = isHighlighted,
@@ -978,7 +979,8 @@ data class CreativePost(
     val discoveryId: Int = 0,
     val discoveryTitle: String = "",
     val discoveryColor: String = "",
-    val authorBadges: List<su.SkrinVex.ofox.data.api.models.BadgeResponse> = emptyList()
+    val authorBadges: List<su.SkrinVex.ofox.data.api.models.BadgeResponse> = emptyList(),
+    val authorAvatarUrl: String = ""
 )
 
 enum class PostType { TEXT, POLL, QUOTE, MOOD }

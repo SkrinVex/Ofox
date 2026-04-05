@@ -7,6 +7,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.RequestBody.Companion.toRequestBody
 import su.SkrinVex.ofox.data.api.ApiClient
 import su.SkrinVex.ofox.data.api.models.*
 import java.text.SimpleDateFormat
@@ -624,6 +626,40 @@ class Repository(private val context: Context) {
         }
     }
 
+    suspend fun uploadAvatar(imageBytes: ByteArray): Result<String> = withContext(Dispatchers.IO) {
+        try {
+            val part = okhttp3.MultipartBody.Part.createFormData(
+                "avatar", "avatar.jpg",
+                imageBytes.toRequestBody("image/jpeg".toMediaType())
+            )
+            val response = apiClient.api.uploadAvatar(part)
+            // Обновляем кэш пользователя
+            val userId = getCurrentUserId()
+            if (userId != -1) {
+                val cached = db.userDao().getUser(userId)
+                if (cached != null) db.userDao().insertUser(cached.copy(avatarUrl = response.avatar_url))
+            }
+            Result.success(response.avatar_url)
+        } catch (e: Exception) {
+            android.util.Log.e("Repository", "uploadAvatar error", e)
+            Result.failure(e)
+        }
+    }
+
+    suspend fun deleteAvatar(): Result<Unit> = withContext(Dispatchers.IO) {
+        try {
+            apiClient.api.deleteAvatar()
+            val userId = getCurrentUserId()
+            if (userId != -1) {
+                val cached = db.userDao().getUser(userId)
+                if (cached != null) db.userDao().insertUser(cached.copy(avatarUrl = ""))
+            }
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
     suspend fun createChat(userId: Int, userName: String): Long? = withContext(Dispatchers.IO) {
         try {
             android.util.Log.d("Repository", "Creating chat with user $userId ($userName)")
@@ -666,7 +702,8 @@ class Repository(private val context: Context) {
         name = name, 
         bio = bio,
         socialLinks = social_links ?: "",
-        bannerColor = banner_color ?: "#4CAF50"
+        bannerColor = banner_color ?: "#4CAF50",
+        avatarUrl = avatar_url ?: ""
     )
 
     private fun PostResponse.toPost() = Post(
@@ -694,7 +731,8 @@ class Repository(private val context: Context) {
                     put("description", it.description)
                 }
             }).toString()
-        } ?: ""
+        } ?: "",
+        authorAvatarUrl = author_avatar_url ?: ""
     )
 
     private fun DiscoveryResponse.toDiscovery(): Discovery {
@@ -736,7 +774,8 @@ class Repository(private val context: Context) {
                 android.util.Log.d("Repository", "Badges JSON: $json")
                 json
             } ?: "",
-            unreadCount = unread_count
+            unreadCount = unread_count,
+            userAvatarUrl = other_user_avatar ?: ""
         )
     }
 
@@ -747,7 +786,8 @@ class Repository(private val context: Context) {
         timestamp = parseTimestamp(created_at),
         isFromMe = sender_id == currentUserId,
         senderId = sender_id,
-        senderName = sender_name
+        senderName = sender_name,
+        senderAvatarUrl = sender_avatar_url ?: ""
     )
 
     private fun parseTimestamp(dateStr: String): Long {

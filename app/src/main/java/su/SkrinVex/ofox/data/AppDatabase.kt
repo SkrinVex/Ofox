@@ -6,7 +6,7 @@ import kotlinx.coroutines.flow.Flow
 
 @Database(
     entities = [User::class, Post::class, Chat::class, Message::class, Discovery::class],
-    version = 13
+    version = 16
 )
 abstract class AppDatabase : RoomDatabase() {
     abstract fun userDao(): UserDao
@@ -42,8 +42,9 @@ data class User(
     val password: String,
     val name: String,
     val bio: String = "",
-    val socialLinks: String = "", // JSON: {"vk": "...", "tg": "...", "github": "..."}
-    val bannerColor: String = "#4CAF50"
+    val socialLinks: String = "",
+    val bannerColor: String = "#4CAF50",
+    val avatarUrl: String = ""
 )
 
 @Entity(tableName = "posts")
@@ -58,14 +59,15 @@ data class Post(
     val timestamp: Long,
     val type: String = "TEXT",
     val isLiked: Boolean = false,
-    val pollOptions: String = "", // JSON array of options
-    val pollVotes: String = "", // JSON array of vote counts
-    val userVote: Int = -1, // -1 means not voted, otherwise index of voted option
+    val pollOptions: String = "",
+    val pollVotes: String = "",
+    val userVote: Int = -1,
     val discoveryId: Int = 0,
     val discoveryTitle: String = "",
     val discoveryColor: String = "",
     val isDiscoveryPost: Boolean = false,
-    val authorBadges: String = "" // JSON array of badges
+    val authorBadges: String = "",
+    val authorAvatarUrl: String = ""
 )
 
 @Entity(tableName = "chats")
@@ -76,7 +78,8 @@ data class Chat(
     val timestamp: Long,
     val userId: Int = 0,
     val userBadges: String = "",
-    val unreadCount: Int = 0
+    val unreadCount: Int = 0,
+    val userAvatarUrl: String = ""
 )
 
 @Entity(tableName = "messages")
@@ -87,7 +90,8 @@ data class Message(
     val timestamp: Long,
     val isFromMe: Boolean,
     val senderId: Int = 0,
-    val senderName: String = ""
+    val senderName: String = "",
+    val senderAvatarUrl: String = ""
 )
 
 @Entity(tableName = "discoveries")

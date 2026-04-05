@@ -22,6 +22,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.foundation.layout.imePadding
+import su.SkrinVex.ofox.components.UserAvatar
 import su.SkrinVex.ofox.data.api.models.BadgeResponse
 import su.SkrinVex.ofox.data.api.models.CommentResponse
 import su.SkrinVex.ofox.utils.formatTime
@@ -45,21 +46,12 @@ fun CommentItem(
             .padding(vertical = 8.dp),
         horizontalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        Box(
-            modifier = Modifier
-                .size(32.dp)
-                .clip(CircleShape)
-                .background(MaterialTheme.colorScheme.primary)
-                .clickable(onClick = onAuthorClick),
-            contentAlignment = Alignment.Center
-        ) {
-            Text(
-                text = comment.author_name.first().toString(),
-                color = MaterialTheme.colorScheme.onPrimary,
-                style = MaterialTheme.typography.bodyMedium,
-                fontWeight = FontWeight.Bold
-            )
-        }
+        UserAvatar(
+            name = comment.author_name,
+            avatarUrl = comment.author_avatar_url?.takeIf { it.isNotBlank() },
+            size = 32.dp,
+            modifier = Modifier.clickable(onClick = onAuthorClick)
+        )
 
         Column(modifier = Modifier.weight(1f)) {
             Row(

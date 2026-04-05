@@ -21,6 +21,13 @@ interface ApiService {
     
     @PUT("auth/fcm-token")
     suspend fun updateFcmToken(@Body body: Map<String, String>): SimpleMessageResponse
+
+    @Multipart
+    @POST("auth/avatar")
+    suspend fun uploadAvatar(@Part avatar: okhttp3.MultipartBody.Part): AvatarUploadResponse
+
+    @DELETE("auth/avatar")
+    suspend fun deleteAvatar(): SimpleMessageResponse
     
     @GET("auth/users/{id}")
     suspend fun getUserById(@Path("id") userId: Int): UserResponse
