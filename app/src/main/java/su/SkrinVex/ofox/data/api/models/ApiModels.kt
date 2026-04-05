@@ -13,6 +13,12 @@ data class VerifyRequest(val email: String, val code: String)
 
 data class SimpleMessageResponse(val message: String)
 
+data class VersionResponse(
+    val forceUpdate: Boolean,
+    val minVersion: String,
+    val message: String?
+)
+
 data class AuthResponse(val user: UserResponse, val token: String)
 
 data class UserResponse(

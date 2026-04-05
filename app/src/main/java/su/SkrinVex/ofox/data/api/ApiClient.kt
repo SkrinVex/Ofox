@@ -48,9 +48,15 @@ class ApiClient(private val context: Context) {
         if (token != null) {
             request.addHeader("Authorization", "Bearer $token")
         }
+        request.addHeader("X-App-Version", su.SkrinVex.ofox.BuildConfig.VERSION_NAME)
         val response = chain.proceed(request.build())
+        if (response.code == 426) {
+            onForceUpdate?.invoke()
+        }
         response
     }
+
+    var onForceUpdate: (() -> Unit)? = null
     
     private val loggingInterceptor = HttpLoggingInterceptor().apply {
         level = if (ApiConfig.ENABLE_LOGGING) {
