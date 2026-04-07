@@ -96,8 +96,11 @@ class WebSocketClient(private val context: Context) {
                                 author_id = commentObj.getInt("author_id"),
                                 author_name = commentObj.getString("author_name"),
                                 author_badges = badges,
+                                author_avatar_url = commentObj.optString("author_avatar_url").takeIf { it.isNotBlank() },
                                 content = commentObj.getString("content"),
-                                created_at = commentObj.getString("created_at")
+                                created_at = commentObj.getString("created_at"),
+                                reply_to_id = commentObj.optInt("reply_to_id", -1).takeIf { it != -1 },
+                                reply_to_author_name = commentObj.optString("reply_to_author_name").takeIf { it.isNotBlank() }
                             )
                             _events.value = WSEvent.NewComment(postId, comment)
                             Log.d("WebSocket", "New comment event: postId=$postId")

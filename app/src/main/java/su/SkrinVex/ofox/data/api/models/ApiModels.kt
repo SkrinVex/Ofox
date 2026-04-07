@@ -63,6 +63,7 @@ data class PostResponse(
     val discovery_title: String?,
     val discovery_color: String?,
     val is_discovery_post: Boolean?,
+    val images: List<String>? = null,
     val created_at: String,
     val created_timestamp: Long?
 )
@@ -118,10 +119,16 @@ data class CommentResponse(
     val author_badges: List<BadgeResponse>?,
     val author_avatar_url: String? = null,
     val content: String,
-    val created_at: String
+    val created_at: String,
+    val reply_to_id: Int? = null,
+    val reply_to_author_name: String? = null
 )
 
-data class CreateCommentRequest(val content: String)
+data class CreateCommentRequest(
+    val content: String,
+    @com.google.gson.annotations.SerializedName("replyToId")
+    val replyToId: Int? = null
+)
 
 data class AppInfoResponse(val content: String)
 
@@ -180,3 +187,7 @@ data class CreateAchievementRequest(
 data class GrantAchievementRequest(val userId: Int)
 
 data class AvatarUploadResponse(val avatar_url: String)
+
+data class ReportRequest(val reason: String)
+
+data class PostImagesResponse(val images: List<String>)

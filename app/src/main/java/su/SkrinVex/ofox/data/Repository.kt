@@ -8,6 +8,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.RequestBody.Companion.toRequestBody
 import su.SkrinVex.ofox.data.api.ApiClient
 import su.SkrinVex.ofox.data.api.models.*
@@ -221,11 +222,11 @@ class Repository(private val context: Context) {
         }
     }
 
-    suspend fun getPostsByUser(userId: Int): List<Post> = withContext(Dispatchers.IO) {
+    suspend fun getPostsByUser(userId: Int, limit: Int = 20, offset: Int = 0): List<Post> = withContext(Dispatchers.IO) {
         try {
-            apiClient.api.getPosts(userId = userId, limit = 101).map { it.toPost() }
+            apiClient.api.getPosts(userId = userId, limit = limit, offset = offset).map { it.toPost() }
         } catch (e: Exception) {
-            db.postDao().getPostsByUser(userId)
+            if (offset == 0) db.postDao().getPostsByUser(userId) else emptyList()
         }
     }
 
@@ -346,12 +347,58 @@ class Repository(private val context: Context) {
         }
     }
 
-    suspend fun createComment(postId: Int, content: String): CommentResponse? = withContext(Dispatchers.IO) {
+    suspend fun createComment(postId: Int, content: String, replyToId: Int? = null): CommentResponse? = withContext(Dispatchers.IO) {
         try {
-            apiClient.api.createComment(postId, CreateCommentRequest(content))
+            apiClient.api.createComment(postId, CreateCommentRequest(content, replyToId))
         } catch (e: Exception) {
             android.util.Log.e("Repository", "createComment error", e)
             null
+        }
+    }
+
+    suspend fun reportPost(postId: Int, reason: String) = withContext(Dispatchers.IO) {
+        try {
+            apiClient.api.reportPost(postId, su.SkrinVex.ofox.data.api.models.ReportRequest(reason))
+            android.util.Log.d("Repository", "Reported post $postId: $reason")
+        } catch (e: Exception) {
+            android.util.Log.e("Repository", "reportPost error", e)
+        }
+    }
+
+    fun hideAuthor(authorId: Int) {
+        val hidden = getHiddenAuthorIds().toMutableSet()
+        hidden.add(authorId)
+        prefs.edit().putStringSet("hidden_authors", hidden.map { it.toString() }.toSet()).apply()
+        android.util.Log.d("Repository", "Hidden author $authorId")
+    }
+
+    fun unhideAuthor(authorId: Int) {
+        val hidden = getHiddenAuthorIds().toMutableSet()
+        hidden.remove(authorId)
+        prefs.edit().putStringSet("hidden_authors", hidden.map { it.toString() }.toSet()).apply()
+        android.util.Log.d("Repository", "Unhidden author $authorId")
+    }
+
+    fun getHiddenAuthorIds(): Set<Int> {
+        return prefs.getStringSet("hidden_authors", emptySet())?.mapNotNull { it.toIntOrNull() }?.toSet() ?: emptySet()
+    }
+
+    suspend fun uploadPostImages(postId: Int, uris: List<android.net.Uri>, context: android.content.Context) = withContext(Dispatchers.IO) {
+        try {
+            val parts = uris.mapIndexed { i, uri ->
+                val stream = context.contentResolver.openInputStream(uri) ?: return@mapIndexed null
+                val bytes = stream.readBytes()
+                stream.close()
+                val mimeType = context.contentResolver.getType(uri) ?: "image/jpeg"
+                val body = okhttp3.RequestBody.create(mimeType.toMediaTypeOrNull(), bytes)
+                okhttp3.MultipartBody.Part.createFormData("images", "image_$i.jpg", body)
+            }.filterNotNull()
+            if (parts.isNotEmpty()) {
+                apiClient.api.uploadPostImages(postId, parts)
+                android.util.Log.d("Repository", "Uploaded ${parts.size} images for post $postId")
+            }
+        } catch (e: Exception) {
+            android.util.Log.e("Repository", "uploadPostImages error", e)
         }
     }
 
@@ -735,7 +782,8 @@ class Repository(private val context: Context) {
                 }
             }).toString()
         } ?: "",
-        authorAvatarUrl = author_avatar_url ?: ""
+        authorAvatarUrl = author_avatar_url ?: "",
+        images = images?.joinToString("|||") ?: ""
     )
 
     private fun DiscoveryResponse.toDiscovery(): Discovery {

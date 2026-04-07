@@ -8,10 +8,10 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.lifecycleScope
@@ -289,6 +289,8 @@ class MainActivity : ComponentActivity() {
                         Screen.Feed.route,
                         Screen.Settings.route
                     )
+                    var bottomBarVisible by remember { mutableStateOf(true) }
+                    LaunchedEffect(currentRoute) { bottomBarVisible = true }
                     
                     val chats by repository.chatsFlow.collectAsState(initial = emptyList())
                     val totalUnread = remember(chats) { chats.sumOf { it.unreadCount } }
@@ -312,61 +314,12 @@ class MainActivity : ComponentActivity() {
                         }
                     }
                     
-                    Scaffold(
-                        modifier = Modifier.fillMaxSize(),
-                        bottomBar = {
-                            if (shouldShowBottomBar) {
-                                NavigationBar(
-                                    containerColor = MaterialTheme.colorScheme.surface
-                                ) {
-                                    bottomNavItems.forEach { screen ->
-                                        NavigationBarItem(
-                                            icon = { 
-                                                BadgedBox(
-                                                    badge = {
-                                                        if (screen.route == Screen.Chats.route && totalUnread > 0) {
-                                                            Badge {
-                                                                Text(if (totalUnread > 9) "9+" else totalUnread.toString())
-                                                            }
-                                                        }
-                                                        if (screen.route == Screen.Settings.route && hasUndeliveredWarnings) {
-                                                            Badge(
-                                                                containerColor = MaterialTheme.colorScheme.error
-                                                            )
-                                                        }
-                                                    }
-                                                ) {
-                                                    Icon(
-                                                        screen.icon, 
-                                                        contentDescription = screen.title
-                                                    )
-                                                }
-                                            },
-                                            label = { Text(screen.title) },
-                                            selected = currentRoute == screen.route,
-                                            onClick = {
-                                                navController.navigate(screen.route) {
-                                                    popUpTo(navController.graph.startDestinationId)
-                                                    launchSingleTop = true
-                                                }
-                                            },
-                                            colors = NavigationBarItemDefaults.colors(
-                                                selectedIconColor = MaterialTheme.colorScheme.primary,
-                                                selectedTextColor = MaterialTheme.colorScheme.primary,
-                                                unselectedIconColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
-                                                unselectedTextColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
-                                                indicatorColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.1f)
-                                            )
-                                        )
-                                    }
-                                }
-                            }
-                        }
-                    ) { innerPadding ->
+                    Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
+                        Box(modifier = Modifier.fillMaxSize()) {
                         NavHost(
                             navController = navController,
                             startDestination = initialRoute,
-                            modifier = Modifier.padding(innerPadding)
+                            modifier = Modifier.fillMaxSize().navigationBarsPadding()
                         ) {
                             composable(Screen.Home.route) { 
                                 val currentDeepLink by pendingDeepLink
@@ -377,9 +330,10 @@ class MainActivity : ComponentActivity() {
                                 android.util.Log.d("OFOX", "HomeScreen composable: currentDeepLink=$currentDeepLink, deepLink=$deepLink, postId=$postId")
                                 
                                 HomeScreen(
-                                    repository = repository, 
+                                    repository = repository,
                                     navController = navController,
-                                    highlightPostId = postId
+                                    highlightPostId = postId,
+                                    onBarsVisibilityChange = { visible -> bottomBarVisible = visible }
                                 )
                                 
                                 if (postId != null) {
@@ -396,7 +350,8 @@ class MainActivity : ComponentActivity() {
                                 ChatDetailScreen(
                                     repository = repository,
                                     chatId = backStackEntry.arguments?.getString("chatId")?.toIntOrNull() ?: 0,
-                                    onBack = { navController.popBackStack() }
+                                    onBack = { navController.popBackStack() },
+                                    onNavigateToProfile = { userId -> navController.navigate("user_profile/$userId") }
                                 )
                             }
                             composable(Screen.Feed.route) { 
@@ -507,7 +462,47 @@ class MainActivity : ComponentActivity() {
                                 )
                             }
                         }
-                    }
+                        // Bottom nav поверх контента
+                        androidx.compose.animation.AnimatedVisibility(
+                            visible = shouldShowBottomBar && (bottomBarVisible || currentRoute != Screen.Home.route),
+                            enter = androidx.compose.animation.slideInVertically { it },
+                            exit = androidx.compose.animation.slideOutVertically { it },
+                            modifier = Modifier.align(Alignment.BottomCenter)
+                        ) {
+                            NavigationBar(containerColor = MaterialTheme.colorScheme.surface) {
+                                bottomNavItems.forEach { screen ->
+                                    NavigationBarItem(
+                                        icon = {
+                                            BadgedBox(badge = {
+                                                if (screen.route == Screen.Chats.route && totalUnread > 0) {
+                                                    Badge { Text(if (totalUnread > 9) "9+" else totalUnread.toString()) }
+                                                }
+                                                if (screen.route == Screen.Settings.route && hasUndeliveredWarnings) {
+                                                    Badge(containerColor = MaterialTheme.colorScheme.error)
+                                                }
+                                            }) { Icon(screen.icon, contentDescription = screen.title) }
+                                        },
+                                        label = { Text(screen.title) },
+                                        selected = currentRoute == screen.route,
+                                        onClick = {
+                                            navController.navigate(screen.route) {
+                                                popUpTo(navController.graph.startDestinationId)
+                                                launchSingleTop = true
+                                            }
+                                        },
+                                        colors = NavigationBarItemDefaults.colors(
+                                            selectedIconColor = MaterialTheme.colorScheme.primary,
+                                            selectedTextColor = MaterialTheme.colorScheme.primary,
+                                            unselectedIconColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+                                            unselectedTextColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+                                            indicatorColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.1f)
+                                        )
+                                    )
+                                }
+                            }
+                        }
+                        } // Box
+                    } // Scaffold
                 }
             }
         }

@@ -1,6 +1,7 @@
 package su.SkrinVex.ofox.screens
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.lazy.LazyColumn
@@ -12,6 +13,8 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Image
 import androidx.compose.material3.*
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.runtime.*
@@ -21,6 +24,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
@@ -29,6 +35,7 @@ import su.SkrinVex.ofox.components.CreativePostCard
 import su.SkrinVex.ofox.components.ShareBottomSheet
 import su.SkrinVex.ofox.components.PostMenuBottomSheet
 import su.SkrinVex.ofox.components.CommentsBottomSheet
+import su.SkrinVex.ofox.components.UserAvatar
 import su.SkrinVex.ofox.data.Repository
 import su.SkrinVex.ofox.utils.formatTime
 
@@ -37,7 +44,8 @@ import su.SkrinVex.ofox.utils.formatTime
 fun HomeScreen(
     repository: Repository,
     navController: androidx.navigation.NavController? = null,
-    highlightPostId: Int? = null
+    highlightPostId: Int? = null,
+    onBarsVisibilityChange: (Boolean) -> Unit = {}
 ) {
     var showShareMenu by remember { mutableStateOf(false) }
     var showPostMenu by remember { mutableStateOf(false) }
@@ -63,10 +71,45 @@ fun HomeScreen(
     var hasMore by remember { mutableStateOf(true) }
     var localHighlightPostId by remember { mutableStateOf<Int?>(null) }
     val subscribedToMeMap = remember { mutableStateMapOf<Int, Boolean>() }
+    var hiddenAuthorIds by remember { mutableStateOf(repository.getHiddenAuthorIds()) }
+
+    // Обновляем список скрытых авторов при каждом появлении экрана
+    LaunchedEffect(Unit) {
+        hiddenAuthorIds = repository.getHiddenAuthorIds()
+    }
     val scope = rememberCoroutineScope()
     val listState = rememberLazyListState()
     val context = androidx.compose.ui.platform.LocalContext.current
     val wsClient = remember { su.SkrinVex.ofox.data.api.WebSocketClient.getInstance(context) }
+
+    // Скрытие/показ баров при скролле
+    var barsVisible by remember { mutableStateOf(true) }
+    LaunchedEffect(listState) {
+        var prevIndex = 0
+        var prevOffset = 0
+        snapshotFlow { listState.firstVisibleItemIndex to listState.firstVisibleItemScrollOffset }
+            .collect { (index, offset) ->
+                val scrollingDown = index > prevIndex || (index == prevIndex && offset > prevOffset + 10)
+                val scrollingUp = index < prevIndex || (index == prevIndex && offset < prevOffset - 10)
+                if (scrollingDown && barsVisible) {
+                    barsVisible = false
+                    onBarsVisibilityChange(false)
+                } else if (scrollingUp && !barsVisible) {
+                    barsVisible = true
+                    onBarsVisibilityChange(true)
+                }
+                prevIndex = index
+                prevOffset = offset
+            }
+    }
+    val topBarAlpha by androidx.compose.animation.core.animateFloatAsState(
+        targetValue = if (barsVisible) 1f else 0f,
+        animationSpec = androidx.compose.animation.core.tween(200)
+    )
+    val fabScale by androidx.compose.animation.core.animateFloatAsState(
+        targetValue = if (barsVisible) 1f else 0f,
+        animationSpec = androidx.compose.animation.core.tween(200)
+    )
 
     LaunchedEffect(highlightPostId) {
         if (highlightPostId != null && highlightPostId != localHighlightPostId) {
@@ -316,19 +359,19 @@ fun HomeScreen(
                 }
             }
         } else {
-        Column(
+        Box(
             modifier = Modifier
                 .fillMaxSize()
                 .background(MaterialTheme.colorScheme.background)
         ) {
             val uniquePosts by remember {
-                derivedStateOf { posts.distinctBy { it.id } }
+                derivedStateOf { posts.distinctBy { it.id }.filter { it.authorId !in hiddenAuthorIds } }
             }
 
             LazyColumn(
                 state = listState,
                 verticalArrangement = Arrangement.spacedBy(16.dp),
-                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp)
+                contentPadding = PaddingValues(start = 16.dp, top = 96.dp, end = 16.dp, bottom = 80.dp)
             ) {
                 items(uniquePosts, key = { it.id }) { post ->
                     val badges = try {
@@ -368,7 +411,8 @@ fun HomeScreen(
                             post.discoveryTitle,
                             post.discoveryColor,
                             badges,
-                            post.authorAvatarUrl
+                            post.authorAvatarUrl,
+                            post.images.split("|||").filter { it.isNotEmpty() }
                         ),
                         isLiked = post.isLiked,
                         isHighlighted = isHighlighted,
@@ -444,11 +488,39 @@ fun HomeScreen(
             }
         }
 
+            // Топбар поверх контента
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .align(Alignment.TopStart)
+                    .graphicsLayer { alpha = topBarAlpha; translationY = -size.height * (1f - topBarAlpha) }
+                    .background(MaterialTheme.colorScheme.background)
+                    .statusBarsPadding()
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text(
+                    text = "OFOX",
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.primary
+                )
+                UserAvatar(
+                    name = currentUser?.name ?: "",
+                    avatarUrl = currentUser?.avatarUrl?.takeIf { it.isNotBlank() },
+                    size = 36.dp,
+                    modifier = Modifier.clickable { navController?.navigate("my_profile") }
+                )
+            }
+
         FloatingActionButton(
             onClick = { showCreatePost = true },
             modifier = Modifier
                 .align(Alignment.BottomEnd)
-                .padding(16.dp),
+                .navigationBarsPadding()
+                .padding(end = 16.dp, bottom = 96.dp)
+                .graphicsLayer { alpha = fabScale; scaleX = fabScale; scaleY = fabScale },
             containerColor = MaterialTheme.colorScheme.primary
         ) {
             Icon(Icons.Default.Add, contentDescription = "Создать пост")
@@ -476,12 +548,32 @@ fun HomeScreen(
     if (showPostMenu) {
         PostMenuBottomSheet(
             isMyPost = selectedPost?.authorId == currentUser?.id,
+            authorName = selectedPost?.authorName ?: "",
+            authorAvatarUrl = selectedPost?.authorAvatarUrl,
             onDismiss = { showPostMenu = false },
             onAction = { action ->
-                when (action) {
-                    "Удалить пост" -> {
+                when {
+                    action == "Удалить пост" -> {
                         showPostMenu = false
                         showDeleteDialog = true
+                    }
+                    action.startsWith("report:") -> {
+                        val reason = action.removePrefix("report:")
+                        scope.launch { repository.reportPost(selectedPostId, reason) }
+                        showPostMenu = false
+                    }
+                    action == "Не показывать от автора" -> {
+                        selectedPost?.authorId?.let { authorId ->
+                            repository.hideAuthor(authorId)
+                            hiddenAuthorIds = repository.getHiddenAuthorIds()
+                        }
+                        showPostMenu = false
+                    }
+                    action == "Скопировать текст" -> {
+                        val ctx = context
+                        val clipboard = ctx.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                        clipboard.setPrimaryClip(android.content.ClipData.newPlainText("post", selectedPost?.content ?: ""))
+                        showPostMenu = false
                     }
                     else -> showPostMenu = false
                 }
@@ -571,7 +663,7 @@ fun HomeScreen(
                 postDraftDiscovery = discovery
             },
             repository = repository,
-            onCreate = { content, type, pollOptions, discovery ->
+            onCreate = { content, type, pollOptions, discovery, imageUris ->
                 showCreatePost = false
                 postDraftContent = ""
                 postDraftType = "TEXT"
@@ -584,7 +676,18 @@ fun HomeScreen(
                         } else {
                             repository.createPost(content, type, discovery?.id)
                         }
-                        newPost?.let { posts.add(0, it) }
+                        newPost?.let { post ->
+                            posts.add(0, post)
+                            // Загружаем изображения если есть
+                            if (imageUris.isNotEmpty()) {
+                                repository.uploadPostImages(post.id, imageUris, context)
+                                // Перезагружаем пост чтобы получить URLs изображений
+                                repository.getPostById(post.id)?.let { updated ->
+                                    val idx = posts.indexOfFirst { it.id == post.id }
+                                    if (idx != -1) posts[idx] = updated
+                                }
+                            }
+                        }
                         listState.animateScrollToItem(0)
                     } catch (e: Exception) {
                         android.util.Log.e("HomeScreen", "Error creating post", e)
@@ -661,9 +764,10 @@ fun HomeScreen(
                     }
                 }
             },
-            onSendComment = { content ->
+            onSendComment = { content, replyToId ->
+                android.util.Log.d("HomeScreen", "sendComment: content=$content replyToId=$replyToId")
                 scope.launch {
-                    repository.createComment(selectedPostId, content)
+                    repository.createComment(selectedPostId, content, replyToId)
                 }
             },
             onDeleteComment = { commentId ->
@@ -691,7 +795,7 @@ fun CreatePostDialog(
     initialDiscovery: su.SkrinVex.ofox.data.Discovery? = null,
     onDismiss: () -> Unit,
     onDraftChange: (String, String, List<String>, su.SkrinVex.ofox.data.Discovery?) -> Unit = { _, _, _, _ -> },
-    onCreate: (String, String, List<String>, su.SkrinVex.ofox.data.Discovery?) -> Unit,
+    onCreate: (String, String, List<String>, su.SkrinVex.ofox.data.Discovery?, List<android.net.Uri>) -> Unit,
     repository: Repository
 ) {
     var content by remember { mutableStateOf(initialContent) }
@@ -699,8 +803,15 @@ fun CreatePostDialog(
     var pollOptions by remember { mutableStateOf(initialPollOptions) }
     var selectedDiscovery by remember { mutableStateOf(initialDiscovery) }
     var discoveries by remember { mutableStateOf(listOf<su.SkrinVex.ofox.data.Discovery>()) }
+    var selectedImages by remember { mutableStateOf(listOf<android.net.Uri>()) }
     val scope = rememberCoroutineScope()
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+
+    val imagePicker = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.GetMultipleContents()
+    ) { uris ->
+        selectedImages = (selectedImages + uris).take(5)
+    }
 
     LaunchedEffect(Unit) {
         try {
@@ -927,10 +1038,65 @@ fun CreatePostDialog(
 
             HorizontalDivider()
 
+            // Превью выбранных изображений
+            if (selectedImages.isNotEmpty()) {
+                androidx.compose.foundation.lazy.LazyRow(
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    items(selectedImages.size) { i ->
+                        Box {
+                            coil.compose.AsyncImage(
+                                model = selectedImages[i],
+                                contentDescription = null,
+                                contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                                modifier = Modifier
+                                    .size(72.dp)
+                                    .clip(RoundedCornerShape(8.dp))
+                            )
+                            IconButton(
+                                onClick = { selectedImages = selectedImages.toMutableList().also { it.removeAt(i) } },
+                                modifier = Modifier
+                                    .size(20.dp)
+                                    .align(Alignment.TopEnd)
+                                    .clip(CircleShape)
+                                    .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.8f))
+                            ) {
+                                Icon(Icons.Default.Close, contentDescription = "Удалить", modifier = Modifier.size(14.dp))
+                            }
+                        }
+                    }
+                }
+            }
+
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(16.dp)
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                IconButton(
+                    onClick = { if (selectedImages.size < 5) imagePicker.launch("image/*") },
+                    enabled = selectedImages.size < 5
+                ) {
+                    Icon(
+                        Icons.Default.Image,
+                        contentDescription = "Добавить фото",
+                        tint = if (selectedImages.size < 5) MaterialTheme.colorScheme.primary
+                               else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.3f)
+                    )
+                }
+                Text(
+                    text = "${selectedImages.size}/5",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
+                )
+            }
+
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 8.dp)
                     .navigationBarsPadding(),
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
@@ -947,9 +1113,9 @@ fun CreatePostDialog(
                         if (content.isNotBlank()) {
                             if (selectedType == "POLL") {
                                 val validOptions = pollOptions.filter { it.isNotBlank() }
-                                onCreate(content, selectedType, validOptions, selectedDiscovery)
+                                onCreate(content, selectedType, validOptions, selectedDiscovery, selectedImages)
                             } else {
-                                onCreate(content, selectedType, emptyList(), selectedDiscovery)
+                                onCreate(content, selectedType, emptyList(), selectedDiscovery, selectedImages)
                             }
                         }
                     },
@@ -980,7 +1146,8 @@ data class CreativePost(
     val discoveryTitle: String = "",
     val discoveryColor: String = "",
     val authorBadges: List<su.SkrinVex.ofox.data.api.models.BadgeResponse> = emptyList(),
-    val authorAvatarUrl: String = ""
+    val authorAvatarUrl: String = "",
+    val images: List<String> = emptyList()
 )
 
 enum class PostType { TEXT, POLL, QUOTE, MOOD }

@@ -7,9 +7,19 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.draw.clip
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.*
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.Dialog
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -45,6 +55,12 @@ fun UserProfileScreen(
     var userPosts by remember { mutableStateOf(listOf<su.SkrinVex.ofox.data.Post>()) }
     var subscribersCount by remember { mutableStateOf(0) }
     var isLoadingInitial by remember { mutableStateOf(true) }
+    var isLoadingPosts by remember { mutableStateOf(false) }
+    var isLoadingMorePosts by remember { mutableStateOf(false) }
+    var hasMorePosts by remember { mutableStateOf(true) }
+    var showOptionsSheet by remember { mutableStateOf(false) }
+    var showHideDialog by remember { mutableStateOf(false) }
+    var isHidden by remember { mutableStateOf(repository.getHiddenAuthorIds().contains(userId)) }
     
     val scope = rememberCoroutineScope()
     val isOwnProfile = remember(userId) { userId == repository.getCurrentUserId() }
@@ -57,27 +73,45 @@ fun UserProfileScreen(
         } catch (e: Exception) { null }
     }
     
+    fun loadMorePosts() {
+        if (isLoadingMorePosts || !hasMorePosts) return
+        scope.launch {
+            isLoadingMorePosts = true
+            try {
+                val newPosts = repository.getPostsByUser(userId, limit = 20, offset = userPosts.size)
+                userPosts = userPosts + newPosts
+                hasMorePosts = newPosts.size == 20
+            } catch (_: Exception) {}
+            isLoadingMorePosts = false
+        }
+    }
+
     LaunchedEffect(userId) {
-        // Проверяем кеш сразу
         val cached = repository.getUserById(userId)
         if (cached != null) isLoadingInitial = false
-        
-        // Загружаем данные параллельно
+
         val badgesDef = async { repository.getUserBadges(userId) }
-        val postsDef = async { repository.getPostsByUser(userId) }
         val countDef = async { repository.getSubscribersCount(userId) }
-        
+
         if (!isOwnProfile) {
             val subDef = async { repository.isSubscribed(userId) }
             val mutualDef = async { repository.isSubscribedToMe(userId) }
             isSubscribed = subDef.await()
             isMutualSubscription = mutualDef.await()
         }
-        
+
         userBadges = badgesDef.await()
-        userPosts = postsDef.await()
         subscribersCount = countDef.await()
         isLoadingInitial = false
+
+        // Загружаем первую страницу постов
+        isLoadingPosts = true
+        try {
+            val posts = repository.getPostsByUser(userId, limit = 20, offset = 0)
+            userPosts = posts
+            hasMorePosts = posts.size == 20
+        } catch (_: Exception) {}
+        isLoadingPosts = false
     }
     
     Column(modifier = Modifier.fillMaxSize()) {
@@ -92,8 +126,135 @@ fun UserProfileScreen(
             Text(
                 "Профиль",
                 style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.SemiBold
+                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.weight(1f)
             )
+            if (!isOwnProfile) {
+                IconButton(onClick = { showOptionsSheet = true }) {
+                    Icon(Icons.Default.MoreVert, contentDescription = "Опции")
+                }
+            }
+        }
+
+        if (showOptionsSheet) {
+            ModalBottomSheet(
+                onDismissRequest = { showOptionsSheet = false },
+                containerColor = MaterialTheme.colorScheme.surface
+            ) {
+                Column(modifier = Modifier.padding(horizontal = 16.dp).padding(bottom = 32.dp)) {
+                    Text(
+                        "Действия",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier.padding(vertical = 16.dp)
+                    )
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(MaterialTheme.shapes.medium)
+                            .clickable {
+                                showOptionsSheet = false
+                                showHideDialog = true
+                            }
+                            .padding(vertical = 14.dp, horizontal = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            if (isHidden) Icons.Default.Visibility else Icons.Default.VisibilityOff,
+                            contentDescription = null,
+                            tint = if (isHidden) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error,
+                            modifier = Modifier.size(22.dp)
+                        )
+                        Spacer(Modifier.width(16.dp))
+                        Text(
+                            if (isHidden) "Показывать посты в ленте" else "Скрыть посты в ленте",
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = if (isHidden) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error
+                        )
+                    }
+                }
+            }
+        }
+
+        if (showHideDialog) {
+            Dialog(onDismissRequest = { showHideDialog = false }) {
+                Card(
+                    shape = MaterialTheme.shapes.extraLarge,
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                    elevation = CardDefaults.cardElevation(8.dp)
+                ) {
+                    Column(
+                        modifier = Modifier.padding(24.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        UserAvatar(
+                            name = user?.name ?: "?",
+                            avatarUrl = user?.avatarUrl?.takeIf { it.isNotBlank() },
+                            size = 64.dp
+                        )
+                        Spacer(Modifier.height(12.dp))
+                        Text(user?.name ?: "", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                        Spacer(Modifier.height(16.dp))
+                        HorizontalDivider(color = MaterialTheme.colorScheme.surfaceVariant)
+                        Spacer(Modifier.height(16.dp))
+                        Box(
+                            modifier = Modifier
+                                .size(52.dp)
+                                .clip(CircleShape)
+                                .background(
+                                    if (isHidden) MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
+                                    else MaterialTheme.colorScheme.error.copy(alpha = 0.12f)
+                                ),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                if (isHidden) Icons.Default.Visibility else Icons.Default.VisibilityOff,
+                                null,
+                                tint = if (isHidden) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error,
+                                modifier = Modifier.size(28.dp)
+                            )
+                        }
+                        Spacer(Modifier.height(12.dp))
+                        Text(
+                            if (isHidden) "Показать посты в ленте?" else "Скрыть посты в ленте?",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                        )
+                        Spacer(Modifier.height(6.dp))
+                        Text(
+                            if (isHidden)
+                                "Посты ${user?.name ?: "пользователя"} снова будут отображаться в вашей ленте."
+                            else
+                                "Посты ${user?.name ?: "пользователя"} перестанут отображаться в ленте. Вернуть можно здесь же через ⋮.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+                            textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                        )
+                        Spacer(Modifier.height(24.dp))
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            OutlinedButton(
+                                onClick = { showHideDialog = false },
+                                modifier = Modifier.weight(1f),
+                                shape = MaterialTheme.shapes.medium
+                            ) { Text("Отмена") }
+                            Button(
+                                onClick = {
+                                    if (isHidden) repository.unhideAuthor(userId)
+                                    else repository.hideAuthor(userId)
+                                    isHidden = !isHidden
+                                    showHideDialog = false
+                                },
+                                modifier = Modifier.weight(1f),
+                                shape = MaterialTheme.shapes.medium,
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = if (isHidden) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error
+                                )
+                            ) { Text(if (isHidden) "Показать" else "Скрыть") }
+                        }
+                    }
+                }
+            }
         }
 
         if (user == null && isLoadingInitial) {
@@ -253,25 +414,92 @@ fun UserProfileScreen(
                 item {
                     Text("Посты", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
                 }
-                
-                items(userPosts, key = { it.id }) { post ->
-                    Card(
-                        modifier = Modifier.fillMaxWidth().clickable { onPostClick(post.id) },
-                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                        shape = MaterialTheme.shapes.medium
-                    ) {
-                        Column(modifier = Modifier.padding(16.dp)) {
-                            Text(text = post.content, style = MaterialTheme.typography.bodyMedium)
-                            Spacer(modifier = Modifier.height(8.dp))
-                            Text(
-                                text = "${post.likes} лайков • ${post.comments} комментариев",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
-                            )
+
+                // Shimmer пока грузится первая страница
+                if (isLoadingPosts) {
+                    items(5) {
+                        PostShimmerCard()
+                    }
+                } else {
+                    items(userPosts, key = { it.id }) { post ->
+                        Card(
+                            modifier = Modifier.fillMaxWidth().clickable { onPostClick(post.id) },
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                            shape = MaterialTheme.shapes.medium
+                        ) {
+                            Column(modifier = Modifier.padding(12.dp)) {
+                                Text(
+                                    text = post.content,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    maxLines = 3,
+                                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                                )
+                                Spacer(modifier = Modifier.height(6.dp))
+                                Row(
+                                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = "♥ ${post.likes}",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
+                                    )
+                                    Text(
+                                        text = "💬 ${post.comments}",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
+                                    )
+                                    Text(
+                                        text = su.SkrinVex.ofox.utils.formatTime(post.timestamp),
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f)
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    if (isLoadingMorePosts) {
+                        item { PostShimmerCard() }
+                    } else if (hasMorePosts && userPosts.isNotEmpty()) {
+                        item {
+                            LaunchedEffect(Unit) { loadMorePosts() }
                         }
                     }
                 }
             }
+        }
+    }
+}
+
+@Composable
+fun PostShimmerCard() {
+    val infiniteTransition = rememberInfiniteTransition(label = "shimmer")
+    val shimmerX by infiniteTransition.animateFloat(
+        initialValue = -1f, targetValue = 2f,
+        animationSpec = infiniteRepeatable(animation = tween(1000)),
+        label = "x"
+    )
+    val brush = androidx.compose.ui.graphics.Brush.horizontalGradient(
+        colors = listOf(
+            MaterialTheme.colorScheme.surfaceVariant,
+            MaterialTheme.colorScheme.surface,
+            MaterialTheme.colorScheme.surfaceVariant
+        ),
+        startX = shimmerX * 600f,
+        endX = (shimmerX + 1f) * 600f
+    )
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        shape = MaterialTheme.shapes.medium
+    ) {
+        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Box(modifier = Modifier.fillMaxWidth(0.7f).height(14.dp).clip(MaterialTheme.shapes.small).background(brush))
+            Box(modifier = Modifier.fillMaxWidth().height(14.dp).clip(MaterialTheme.shapes.small).background(brush))
+            Box(modifier = Modifier.fillMaxWidth(0.5f).height(14.dp).clip(MaterialTheme.shapes.small).background(brush))
+            Spacer(Modifier.height(4.dp))
+            Box(modifier = Modifier.fillMaxWidth(0.3f).height(12.dp).clip(MaterialTheme.shapes.small).background(brush))
         }
     }
 }

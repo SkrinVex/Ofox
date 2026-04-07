@@ -5,6 +5,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -22,6 +23,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import kotlinx.coroutines.launch
 import su.SkrinVex.ofox.components.UserAvatar
 import su.SkrinVex.ofox.data.api.models.BadgeResponse
 import su.SkrinVex.ofox.data.api.models.CommentResponse
@@ -32,18 +37,24 @@ import su.SkrinVex.ofox.utils.formatTime
 fun CommentItem(
     comment: CommentResponse,
     currentUserId: Int?,
+    isHighlighted: Boolean = false,
     onLongPress: () -> Unit,
     onMenuClick: () -> Unit,
-    onAuthorClick: () -> Unit
+    onAuthorClick: () -> Unit,
+    onReply: () -> Unit = {}
 ) {
+    val highlightAlpha by animateFloatAsState(
+        targetValue = if (isHighlighted) 0.15f else 0f,
+        animationSpec = tween(400)
+    )
+
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .combinedClickable(
-                onClick = {},
-                onLongClick = onLongPress
-            )
-            .padding(vertical = 8.dp),
+            .background(MaterialTheme.colorScheme.primary.copy(alpha = highlightAlpha))
+            .combinedClickable(onClick = {}, onLongClick = onLongPress)
+            .padding(vertical = 8.dp)
+            .then(if (comment.reply_to_id != null) Modifier.padding(start = 24.dp) else Modifier),
         horizontalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         UserAvatar(
@@ -70,6 +81,16 @@ fun CommentItem(
                 }
             }
 
+            // Плашка "ответ на @имя"
+            if (comment.reply_to_author_name != null) {
+                Text(
+                    text = "↩ ${comment.reply_to_author_name}",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.padding(bottom = 2.dp)
+                )
+            }
+
             Spacer(modifier = Modifier.height(4.dp))
 
             Text(
@@ -80,11 +101,23 @@ fun CommentItem(
 
             Spacer(modifier = Modifier.height(4.dp))
 
-            Text(
-                text = formatTime(parseTimestamp(comment.created_at)),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
-            )
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = formatTime(parseTimestamp(comment.created_at)),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
+                )
+                Text(
+                    text = "Ответить",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.primary,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.clickable(onClick = onReply)
+                )
+            }
         }
 
         if (comment.author_id == currentUserId) {
@@ -119,7 +152,7 @@ fun CommentsBottomSheet(
     commentDrafts: MutableMap<Int, String>,
     repository: su.SkrinVex.ofox.data.Repository,
     onDismiss: () -> Unit,
-    onSendComment: (String) -> Unit,
+    onSendComment: (String, Int?) -> Unit,
     onDeleteComment: (Int) -> Unit,
     onAuthorClick: (Int) -> Unit
 ) {
@@ -128,7 +161,11 @@ fun CommentsBottomSheet(
     var commentIdToDelete by remember { mutableStateOf<Int?>(null) }
     var showDeleteDialog by remember { mutableStateOf(false) }
     var showRules by remember { mutableStateOf(false) }
+    var replyTo by remember { mutableStateOf<CommentResponse?>(null) }
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val listState = rememberLazyListState()
+    val scope = rememberCoroutineScope()
+    var highlightedCommentId by remember { mutableStateOf<Int?>(null) }
 
     LaunchedEffect(commentText) {
         commentDrafts[postId] = commentText
@@ -138,10 +175,11 @@ fun CommentsBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
         containerColor = MaterialTheme.colorScheme.surface,
+        dragHandle = null,
         modifier = Modifier.fillMaxHeight()
     ) {
         Column(
-            modifier = Modifier.fillMaxSize()
+            modifier = Modifier.fillMaxSize().statusBarsPadding()
         ) {
             Row(
                 modifier = Modifier
@@ -170,6 +208,7 @@ fun CommentsBottomSheet(
                 modifier = Modifier
                     .weight(1f)
                     .padding(horizontal = 16.dp),
+                state = listState,
                 verticalArrangement = Arrangement.spacedBy(8.dp),
                 contentPadding = PaddingValues(vertical = 16.dp)
             ) {
@@ -193,7 +232,8 @@ fun CommentsBottomSheet(
                         CommentItem(
                             comment = comments[index],
                             currentUserId = currentUserId,
-                            onLongPress = { 
+                            isHighlighted = highlightedCommentId == comments[index].id,
+                            onLongPress = {
                                 if (comments[index].author_id == currentUserId) {
                                     selectedCommentId = comments[index].id
                                 }
@@ -207,6 +247,10 @@ fun CommentsBottomSheet(
                                 if (comments[index].author_id != currentUserId) {
                                     onAuthorClick(comments[index].author_id)
                                 }
+                            },
+                            onReply = {
+                                replyTo = comments[index]
+                                commentText = ""
                             }
                         )
                     }
@@ -214,6 +258,57 @@ fun CommentsBottomSheet(
             }
 
             Divider()
+
+            // Плашка "ответ на @имя"
+            if (replyTo != null) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(MaterialTheme.colorScheme.surfaceVariant)
+                        .clickable {
+                            // Прокрутка к оригинальному комментарию
+                            val idx = comments.indexOfFirst { it.id == replyTo!!.id }
+                            if (idx != -1) {
+                                scope.launch {
+                                    listState.animateScrollToItem(idx)
+                                    highlightedCommentId = replyTo!!.id
+                                    kotlinx.coroutines.delay(1500)
+                                    highlightedCommentId = null
+                                }
+                            }
+                        }
+                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Box(
+                            modifier = Modifier
+                                .width(3.dp)
+                                .height(32.dp)
+                                .background(MaterialTheme.colorScheme.primary, RoundedCornerShape(2.dp))
+                        )
+                        Spacer(Modifier.width(10.dp))
+                        Column {
+                            Text(
+                                text = replyTo!!.author_name,
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.primary,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                            Text(
+                                text = replyTo!!.content.take(60) + if (replyTo!!.content.length > 60) "…" else "",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                            )
+                        }
+                    }
+                    IconButton(onClick = { replyTo = null }, modifier = Modifier.size(24.dp)) {
+                        Icon(Icons.Default.Close, contentDescription = "Отмена", modifier = Modifier.size(16.dp),
+                            tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f))
+                    }
+                }
+            }
 
             Row(
                 modifier = Modifier
@@ -229,17 +324,14 @@ fun CommentsBottomSheet(
                 ) {
                     TextField(
                         value = commentText,
-                        onValueChange = { 
-                            if (it.length <= 450) {
-                                commentText = it
-                            }
-                        },
+                        onValueChange = { if (it.length <= 450) commentText = it },
                         modifier = Modifier.fillMaxWidth(),
-                        placeholder = { 
+                        placeholder = {
                             Text(
-                                "Написать комментарий...",
+                                if (replyTo != null) "Ответить ${replyTo!!.author_name}..."
+                                else "Написать комментарий...",
                                 color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
-                            ) 
+                            )
                         },
                         colors = TextFieldDefaults.colors(
                             focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant,
@@ -256,8 +348,10 @@ fun CommentsBottomSheet(
                 IconButton(
                     onClick = {
                         if (commentText.isNotBlank()) {
-                            onSendComment(commentText)
+                            android.util.Log.d("Comments", "send: text=$commentText replyTo=${replyTo?.id} replyToName=${replyTo?.author_name}")
+                            onSendComment(commentText, replyTo?.id)
                             commentText = ""
+                            replyTo = null
                             commentDrafts.remove(postId)
                         }
                     },
@@ -279,9 +373,9 @@ fun CommentsBottomSheet(
                 Text(
                     text = "${commentText.length}/450",
                     style = MaterialTheme.typography.bodySmall,
-                    color = if (commentText.length > 400) 
-                        MaterialTheme.colorScheme.error 
-                    else 
+                    color = if (commentText.length > 400)
+                        MaterialTheme.colorScheme.error
+                    else
                         MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
                     modifier = Modifier.padding(start = 16.dp, bottom = 8.dp)
                 )

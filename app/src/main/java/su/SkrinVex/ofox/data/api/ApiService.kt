@@ -108,6 +108,16 @@ interface ApiService {
     
     @DELETE("posts/comments/{commentId}")
     suspend fun deleteComment(@Path("commentId") commentId: Int)
+
+    @POST("posts/{postId}/report")
+    suspend fun reportPost(@Path("postId") postId: Int, @Body request: ReportRequest): SimpleMessageResponse
+
+    @Multipart
+    @POST("posts/{postId}/images")
+    suspend fun uploadPostImages(
+        @Path("postId") postId: Int,
+        @Part images: List<okhttp3.MultipartBody.Part>
+    ): PostImagesResponse
     
     @GET("app-info")
     suspend fun getAppInfo(): AppInfoResponse

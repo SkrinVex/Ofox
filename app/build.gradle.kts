@@ -119,6 +119,12 @@ dependencies {
     // Coil для загрузки изображений
     implementation("io.coil-kt:coil-compose:2.6.0")
 
+    // Telephoto — зум изображений для Compose
+    implementation("me.saket.telephoto:zoomable-image-coil:0.11.0")
+
+    // Pager для полноэкранного просмотра изображений
+    implementation("androidx.compose.foundation:foundation:1.6.0")
+
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)

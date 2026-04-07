@@ -1,6 +1,7 @@
 package su.SkrinVex.ofox.screens
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -28,7 +29,7 @@ import su.SkrinVex.ofox.data.api.models.BadgeResponse
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ChatDetailScreen(repository: Repository, chatId: Int, onBack: () -> Unit) {
+fun ChatDetailScreen(repository: Repository, chatId: Int, onBack: () -> Unit, onNavigateToProfile: (Int) -> Unit = {}) {
     val messages = remember { androidx.compose.runtime.snapshots.SnapshotStateList<su.SkrinVex.ofox.data.Message>() }
     var messageText by remember { mutableStateOf("") }
     var chat by remember { mutableStateOf<su.SkrinVex.ofox.data.Chat?>(null) }
@@ -136,13 +137,17 @@ fun ChatDetailScreen(repository: Repository, chatId: Int, onBack: () -> Unit) {
             IconButton(onClick = onBack) {
                 Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Назад")
             }
+            val profileClickModifier = Modifier.clickable {
+                chat?.userId?.let { onNavigateToProfile(it) }
+            }
             su.SkrinVex.ofox.components.UserAvatar(
                 name = chat?.name ?: "?",
                 avatarUrl = chat?.userAvatarUrl?.takeIf { it.isNotBlank() },
-                size = 40.dp
+                size = 40.dp,
+                modifier = profileClickModifier
             )
             Spacer(modifier = Modifier.width(12.dp))
-            Column {
+            Column(modifier = profileClickModifier) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(6.dp)

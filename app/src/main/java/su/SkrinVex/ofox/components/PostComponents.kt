@@ -1,6 +1,11 @@
 package su.SkrinVex.ofox.components
 
 import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
@@ -14,6 +19,8 @@ import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.window.Dialog
+import androidx.compose.foundation.lazy.items as lazyItems
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
@@ -334,52 +341,60 @@ fun CreativePostCard(
                         val votes = post.pollVotes.getOrNull(index) ?: 0
                         val percentage = if (totalVotes > 0) (votes * 100f / totalVotes) else 0f
                         val isSelected = post.userVote == index
+                        val animatedWidth by animateFloatAsState(
+                            targetValue = if (hasVoted) percentage / 100f else 0f,
+                            animationSpec = tween(600)
+                        )
 
-                        Card(
+                        Box(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .clickable(enabled = !hasVoted) { onVote(index) },
-                            colors = CardDefaults.cardColors(
-                                containerColor = if (isSelected)
-                                    MaterialTheme.colorScheme.primary.copy(alpha = 0.2f)
-                                else
-                                    MaterialTheme.colorScheme.surfaceVariant
-                            )
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(MaterialTheme.colorScheme.surfaceVariant)
+                                .clickable(enabled = !hasVoted) { onVote(index) }
                         ) {
-                            Box(modifier = Modifier.fillMaxWidth()) {
-                                if (hasVoted) {
-                                    Box(
-                                        modifier = Modifier
-                                            .fillMaxWidth(percentage / 100f)
-                                            .height(48.dp)
-                                            .background(
-                                                MaterialTheme.colorScheme.primary.copy(alpha = 0.3f),
-                                                RoundedCornerShape(12.dp)
-                                            )
-                                    )
-                                }
-
-                                Row(
+                            // Полоска прогресса
+                            if (hasVoted) {
+                                Box(
                                     modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(12.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.SpaceBetween
-                                ) {
+                                        .fillMaxWidth(animatedWidth)
+                                        .matchParentSize()
+                                        .background(
+                                            if (isSelected) MaterialTheme.colorScheme.primary.copy(alpha = 0.35f)
+                                            else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f),
+                                            RoundedCornerShape(12.dp)
+                                        )
+                                )
+                            }
+                            Row(
+                                modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 12.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+                                    if (isSelected) {
+                                        Icon(
+                                            Icons.Default.CheckCircle,
+                                            contentDescription = null,
+                                            tint = MaterialTheme.colorScheme.primary,
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                        Spacer(Modifier.width(8.dp))
+                                    }
                                     Text(
                                         text = option,
                                         style = MaterialTheme.typography.bodyMedium,
-                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                                        modifier = Modifier.weight(1f)
+                                        fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal,
+                                        color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
                                     )
-                                    if (hasVoted) {
-                                        Text(
-                                            text = "${percentage.toInt()}%",
-                                            style = MaterialTheme.typography.bodyMedium,
-                                            fontWeight = FontWeight.Bold,
-                                            color = MaterialTheme.colorScheme.primary
-                                        )
-                                    }
+                                }
+                                if (hasVoted) {
+                                    Text(
+                                        text = "${percentage.toInt()}%",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        fontWeight = FontWeight.Bold,
+                                        color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
+                                    )
                                 }
                             }
                         }
@@ -389,13 +404,19 @@ fun CreativePostCard(
                         Text(
                             text = "$totalVotes ${if (totalVotes == 1) "голос" else if (totalVotes < 5) "голоса" else "голосов"}",
                             style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
                         )
                     }
                 }
             }
 
             Spacer(modifier = Modifier.height(12.dp))
+
+            // Изображения поста
+            if (post.images.isNotEmpty()) {
+                PostImagesRow(images = post.images)
+                Spacer(modifier = Modifier.height(12.dp))
+            }
 
             // Actions
             Row(
@@ -541,21 +562,129 @@ fun ShareBottomSheet(
 @Composable
 fun PostMenuBottomSheet(
     isMyPost: Boolean,
+    authorName: String = "",
+    authorAvatarUrl: String? = null,
     onDismiss: () -> Unit,
     onAction: (String) -> Unit
 ) {
+    var showReportSheet by remember { mutableStateOf(false) }
+    var showHideConfirm by remember { mutableStateOf(false) }
+    var reportReason by remember { mutableStateOf("") }
+
+    val reportReasons = listOf("Спам", "Оскорбление", "Дезинформация", "Нарушение правил", "Другое")
+
+    // Диалог подтверждения скрытия автора
+    if (showHideConfirm) {
+        Dialog(onDismissRequest = { showHideConfirm = false }) {
+            Card(
+                shape = MaterialTheme.shapes.extraLarge,
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                elevation = CardDefaults.cardElevation(8.dp)
+            ) {
+                Column(modifier = Modifier.padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                    UserAvatar(name = authorName, avatarUrl = authorAvatarUrl?.takeIf { it.isNotBlank() }, size = 64.dp)
+                    Spacer(Modifier.height(8.dp))
+                    if (authorName.isNotBlank()) Text(authorName, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                    Spacer(Modifier.height(16.dp))
+                    HorizontalDivider(color = MaterialTheme.colorScheme.surfaceVariant)
+                    Spacer(Modifier.height(16.dp))
+                    Box(
+                        modifier = Modifier.size(52.dp).clip(CircleShape)
+                            .background(MaterialTheme.colorScheme.error.copy(alpha = 0.12f)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(Icons.Default.Block, null, tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(28.dp))
+                    }
+                    Spacer(Modifier.height(12.dp))
+                    Text("Скрыть посты в ленте?", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold,
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        "Посты${if (authorName.isNotBlank()) " $authorName" else ""} перестанут отображаться в ленте. Вернуть можно в профиле пользователя.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                    )
+                    Spacer(Modifier.height(24.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedButton(onClick = { showHideConfirm = false }, modifier = Modifier.weight(1f), shape = MaterialTheme.shapes.medium) { Text("Отмена") }
+                        Button(
+                            onClick = { showHideConfirm = false; onAction("Не показывать от автора"); onDismiss() },
+                            modifier = Modifier.weight(1f),
+                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
+                            shape = MaterialTheme.shapes.medium
+                        ) { Text("Скрыть") }
+                    }
+                }
+            }
+        }
+        return
+    }
+
+    // Диалог выбора причины жалобы
+    if (showReportSheet) {
+        Dialog(onDismissRequest = { showReportSheet = false }) {
+            Card(
+                shape = MaterialTheme.shapes.extraLarge,
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                elevation = CardDefaults.cardElevation(8.dp)
+            ) {
+                Column(modifier = Modifier.padding(24.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Box(
+                            modifier = Modifier.size(44.dp).clip(CircleShape)
+                                .background(MaterialTheme.colorScheme.error.copy(alpha = 0.12f)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(Icons.Default.Report, null, tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(24.dp))
+                        }
+                        Spacer(Modifier.width(12.dp))
+                        Column {
+                            Text("Пожаловаться", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                            if (authorName.isNotBlank()) Text("на пост $authorName", style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f))
+                        }
+                    }
+                    Spacer(Modifier.height(16.dp))
+                    reportReasons.forEach { reason ->
+                        Row(
+                            modifier = Modifier.fillMaxWidth().clip(MaterialTheme.shapes.medium)
+                                .background(if (reportReason == reason) MaterialTheme.colorScheme.primary.copy(alpha = 0.1f) else Color.Transparent)
+                                .clickable { reportReason = reason }
+                                .padding(vertical = 10.dp, horizontal = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            RadioButton(selected = reportReason == reason, onClick = { reportReason = reason },
+                                colors = RadioButtonDefaults.colors(selectedColor = MaterialTheme.colorScheme.primary))
+                            Spacer(Modifier.width(8.dp))
+                            Text(reason, style = MaterialTheme.typography.bodyLarge)
+                        }
+                    }
+                    Spacer(Modifier.height(20.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedButton(onClick = { showReportSheet = false }, modifier = Modifier.weight(1f), shape = MaterialTheme.shapes.medium) { Text("Отмена") }
+                        Button(
+                            onClick = { if (reportReason.isNotBlank()) { onAction("report:$reportReason"); showReportSheet = false; onDismiss() } },
+                            enabled = reportReason.isNotBlank(), modifier = Modifier.weight(1f), shape = MaterialTheme.shapes.medium,
+                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                        ) { Text("Отправить") }
+                    }
+                }
+            }
+        }
+        return
+    }
+
     val menuOptions = if (isMyPost) {
         listOf(
-            "Скрыть пост" to Icons.Default.VisibilityOff,
-            "Скопировать текст" to Icons.Default.ContentCopy,
-            "Удалить пост" to Icons.Default.Delete
+            Triple("Скопировать текст", Icons.Default.ContentCopy, false),
+            Triple("Удалить пост", Icons.Default.Delete, true)
         )
     } else {
         listOf(
-            "Скрыть пост" to Icons.Default.VisibilityOff,
-            "Пожаловаться" to Icons.Default.Report,
-            "Скопировать текст" to Icons.Default.ContentCopy,
-            "Не показывать от автора" to Icons.Default.Block
+            Triple("Пожаловаться", Icons.Default.Report, true),
+            Triple("Скопировать текст", Icons.Default.ContentCopy, false),
+            Triple("Не показывать от автора", Icons.Default.Block, true)
         )
     }
 
@@ -563,48 +692,41 @@ fun PostMenuBottomSheet(
         onDismissRequest = onDismiss,
         containerColor = MaterialTheme.colorScheme.surface
     ) {
-        Column(
-            modifier = Modifier.padding(16.dp)
-        ) {
+        Column(modifier = Modifier.padding(horizontal = 16.dp).padding(bottom = 32.dp)) {
             Text(
-                text = "Действия с постом",
+                "Действия с постом",
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.SemiBold,
-                modifier = Modifier.padding(bottom = 16.dp)
+                modifier = Modifier.padding(vertical = 16.dp)
             )
-
-            menuOptions.forEach { (name, icon) ->
+            menuOptions.forEach { (name, icon, isDanger) ->
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
+                        .clip(MaterialTheme.shapes.medium)
                         .clickable {
-                            onAction(name)
-                            onDismiss()
+                            when (name) {
+                                "Пожаловаться" -> showReportSheet = true
+                                "Не показывать от автора" -> showHideConfirm = true
+                                else -> { onAction(name); onDismiss() }
+                            }
                         }
-                        .padding(vertical = 12.dp),
+                        .padding(vertical = 14.dp, horizontal = 8.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Icon(
-                        icon,
-                        contentDescription = name,
-                        tint = if (name == "Удалить пост")
-                            MaterialTheme.colorScheme.primary
-                        else
-                            MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+                        icon, contentDescription = name,
+                        tint = if (isDanger) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f),
+                        modifier = Modifier.size(22.dp)
                     )
-                    Spacer(modifier = Modifier.width(16.dp))
+                    Spacer(Modifier.width(16.dp))
                     Text(
-                        text = name,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = if (name == "Удалить пост")
-                            MaterialTheme.colorScheme.primary
-                        else
-                            MaterialTheme.colorScheme.onSurface
+                        name,
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = if (isDanger) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface
                     )
                 }
             }
-
-            Spacer(modifier = Modifier.height(16.dp))
         }
     }
 }
@@ -684,6 +806,138 @@ fun ShareDiscoveryBottomSheet(
     }
 }
 
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun PostImagesRow(images: List<String>) {
+    var fullscreenIndex by remember { mutableStateOf<Int?>(null) }
+
+    androidx.compose.foundation.lazy.LazyRow(
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        items(images.size) { index ->
+            ImageWithShimmer(
+                url = images[index],
+                modifier = Modifier
+                    .height(200.dp)
+                    .width(if (images.size == 1) 320.dp else 200.dp)
+                    .clip(RoundedCornerShape(12.dp))
+                    .clickable { fullscreenIndex = index }
+            )
+        }
+    }
+
+    fullscreenIndex?.let { startIndex ->
+        androidx.compose.ui.window.Dialog(
+            onDismissRequest = { fullscreenIndex = null },
+            properties = androidx.compose.ui.window.DialogProperties(
+                usePlatformDefaultWidth = false,
+                dismissOnClickOutside = true
+            )
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black),
+                contentAlignment = Alignment.Center
+            ) {
+                val pagerState = androidx.compose.foundation.pager.rememberPagerState(
+                    initialPage = startIndex,
+                    pageCount = { images.size }
+                )
+                androidx.compose.foundation.pager.HorizontalPager(
+                    state = pagerState,
+                    modifier = Modifier.fillMaxSize()
+                ) { page ->
+                    me.saket.telephoto.zoomable.coil.ZoomableAsyncImage(
+                        model = images[page],
+                        contentDescription = null,
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = androidx.compose.ui.layout.ContentScale.Fit
+                    )
+                }
+                // Закрыть
+                IconButton(
+                    onClick = { fullscreenIndex = null },
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(8.dp)
+                ) {
+                    Icon(Icons.Default.Close, contentDescription = "Закрыть", tint = Color.White)
+                }
+                // Точки пагинации
+                if (images.size > 1) {
+                    Row(
+                        modifier = Modifier
+                            .align(Alignment.BottomCenter)
+                            .padding(bottom = 24.dp),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        repeat(images.size) { i ->
+                            Box(
+                                modifier = Modifier
+                                    .size(if (pagerState.currentPage == i) 10.dp else 7.dp)
+                                    .clip(CircleShape)
+                                    .background(if (pagerState.currentPage == i) Color.White else Color.White.copy(alpha = 0.4f))
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun ImageWithShimmer(url: String, modifier: Modifier = Modifier) {
+    var isLoading by remember { mutableStateOf(true) }
+    val shimmerAlpha by androidx.compose.animation.core.animateFloatAsState(
+        targetValue = if (isLoading) 1f else 0f,
+        animationSpec = androidx.compose.animation.core.tween(300)
+    )
+
+    Box(modifier = modifier) {
+        coil.compose.AsyncImage(
+            model = coil.request.ImageRequest.Builder(androidx.compose.ui.platform.LocalContext.current)
+                .data(url)
+                .diskCachePolicy(coil.request.CachePolicy.ENABLED)
+                .memoryCachePolicy(coil.request.CachePolicy.ENABLED)
+                .crossfade(true)
+                .build(),
+            contentDescription = null,
+            contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+            modifier = Modifier.fillMaxSize(),
+            onLoading = { isLoading = true },
+            onSuccess = { isLoading = false },
+            onError = { isLoading = false }
+        )
+        // Shimmer placeholder
+        if (shimmerAlpha > 0f) {
+            val infiniteTransition = rememberInfiniteTransition(label = "shimmer")
+            val shimmerX by infiniteTransition.animateFloat(
+                initialValue = -1f,
+                targetValue = 2f,
+                animationSpec = infiniteRepeatable(animation = tween(1000)),
+                label = "shimmerX"
+            )
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(
+                        brush = androidx.compose.ui.graphics.Brush.horizontalGradient(
+                            colors = listOf(
+                                MaterialTheme.colorScheme.surfaceVariant,
+                                MaterialTheme.colorScheme.surface,
+                                MaterialTheme.colorScheme.surfaceVariant
+                            ),
+                            startX = shimmerX * 1000f,
+                            endX = (shimmerX + 1f) * 1000f
+                        )
+                    )
+            )
+        }
+    }
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable

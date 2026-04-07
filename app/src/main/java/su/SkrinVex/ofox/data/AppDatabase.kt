@@ -6,7 +6,7 @@ import kotlinx.coroutines.flow.Flow
 
 @Database(
     entities = [User::class, Post::class, Chat::class, Message::class, Discovery::class],
-    version = 16
+    version = 17
 )
 abstract class AppDatabase : RoomDatabase() {
     abstract fun userDao(): UserDao
@@ -67,7 +67,8 @@ data class Post(
     val discoveryColor: String = "",
     val isDiscoveryPost: Boolean = false,
     val authorBadges: String = "",
-    val authorAvatarUrl: String = ""
+    val authorAvatarUrl: String = "",
+    val images: String = "" // JSON array of URLs, "|||"-separated
 )
 
 @Entity(tableName = "chats")
