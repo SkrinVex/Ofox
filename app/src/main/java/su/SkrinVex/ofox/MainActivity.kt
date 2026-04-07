@@ -293,10 +293,12 @@ class MainActivity : ComponentActivity() {
                     LaunchedEffect(currentRoute) { bottomBarVisible = true }
                     
                     val chats by repository.chatsFlow.collectAsState(initial = emptyList())
-                    val totalUnread = remember(chats) { chats.sumOf { it.unreadCount } }
-                    
+                    var notifUnreadCount by remember { mutableStateOf(0) }
+                    val totalUnread = remember(chats, notifUnreadCount) { chats.sumOf { it.unreadCount } + notifUnreadCount }
+
                     LaunchedEffect(Unit) {
                         repository.getAllChats()
+                        notifUnreadCount = repository.getNotificationsUnreadCount()
                     }
                     
                     val wsClient = remember { su.SkrinVex.ofox.data.api.WebSocketClient.getInstance(this@MainActivity) }
@@ -308,6 +310,9 @@ class MainActivity : ComponentActivity() {
                                 is su.SkrinVex.ofox.data.api.WSEvent.ChatUpdate -> {
                                     android.util.Log.d("MainActivity", "Reloading chats due to: $event")
                                     repository.getAllChats()
+                                }
+                                is su.SkrinVex.ofox.data.api.WSEvent.CommentReply -> {
+                                    notifUnreadCount++
                                 }
                                 else -> {}
                             }
@@ -346,6 +351,20 @@ class MainActivity : ComponentActivity() {
                                 }
                             }
                             composable(Screen.Chats.route) { ChatsScreen(repository, navController) }
+                            composable("notifications") {
+                                LaunchedEffect(Unit) { notifUnreadCount = 0 }
+                                su.SkrinVex.ofox.screens.NotificationsScreen(
+                                    repository = repository,
+                                    onPostClick = { postId ->
+                                        pendingDeepLink.value = DeepLinkData.Post(postId)
+                                        navController.navigate(Screen.Home.route) {
+                                            popUpTo(navController.graph.startDestinationId)
+                                            launchSingleTop = true
+                                        }
+                                    },
+                                    onBack = { navController.popBackStack() }
+                                )
+                            }
                             composable("chat/{chatId}") { backStackEntry ->
                                 ChatDetailScreen(
                                     repository = repository,
@@ -515,11 +534,11 @@ class MainActivity : ComponentActivity() {
     }
     
     private fun handleDeepLink(intent: Intent?) {
-        // Обработка тапа по FCM уведомлению
         val chatId = intent?.getIntExtra("chat_id", -1) ?: -1
-        if (chatId != -1) {
-            pendingChatId.value = chatId
-        }
+        if (chatId != -1) pendingChatId.value = chatId
+
+        val postId = intent?.getIntExtra("post_id", -1) ?: -1
+        if (postId != -1) pendingDeepLink.value = DeepLinkData.Post(postId)
 
         intent?.data?.let { uri ->
             android.util.Log.d("OFOX", "Deep link received: $uri")

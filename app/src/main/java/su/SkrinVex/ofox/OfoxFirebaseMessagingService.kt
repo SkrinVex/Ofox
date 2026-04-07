@@ -41,80 +41,98 @@ class OfoxFirebaseMessagingService : FirebaseMessagingService() {
 
     override fun onMessageReceived(message: RemoteMessage) {
         val data = message.data
-        val chatId = data["chatId"]?.toIntOrNull() ?: return
-        val title = data["senderName"] ?: message.notification?.title ?: "Новое сообщение"
-        val body = data["message"] ?: message.notification?.body ?: ""
-        val avatarUrl = data["senderAvatarUrl"]
+        val type = data["type"] ?: return
 
-        // Не показываем если этот чат сейчас открыт
-        if (ActiveChatTracker.activeChatId == chatId) {
-            android.util.Log.d("FCM", "Skipping notification: chat $chatId is active")
-            return
-        }
-
-        android.util.Log.d("FCM", "Showing notification for chat=$chatId, title=$title")
-
-        CoroutineScope(Dispatchers.IO).launch {
-            val avatarBitmap = avatarUrl?.let { loadCircleBitmap(it) }
-            withContext(Dispatchers.Main) {
-                showNotification(chatId, title, body, avatarBitmap)
+        when (type) {
+            "new_message" -> {
+                val chatId = data["chatId"]?.toIntOrNull() ?: return
+                if (ActiveChatTracker.activeChatId == chatId) return
+                val title = data["senderName"] ?: "Новое сообщение"
+                val body = data["message"] ?: ""
+                val avatarUrl = data["senderAvatarUrl"]
+                CoroutineScope(Dispatchers.IO).launch {
+                    val bitmap = avatarUrl?.let { loadCircleBitmap(it) }
+                    withContext(Dispatchers.Main) {
+                        showNotification(chatId, title, body, bitmap, CHANNEL_CHATS, chatId = chatId)
+                    }
+                }
+            }
+            "system_notification" -> {
+                val title = data["title"] ?: "OFOX"
+                val body = data["message"] ?: ""
+                CoroutineScope(Dispatchers.IO).launch {
+                    withContext(Dispatchers.Main) {
+                        showNotification(System.currentTimeMillis().toInt(), title, body, null, CHANNEL_COMMENTS)
+                    }
+                }
+            }
+            "comment_reply" -> {
+                val postId = data["postId"]?.toIntOrNull() ?: return
+                val actorName = data["actorName"] ?: "Кто-то"
+                val body = data["message"] ?: ""
+                val avatarUrl = data["senderAvatarUrl"]
+                CoroutineScope(Dispatchers.IO).launch {
+                    val bitmap = avatarUrl?.let { loadCircleBitmap(it) }
+                    withContext(Dispatchers.Main) {
+                        showNotification(
+                            postId + 100000,
+                            "$actorName ответил на ваш комментарий",
+                            body, bitmap, CHANNEL_COMMENTS, postId = postId
+                        )
+                    }
+                }
             }
         }
     }
 
-    private fun showNotification(chatId: Int, title: String, body: String, avatar: Bitmap?) {
-        ensureNotificationChannel()
-
+    private fun showNotification(
+        notifId: Int, title: String, body: String, avatar: Bitmap?,
+        channelId: String, chatId: Int? = null, postId: Int? = null
+    ) {
+        ensureChannels()
         val intent = Intent(this, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
-            putExtra("chat_id", chatId)
+            chatId?.let { putExtra("chat_id", it) }
+            postId?.let { putExtra("post_id", it) }
         }
-        val pendingIntent = PendingIntent.getActivity(
-            this, chatId, intent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
+        val pi = PendingIntent.getActivity(this, notifId, intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
 
-        val builder = NotificationCompat.Builder(this, CHANNEL_ID)
+        val n = NotificationCompat.Builder(this, channelId)
             .setSmallIcon(R.drawable.ic_notification)
             .setContentTitle(title)
             .setContentText(body)
             .setAutoCancel(true)
-            .setContentIntent(pendingIntent)
+            .setContentIntent(pi)
             .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .apply { avatar?.let { setLargeIcon(it) } }
+            .build()
 
-        if (avatar != null) {
-            builder.setLargeIcon(avatar)
-        }
-
-        NotificationManagerCompat.from(this).notify(chatId, builder.build())
+        NotificationManagerCompat.from(this).notify(notifId, n)
     }
 
-    private fun loadCircleBitmap(url: String): Bitmap? {
-        return try {
-            val raw = android.graphics.BitmapFactory.decodeStream(URL(url).openStream()) ?: return null
-            val size = minOf(raw.width, raw.height)
-            val output = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
-            val canvas = Canvas(output)
-            val paint = Paint(Paint.ANTI_ALIAS_FLAG)
-            canvas.drawCircle(size / 2f, size / 2f, size / 2f, paint)
-            paint.xfermode = PorterDuffXfermode(PorterDuff.Mode.SRC_IN)
-            val src = Bitmap.createScaledBitmap(raw, size, size, true)
-            canvas.drawBitmap(src, Rect(0, 0, size, size), Rect(0, 0, size, size), paint)
-            output
-        } catch (e: Exception) {
-            android.util.Log.w("FCM", "Failed to load avatar: ${e.message}")
-            null
-        }
-    }
+    private fun loadCircleBitmap(url: String): Bitmap? = try {
+        val raw = android.graphics.BitmapFactory.decodeStream(URL(url).openStream()) ?: return null
+        val size = minOf(raw.width, raw.height)
+        val out = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(out)
+        val paint = Paint(Paint.ANTI_ALIAS_FLAG)
+        canvas.drawCircle(size / 2f, size / 2f, size / 2f, paint)
+        paint.xfermode = PorterDuffXfermode(PorterDuff.Mode.SRC_IN)
+        canvas.drawBitmap(Bitmap.createScaledBitmap(raw, size, size, true), Rect(0,0,size,size), Rect(0,0,size,size), paint)
+        out
+    } catch (e: Exception) { null }
 
-    private fun ensureNotificationChannel() {
+    private fun ensureChannels() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val channel = NotificationChannel(CHANNEL_ID, "Чаты", NotificationManager.IMPORTANCE_HIGH)
-            getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
+            val nm = getSystemService(NotificationManager::class.java)
+            nm.createNotificationChannel(NotificationChannel(CHANNEL_CHATS, "Чаты", NotificationManager.IMPORTANCE_HIGH))
+            nm.createNotificationChannel(NotificationChannel(CHANNEL_COMMENTS, "Комментарии", NotificationManager.IMPORTANCE_HIGH))
         }
     }
 
     companion object {
-        const val CHANNEL_ID = "chats"
+        const val CHANNEL_CHATS = "chats"
+        const val CHANNEL_COMMENTS = "comments"
     }
 }

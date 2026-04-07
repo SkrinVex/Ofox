@@ -9,6 +9,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.People
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -30,6 +31,7 @@ import su.SkrinVex.ofox.utils.formatTime
 fun ChatsScreen(repository: Repository, navController: NavController) {
     var chats by remember { mutableStateOf(listOf<su.SkrinVex.ofox.data.Chat>()) }
     var showAddChatDialog by remember { mutableStateOf(false) }
+    var notifUnread by remember { mutableStateOf(0) }
     val scope = rememberCoroutineScope()
     val context = androidx.compose.ui.platform.LocalContext.current
     val wsClient = remember { su.SkrinVex.ofox.data.api.WebSocketClient.getInstance(context) }
@@ -37,27 +39,25 @@ fun ChatsScreen(repository: Repository, navController: NavController) {
     fun loadChats() {
         scope.launch {
             chats = repository.getAllChats()
+            notifUnread = repository.getNotificationsUnreadCount()
         }
     }
 
-    LaunchedEffect(Unit) {
-        loadChats()
-    }
-    
+    LaunchedEffect(Unit) { loadChats() }
+
     LaunchedEffect(wsClient.events) {
         wsClient.events.collect { event ->
             when (event) {
-                is su.SkrinVex.ofox.data.api.WSEvent.ChatUpdate -> {
-                    loadChats()
-                }
-                is su.SkrinVex.ofox.data.api.WSEvent.NewMessage -> {
-                    loadChats()
+                is su.SkrinVex.ofox.data.api.WSEvent.ChatUpdate,
+                is su.SkrinVex.ofox.data.api.WSEvent.NewMessage -> loadChats()
+                is su.SkrinVex.ofox.data.api.WSEvent.CommentReply -> {
+                    notifUnread++
                 }
                 else -> {}
             }
         }
     }
-    
+
     LaunchedEffect(Unit) {
         while (true) {
             kotlinx.coroutines.delay(10000)
@@ -111,6 +111,54 @@ fun ChatsScreen(repository: Repository, navController: NavController) {
             LazyColumn(
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
+                // Системный чат уведомлений
+                item {
+                    Card(
+                        modifier = Modifier.fillMaxWidth().clickable {
+                            navController.navigate("notifications")
+                        },
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                        shape = MaterialTheme.shapes.medium
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth().padding(16.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Box(
+                                modifier = Modifier.size(48.dp).clip(CircleShape)
+                                    .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                androidx.compose.material3.Icon(
+                                    Icons.Default.Notifications,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(26.dp)
+                                )
+                            }
+                            Spacer(Modifier.width(12.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text("Уведомления", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                                Text("Системные и ответы на комментарии", style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f))
+                            }
+                            if (notifUnread > 0) {
+                                Box(
+                                    modifier = Modifier.size(20.dp).clip(CircleShape)
+                                        .background(MaterialTheme.colorScheme.primary),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        if (notifUnread > 9) "9+" else notifUnread.toString(),
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onPrimary,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
                 items(chats) { chat ->
                 val badges = try {
                     if (chat.userBadges.isNotEmpty()) {

@@ -111,6 +111,11 @@ class WebSocketClient(private val context: Context) {
                             _events.value = WSEvent.DeleteComment(postId, commentId)
                             Log.d("WebSocket", "Delete comment event: postId=$postId, commentId=$commentId")
                         }
+                        "comment_reply" -> {
+                            val postId = json.getInt("postId")
+                            _events.value = WSEvent.CommentReply(postId)
+                            Log.d("WebSocket", "Comment reply event: postId=$postId")
+                        }
                         "warning" -> {
                             val data = json.getJSONObject("data")
                             _events.value = WSEvent.Warning(
@@ -189,6 +194,7 @@ sealed class WSEvent {
     data class Warning(val id: Int, val reason: String, val warningNumber: Int, val totalWarnings: Int) : WSEvent()
     data class Ban(val reason: String, val expiresAt: String?) : WSEvent()
     data class ContentDeleted(val contentType: String, val contentId: Int, val reason: String) : WSEvent()
+    data class CommentReply(val postId: Int) : WSEvent()
 }
 
 data class Badge(

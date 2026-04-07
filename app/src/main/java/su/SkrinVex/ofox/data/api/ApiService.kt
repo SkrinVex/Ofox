@@ -146,7 +146,14 @@ interface ApiService {
     @POST("moderation/deleted-content/{id}/viewed")
     suspend fun markContentViewed(@Path("id") contentId: Int): SimpleMessageResponse
     
-    // Discovery features
+    @GET("notifications")
+    suspend fun getCommentNotifications(): List<CommentNotification>
+
+    @GET("notifications/unread-count")
+    suspend fun getNotificationsUnreadCount(): Map<String, Int>
+
+    @POST("notifications/read")
+    suspend fun markNotificationsRead(): SimpleMessageResponse
     @GET("discoveries/{discoveryId}/chat")
     suspend fun getOrCreateDiscoveryChat(@Path("discoveryId") discoveryId: Int): ChatResponse
     

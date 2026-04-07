@@ -852,6 +852,18 @@ class Repository(private val context: Context) {
         }
     }
 
+    suspend fun getCommentNotifications() = withContext(Dispatchers.IO) {
+        try { apiClient.api.getCommentNotifications() } catch (e: Exception) { emptyList() }
+    }
+
+    suspend fun getNotificationsUnreadCount() = withContext(Dispatchers.IO) {
+        try { apiClient.api.getNotificationsUnreadCount()["count"] ?: 0 } catch (e: Exception) { 0 }
+    }
+
+    suspend fun markNotificationsRead() = withContext(Dispatchers.IO) {
+        try { apiClient.api.markNotificationsRead() } catch (_: Exception) {}
+    }
+
     // Discovery features
     suspend fun getOrCreateDiscoveryChat(discoveryId: Int): Int? = withContext(Dispatchers.IO) {
         try {
