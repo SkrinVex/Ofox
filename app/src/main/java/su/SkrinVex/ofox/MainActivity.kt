@@ -319,7 +319,7 @@ class MainActivity : ComponentActivity() {
                         NavHost(
                             navController = navController,
                             startDestination = initialRoute,
-                            modifier = Modifier.fillMaxSize().navigationBarsPadding()
+                            modifier = Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding()
                         ) {
                             composable(Screen.Home.route) { 
                                 val currentDeepLink by pendingDeepLink

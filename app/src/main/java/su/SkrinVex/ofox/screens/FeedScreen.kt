@@ -314,7 +314,8 @@ fun FeedScreen(
             text = { Text("Создать открытие") },
             modifier = Modifier
                 .align(Alignment.BottomEnd)
-                .padding(16.dp),
+                .navigationBarsPadding()
+                .padding(end = 16.dp, bottom = 96.dp),
             containerColor = MaterialTheme.colorScheme.primary
         )
     }
@@ -381,10 +382,11 @@ fun CreateDiscoveryDialog(
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
-        containerColor = MaterialTheme.colorScheme.surface
+        containerColor = MaterialTheme.colorScheme.surface,
+        dragHandle = null
     ) {
         Column(
-            modifier = Modifier.fillMaxWidth()
+            modifier = Modifier.fillMaxWidth().statusBarsPadding()
         ) {
             Column(
                 modifier = Modifier

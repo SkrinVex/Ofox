@@ -495,7 +495,6 @@ fun HomeScreen(
                     .align(Alignment.TopStart)
                     .graphicsLayer { alpha = topBarAlpha; translationY = -size.height * (1f - topBarAlpha) }
                     .background(MaterialTheme.colorScheme.background)
-                    .statusBarsPadding()
                     .padding(horizontal = 16.dp, vertical = 8.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween
@@ -843,11 +842,13 @@ fun CreatePostDialog(
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
-        containerColor = MaterialTheme.colorScheme.surface
+        containerColor = MaterialTheme.colorScheme.surface,
+        dragHandle = null
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
+                .statusBarsPadding()
         ) {
             Column(
                 modifier = Modifier
