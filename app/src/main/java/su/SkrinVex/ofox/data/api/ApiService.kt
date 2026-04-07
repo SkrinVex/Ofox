@@ -154,6 +154,9 @@ interface ApiService {
 
     @POST("notifications/read")
     suspend fun markNotificationsRead(): SimpleMessageResponse
+
+    @POST("notifications/delete")
+    suspend fun deleteNotifications(@Body request: Map<String, List<Any>>): SimpleMessageResponse
     @GET("discoveries/{discoveryId}/chat")
     suspend fun getOrCreateDiscoveryChat(@Path("discoveryId") discoveryId: Int): ChatResponse
     

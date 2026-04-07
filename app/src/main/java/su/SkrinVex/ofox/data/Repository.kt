@@ -864,6 +864,10 @@ class Repository(private val context: Context) {
         try { apiClient.api.markNotificationsRead() } catch (_: Exception) {}
     }
 
+    suspend fun deleteNotifications(ids: List<Int>, types: List<String>) = withContext(Dispatchers.IO) {
+        try { apiClient.api.deleteNotifications(mapOf("ids" to ids, "types" to types)) } catch (_: Exception) {}
+    }
+
     // Discovery features
     suspend fun getOrCreateDiscoveryChat(discoveryId: Int): Int? = withContext(Dispatchers.IO) {
         try {

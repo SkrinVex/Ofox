@@ -139,7 +139,7 @@ fun ChatsScreen(repository: Repository, navController: NavController) {
                             Spacer(Modifier.width(12.dp))
                             Column(modifier = Modifier.weight(1f)) {
                                 Text("Уведомления", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                                Text("Системные и ответы на комментарии", style = MaterialTheme.typography.bodyMedium,
+                                Text("Системные уведомления", style = MaterialTheme.typography.bodyMedium,
                                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f))
                             }
                             if (notifUnread > 0) {
@@ -260,7 +260,8 @@ fun ChatsScreen(repository: Repository, navController: NavController) {
             onClick = { showAddChatDialog = true },
             modifier = Modifier
                 .align(Alignment.BottomEnd)
-                .padding(16.dp),
+                .navigationBarsPadding()
+                .padding(end = 16.dp, bottom = 96.dp),
             containerColor = MaterialTheme.colorScheme.primary
         ) {
             Icon(Icons.Default.Add, contentDescription = "Добавить чат")

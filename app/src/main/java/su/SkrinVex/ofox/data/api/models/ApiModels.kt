@@ -190,13 +190,14 @@ data class AvatarUploadResponse(val avatar_url: String)
 
 data class CommentNotification(
     val id: Int,
-    val type: String, // "comment_reply" | "system"
+    val type: String,
     val post_id: Int?,
     val comment_id: Int?,
     val is_read: Boolean,
     val created_at: String,
     val actor_name: String,
     val actor_avatar_url: String?,
+    val actor_badges: List<BadgeResponse>? = null,
     val comment_content: String?,
     val title: String?,
     val body: String?
