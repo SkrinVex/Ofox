@@ -47,6 +47,7 @@ class Repository(private val context: Context) {
             
             val user = response.user.toUser()
             db.userDao().insertUser(user)
+            su.SkrinVex.ofox.account.addOfoxAccount(context, user.name, response.token)
             Result.success(user)
         } catch (e: retrofit2.HttpException) {
             when (e.code()) {
@@ -87,6 +88,7 @@ class Repository(private val context: Context) {
             
             val user = response.user.toUser()
             db.userDao().insertUser(user)
+            su.SkrinVex.ofox.account.addOfoxAccount(context, user.name, response.token)
             Result.success(user)
         } catch (e: retrofit2.HttpException) {
             when (e.code()) {
@@ -167,6 +169,7 @@ class Repository(private val context: Context) {
             apiClient.clearToken()
             prefs.edit().clear().apply()
             db.clearAllTables()
+            su.SkrinVex.ofox.account.removeOfoxAccount(context)
         } catch (e: Exception) {
             android.util.Log.e("Repository", "Failed to logout", e)
         }

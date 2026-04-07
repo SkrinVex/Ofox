@@ -13,6 +13,7 @@ import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
+import su.SkrinVex.ofox.utils.ActiveChatTracker
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
@@ -58,9 +59,18 @@ fun ChatDetailScreen(repository: Repository, chatId: Int, onBack: () -> Unit) {
     }
 
     LaunchedEffect(chatId) {
+        ActiveChatTracker.activeChatId = chatId
         val chats = repository.getAllChats()
         chat = chats.find { it.id == chatId }
         loadMessages()
+    }
+
+    DisposableEffect(chatId) {
+        onDispose {
+            if (ActiveChatTracker.activeChatId == chatId) {
+                ActiveChatTracker.activeChatId = null
+            }
+        }
     }
 
     LaunchedEffect(messages.size) {

@@ -27,6 +27,7 @@ import su.SkrinVex.ofox.navigation.Screen
 import su.SkrinVex.ofox.navigation.bottomNavItems
 import su.SkrinVex.ofox.screens.*
 import su.SkrinVex.ofox.ui.theme.OfoxTheme
+import su.SkrinVex.ofox.utils.NotificationPermissionRequester
 
 class MainActivity : ComponentActivity() {
     private lateinit var repository: Repository
@@ -84,6 +85,7 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         setContent {
             OfoxTheme {
+                NotificationPermissionRequester()
                 var isAuthenticated by remember { mutableStateOf(repository.isLoggedIn()) }
                 val deepLink by pendingDeepLink
                 var currentBan by remember { mutableStateOf<su.SkrinVex.ofox.data.api.models.BanResponse?>(null) }
