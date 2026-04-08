@@ -19,6 +19,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.Dp
 import androidx.navigation.NavController
 import kotlinx.coroutines.launch
 import su.SkrinVex.ofox.data.Repository
@@ -28,7 +29,7 @@ import su.SkrinVex.ofox.components.UserAvatar
 import su.SkrinVex.ofox.utils.formatTime
 
 @Composable
-fun ChatsScreen(repository: Repository, navController: NavController) {
+fun ChatsScreen(repository: Repository, navController: NavController, bottomPadding: Dp = 80.dp) {
     var chats by remember { mutableStateOf(listOf<su.SkrinVex.ofox.data.Chat>()) }
     var showAddChatDialog by remember { mutableStateOf(false) }
     var notifUnread by remember { mutableStateOf(0) }
@@ -109,7 +110,8 @@ fun ChatsScreen(repository: Repository, navController: NavController) {
             }
         } else {
             LazyColumn(
-                verticalArrangement = Arrangement.spacedBy(8.dp)
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+                contentPadding = PaddingValues(bottom = bottomPadding)
             ) {
                 // Системный чат уведомлений
                 item {

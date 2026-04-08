@@ -15,11 +15,15 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 
 @Composable
 fun CustomizationScreen(onBack: () -> Unit, onThemeClick: () -> Unit, onFontSizeClick: () -> Unit, onCornerRadiusClick: () -> Unit) {
+    val context = LocalContext.current
+    val prefs = remember { context.getSharedPreferences("ofox_prefs", android.content.Context.MODE_PRIVATE) }
+    var compactNav by remember { mutableStateOf(prefs.getBoolean("compact_nav", false)) }
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -63,6 +67,31 @@ fun CustomizationScreen(onBack: () -> Unit, onThemeClick: () -> Unit, onFontSize
                 icon = Icons.Default.RoundedCorner,
                 onClick = onCornerRadiusClick
             )
+
+            // Компактное меню
+            Card(
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                shape = MaterialTheme.shapes.medium
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(16.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(Icons.Default.ViewCompact, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(32.dp))
+                    Spacer(Modifier.width(16.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("Компактное меню", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                        Text("Скрыть подписи в панели навигации", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f))
+                    }
+                    Switch(
+                        checked = compactNav,
+                        onCheckedChange = {
+                            compactNav = it
+                            prefs.edit().putBoolean("compact_nav", it).apply()
+                        }
+                    )
+                }
+            }
         }
     }
 }

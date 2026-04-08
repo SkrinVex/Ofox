@@ -298,6 +298,15 @@ class MainActivity : ComponentActivity() {
                     )
                     var bottomBarVisible by remember { mutableStateOf(true) }
                     LaunchedEffect(currentRoute) { bottomBarVisible = true }
+
+                    val mainPrefs = remember { getSharedPreferences("ofox_prefs", android.content.Context.MODE_PRIVATE) }
+                    var compactNav by remember { mutableStateOf(mainPrefs.getBoolean("compact_nav", false)) }
+                    // Перечитываем при возврате на главные экраны
+                    LaunchedEffect(currentRoute) {
+                        if (currentRoute in listOf(Screen.Home.route, Screen.Chats.route, Screen.Feed.route, Screen.Settings.route)) {
+                            compactNav = mainPrefs.getBoolean("compact_nav", false)
+                        }
+                    }
                     
                     val chats by repository.chatsFlow.collectAsState(initial = emptyList())
                     var notifUnreadCount by remember { mutableStateOf(0) }
@@ -357,7 +366,7 @@ class MainActivity : ComponentActivity() {
                                     }
                                 }
                             }
-                            composable(Screen.Chats.route) { ChatsScreen(repository, navController) }
+                            composable(Screen.Chats.route) { ChatsScreen(repository, navController, bottomPadding = if (compactNav) 56.dp else 80.dp) }
                             composable("notifications") {
                                 LaunchedEffect(Unit) { notifUnreadCount = 0 }
                                 su.SkrinVex.ofox.screens.NotificationsScreen(
@@ -503,7 +512,10 @@ class MainActivity : ComponentActivity() {
                             exit = androidx.compose.animation.slideOutVertically { it },
                             modifier = Modifier.align(Alignment.BottomCenter)
                         ) {
-                            NavigationBar(containerColor = MaterialTheme.colorScheme.surface) {
+                            NavigationBar(
+                                containerColor = MaterialTheme.colorScheme.surface,
+                                modifier = if (compactNav) Modifier.height(56.dp).navigationBarsPadding() else Modifier.navigationBarsPadding()
+                            ) {
                                 bottomNavItems.forEach { screen ->
                                     NavigationBarItem(
                                         icon = {
@@ -516,7 +528,7 @@ class MainActivity : ComponentActivity() {
                                                 }
                                             }) { Icon(screen.icon, contentDescription = screen.title) }
                                         },
-                                        label = { Text(screen.title) },
+                                        label = if (compactNav) null else ({ Text(screen.title) }),
                                         selected = currentRoute == screen.route,
                                         onClick = {
                                             navController.navigate(screen.route) {
