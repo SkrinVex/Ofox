@@ -383,7 +383,7 @@ class Repository(private val context: Context) {
         return prefs.getStringSet("hidden_authors", emptySet())?.mapNotNull { it.toIntOrNull() }?.toSet() ?: emptySet()
     }
 
-    suspend fun uploadPostImages(postId: Int, uris: List<android.net.Uri>, context: android.content.Context) = withContext(Dispatchers.IO) {
+    suspend fun uploadPostImages(postId: Int, uris: List<android.net.Uri>, context: android.content.Context): Result<List<String>> = withContext(Dispatchers.IO) {
         try {
             val parts = uris.mapIndexed { i, uri ->
                 val stream = context.contentResolver.openInputStream(uri) ?: return@mapIndexed null
@@ -393,12 +393,18 @@ class Repository(private val context: Context) {
                 val body = okhttp3.RequestBody.create(mimeType.toMediaTypeOrNull(), bytes)
                 okhttp3.MultipartBody.Part.createFormData("images", "image_$i.jpg", body)
             }.filterNotNull()
-            if (parts.isNotEmpty()) {
-                apiClient.api.uploadPostImages(postId, parts)
-                android.util.Log.d("Repository", "Uploaded ${parts.size} images for post $postId")
-            }
+            if (parts.isEmpty()) return@withContext Result.failure(Exception("Не удалось прочитать файлы"))
+            val response = apiClient.api.uploadPostImages(postId, parts)
+            android.util.Log.d("Repository", "Uploaded ${parts.size} images for post $postId")
+            Result.success(response.images)
+        } catch (e: retrofit2.HttpException) {
+            val errorBody = e.response()?.errorBody()?.string()
+            val msg = try { org.json.JSONObject(errorBody ?: "{}").getString("error") } catch (_: Exception) { "Ошибка загрузки фото (${e.code()})" }
+            android.util.Log.e("Repository", "uploadPostImages error", e)
+            Result.failure(Exception(msg))
         } catch (e: Exception) {
             android.util.Log.e("Repository", "uploadPostImages error", e)
+            Result.failure(Exception("Ошибка загрузки фото: ${e.message}"))
         }
     }
 
@@ -686,16 +692,26 @@ class Repository(private val context: Context) {
                 imageBytes.toRequestBody("image/jpeg".toMediaType())
             )
             val response = apiClient.api.uploadAvatar(part)
-            // Обновляем кэш пользователя
             val userId = getCurrentUserId()
             if (userId != -1) {
                 val cached = db.userDao().getUser(userId)
                 if (cached != null) db.userDao().insertUser(cached.copy(avatarUrl = response.avatar_url))
             }
             Result.success(response.avatar_url)
+        } catch (e: retrofit2.HttpException) {
+            val errorBody = e.response()?.errorBody()?.string()
+            val msg = try { org.json.JSONObject(errorBody ?: "{}").getString("error") } catch (_: Exception) {
+                when (e.code()) {
+                    413 -> "Файл слишком большой. Максимум 4 МБ"
+                    415 -> "Неподдерживаемый формат изображения"
+                    else -> "Ошибка сервера (${e.code()})"
+                }
+            }
+            android.util.Log.e("Repository", "uploadAvatar error", e)
+            Result.failure(Exception(msg))
         } catch (e: Exception) {
             android.util.Log.e("Repository", "uploadAvatar error", e)
-            Result.failure(e)
+            Result.failure(Exception("Ошибка загрузки: ${e.message}"))
         }
     }
 

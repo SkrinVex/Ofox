@@ -72,6 +72,7 @@ fun HomeScreen(
     var localHighlightPostId by remember { mutableStateOf<Int?>(null) }
     val subscribedToMeMap = remember { mutableStateMapOf<Int, Boolean>() }
     var hiddenAuthorIds by remember { mutableStateOf(repository.getHiddenAuthorIds()) }
+    var imageUploadError by remember { mutableStateOf<String?>(null) }
 
     // Обновляем список скрытых авторов при каждом появлении экрана
     LaunchedEffect(Unit) {
@@ -648,6 +649,24 @@ fun HomeScreen(
                 }
             }
         }
+
+        // Показываем ошибку загрузки фото
+        imageUploadError?.let { error ->
+            Box(modifier = Modifier.fillMaxSize()) {
+                Snackbar(
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .padding(16.dp),
+                    action = {
+                        TextButton(onClick = { imageUploadError = null }) {
+                            Text("OK")
+                        }
+                    }
+                ) {
+                    Text(error)
+                }
+            }
+        }
     }
 
     if (showCreatePost) {
@@ -681,12 +700,19 @@ fun HomeScreen(
                             posts.add(0, post)
                             // Загружаем изображения если есть
                             if (imageUris.isNotEmpty()) {
-                                repository.uploadPostImages(post.id, imageUris, context)
-                                // Перезагружаем пост чтобы получить URLs изображений
-                                repository.getPostById(post.id)?.let { updated ->
-                                    val idx = posts.indexOfFirst { it.id == post.id }
-                                    if (idx != -1) posts[idx] = updated
-                                }
+                                val uploadResult = repository.uploadPostImages(post.id, imageUris, context)
+                                uploadResult.fold(
+                                    onSuccess = {
+                                        // Перезагружаем пост чтобы получить URLs изображений
+                                        repository.getPostById(post.id)?.let { updated ->
+                                            val idx = posts.indexOfFirst { it.id == post.id }
+                                            if (idx != -1) posts[idx] = updated
+                                        }
+                                    },
+                                    onFailure = { e ->
+                                        imageUploadError = e.message ?: "Ошибка загрузки фото"
+                                    }
+                                )
                             }
                         }
                         listState.animateScrollToItem(0)
