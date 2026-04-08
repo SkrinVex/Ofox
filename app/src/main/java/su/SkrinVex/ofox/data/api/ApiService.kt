@@ -199,6 +199,9 @@ interface ApiService {
     @GET("stickers/packs/{slug}")
     suspend fun getPackBySlug(@Path("slug") slug: String): StickerPack
 
+    @GET("stickers/packs/by-url")
+    suspend fun getPackByStickerUrl(@Query("url") url: String): StickerPack
+
     @POST("stickers/packs")
     suspend fun createPack(@Body request: CreatePackRequest): StickerPack
 

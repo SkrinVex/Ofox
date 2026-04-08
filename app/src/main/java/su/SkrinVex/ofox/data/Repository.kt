@@ -973,6 +973,10 @@ class Repository(private val context: Context) {
         try { apiClient.api.getPackBySlug(slug) } catch (e: Exception) { null }
     }
 
+    suspend fun getPackByStickerUrl(url: String) = withContext(Dispatchers.IO) {
+        try { apiClient.api.getPackByStickerUrl(url) } catch (e: Exception) { null }
+    }
+
     suspend fun createPack(name: String, description: String = "", isPublic: Boolean = false) = withContext(Dispatchers.IO) {
         try { apiClient.api.createPack(su.SkrinVex.ofox.data.api.models.CreatePackRequest(name, description, isPublic)) }
         catch (e: Exception) { android.util.Log.e("Repository", "createPack error", e); null }

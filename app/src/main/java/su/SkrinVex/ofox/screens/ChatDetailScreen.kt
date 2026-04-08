@@ -12,6 +12,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Send
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.EmojiEmotions
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -41,6 +42,9 @@ fun ChatDetailScreen(repository: Repository, chatId: Int, onBack: () -> Unit, on
     var stickerPickerInitialPackId by remember { mutableStateOf<Int?>(null) }
     // url → (packId, packName), packId=null означает "недавние"
     var stickerPackMap by remember { mutableStateOf(mapOf<String, Pair<Int?, String>>()) }
+    // Bottomsheet инфо о наборе при нажатии на стикер
+    var stickerInfoPackId by remember { mutableStateOf<Int?>(null) }
+    var stickerInfoPackName by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
     val listState = rememberLazyListState()
     val context = androidx.compose.ui.platform.LocalContext.current
@@ -250,9 +254,22 @@ fun ChatDetailScreen(repository: Repository, chatId: Int, onBack: () -> Unit, on
                     message = message,
                     chatName = chat?.name ?: "",
                     stickerPackMap = stickerPackMap,
-                    onStickerClick = { packId ->
-                        stickerPickerInitialPackId = packId
-                        showStickerPicker = true
+                    onStickerClick = { stickerUrl ->
+                        val known = stickerPackMap[stickerUrl]
+                        if (known != null) {
+                            stickerInfoPackId = known.first
+                            stickerInfoPackName = known.second
+                        } else {
+                            scope.launch {
+                                val pack = repository.getPackByStickerUrl(stickerUrl)
+                                if (pack != null) {
+                                    stickerInfoPackId = pack.id
+                                    stickerInfoPackName = pack.name
+                                    // Кэшируем
+                                    stickerPackMap = stickerPackMap + (stickerUrl to Pair(pack.id, pack.name))
+                                }
+                            }
+                        }
                     }
                 )
             }
@@ -346,6 +363,69 @@ fun ChatDetailScreen(repository: Repository, chatId: Int, onBack: () -> Unit, on
         }
     }
 
+    // Bottomsheet инфо о наборе стикеров
+    if (stickerInfoPackId != null) {
+        val packId = stickerInfoPackId!!
+        var installedPackIds by remember { mutableStateOf(emptySet<Int>()) }
+        var isInstalling by remember { mutableStateOf(false) }
+
+        LaunchedEffect(packId) {
+            installedPackIds = repository.getMyPacks().map { it.id }.toSet()
+        }
+
+        androidx.compose.material3.ModalBottomSheet(
+            onDismissRequest = { stickerInfoPackId = null; stickerInfoPackName = null },
+            containerColor = MaterialTheme.colorScheme.surface
+        ) {
+            Column(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(bottom = 32.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                Text(
+                    stickerInfoPackName ?: "Набор стикеров",
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold
+                )
+                val isInstalled = packId in installedPackIds
+                if (isInstalled) {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Icon(Icons.Default.CheckCircle, null, tint = MaterialTheme.colorScheme.primary)
+                        Text("Набор уже добавлен", color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f))
+                    }
+                    Button(
+                        onClick = {
+                            stickerPickerInitialPackId = packId
+                            stickerInfoPackId = null
+                            stickerInfoPackName = null
+                            showStickerPicker = true
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = MaterialTheme.shapes.medium
+                    ) { Text("Открыть набор") }
+                } else {
+                    Button(
+                        onClick = {
+                            scope.launch {
+                                isInstalling = true
+                                repository.installPack(packId)
+                                stickerPickerInitialPackId = packId
+                                stickerInfoPackId = null
+                                stickerInfoPackName = null
+                                showStickerPicker = true
+                            }
+                        },
+                        enabled = !isInstalling,
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = MaterialTheme.shapes.medium
+                    ) {
+                        if (isInstalling) CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.onPrimary)
+                        else Text("Добавить набор себе")
+                    }
+                }
+            }
+        }
+    }
+
     if (showStickerPicker) {
         StickerPicker(
             repository = repository,
@@ -374,7 +454,7 @@ fun MessageBubble(
     message: su.SkrinVex.ofox.data.Message,
     chatName: String = "",
     stickerPackMap: Map<String, Pair<Int?, String>> = emptyMap(),
-    onStickerClick: (packId: Int?) -> Unit = {}
+    onStickerClick: (stickerUrl: String) -> Unit = {}
 ) {
     Column(
         modifier = Modifier.fillMaxWidth(),
@@ -405,7 +485,7 @@ fun MessageBubble(
             Column(
                 modifier = Modifier
                     .padding(start = if (message.isFromMe) 0.dp else 40.dp)
-                    .clickable(enabled = packInfo != null) { onStickerClick(packInfo?.first) },
+                    .clickable { onStickerClick(message.text) },
                 horizontalAlignment = if (message.isFromMe) Alignment.End else Alignment.Start
             ) {
                 AsyncImage(

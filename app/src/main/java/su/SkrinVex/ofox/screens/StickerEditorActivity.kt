@@ -94,10 +94,11 @@ class StickerEditorActivity : androidx.appcompat.app.AppCompatActivity() {
 
     private fun showEditor(imageUri: Uri) {
         val bg = android.graphics.Color.parseColor("#0D0D0D")
-        val surface = android.graphics.Color.parseColor("#1A1A1A")
+        val surface = android.graphics.Color.parseColor("#1C1C1E")
+        val surfaceHigh = android.graphics.Color.parseColor("#2C2C2E")
         val accent = android.graphics.Color.parseColor("#FF6B35")
         val white = android.graphics.Color.WHITE
-        val gray = android.graphics.Color.parseColor("#888888")
+        val gray = android.graphics.Color.parseColor("#8E8E93")
 
         val root = android.widget.FrameLayout(this).apply {
             setBackgroundColor(bg)
@@ -107,7 +108,7 @@ class StickerEditorActivity : androidx.appcompat.app.AppCompatActivity() {
             layoutParams = android.widget.FrameLayout.LayoutParams(
                 android.widget.FrameLayout.LayoutParams.MATCH_PARENT,
                 android.widget.FrameLayout.LayoutParams.MATCH_PARENT
-            ).apply { bottomMargin = dpToPx(72) }
+            ).apply { bottomMargin = dpToPx(88) }
         }
 
         // ── Нижний тулбар ────────────────────────────────────────────────────
@@ -117,9 +118,9 @@ class StickerEditorActivity : androidx.appcompat.app.AppCompatActivity() {
             setBackgroundColor(surface)
             layoutParams = android.widget.FrameLayout.LayoutParams(
                 android.widget.FrameLayout.LayoutParams.MATCH_PARENT,
-                dpToPx(72)
+                dpToPx(88)
             ).apply { gravity = Gravity.BOTTOM }
-            setPadding(dpToPx(8), 0, dpToPx(72), 0)
+            setPadding(dpToPx(12), dpToPx(8), dpToPx(88), dpToPx(8))
         }
 
         val scrollToolbar = android.widget.HorizontalScrollView(this).apply {
@@ -136,41 +137,48 @@ class StickerEditorActivity : androidx.appcompat.app.AppCompatActivity() {
             )
         }
 
-        fun toolBtn(icon: String, label: String, active: Boolean = false, action: () -> Unit) =
-            android.widget.LinearLayout(this).apply {
+        fun toolBtn(icon: String, label: String, action: () -> Unit): android.widget.LinearLayout {
+            val cornerPx = dpToPx(14).toFloat()
+            return android.widget.LinearLayout(this).apply {
                 orientation = android.widget.LinearLayout.VERTICAL
                 gravity = Gravity.CENTER
-                setPadding(dpToPx(12), dpToPx(8), dpToPx(12), dpToPx(8))
+                setPadding(dpToPx(6), dpToPx(6), dpToPx(6), dpToPx(6))
+                layoutParams = android.widget.LinearLayout.LayoutParams(dpToPx(64), android.widget.LinearLayout.LayoutParams.MATCH_PARENT)
+                    .apply { marginEnd = dpToPx(4) }
+                background = android.graphics.drawable.GradientDrawable().apply {
+                    shape = android.graphics.drawable.GradientDrawable.RECTANGLE
+                    cornerRadius = cornerPx
+                    setColor(surfaceHigh)
+                }
                 setOnClickListener { action() }
-                layoutParams = android.widget.LinearLayout.LayoutParams(
-                    android.widget.LinearLayout.LayoutParams.WRAP_CONTENT,
-                    android.widget.LinearLayout.LayoutParams.MATCH_PARENT
-                )
                 addView(android.widget.TextView(this@StickerEditorActivity).apply {
-                    text = icon; textSize = 20f; gravity = Gravity.CENTER
+                    text = icon; textSize = 22f; gravity = Gravity.CENTER
+                    layoutParams = android.widget.LinearLayout.LayoutParams(
+                        android.widget.LinearLayout.LayoutParams.WRAP_CONTENT,
+                        android.widget.LinearLayout.LayoutParams.WRAP_CONTENT
+                    )
                 })
                 addView(android.widget.TextView(this@StickerEditorActivity).apply {
-                    text = label; textSize = 10f; gravity = Gravity.CENTER
-                    setTextColor(if (active) accent else gray)
+                    text = label; textSize = 9f; gravity = Gravity.CENTER
+                    setTextColor(gray)
+                    layoutParams = android.widget.LinearLayout.LayoutParams(
+                        android.widget.LinearLayout.LayoutParams.WRAP_CONTENT,
+                        android.widget.LinearLayout.LayoutParams.WRAP_CONTENT
+                    )
                 })
-            }
-
-        var drawMode = false
-
-        val drawBtn = toolBtn("✏️", "Рисовать") {
-            drawMode = !drawMode
-            photoEditor.setBrushDrawingMode(drawMode)
-            if (drawMode) {
-                photoEditor.brushColor = white
-                photoEditor.brushSize = 14f
             }
         }
-        toolsRow.addView(toolBtn("↩", "Отмена") { photoEditor.undo() })
-        toolsRow.addView(toolBtn("↪", "Повтор") { photoEditor.redo() })
-        toolsRow.addView(drawBtn)
+
+        toolsRow.addView(toolBtn("↩️", "Отмена") { photoEditor.undo() })
+        toolsRow.addView(toolBtn("↪️", "Повтор") { photoEditor.redo() })
+        toolsRow.addView(toolBtn("✏️", "Рисовать") {
+            val mode = photoEditor.brushDrawableMode != true
+            photoEditor.setBrushDrawingMode(mode)
+            if (mode) { photoEditor.brushColor = white; photoEditor.brushSize = 14f }
+        })
         toolsRow.addView(toolBtn("T", "Текст") { showTextDialog(accent) })
         toolsRow.addView(toolBtn("😊", "Эмодзи") { showEmojiDialog() })
-        toolsRow.addView(toolBtn("🗑", "Очистить") { photoEditor.clearAllViews() })
+        toolsRow.addView(toolBtn("🗑️", "Очистить") { photoEditor.clearAllViews() })
 
         scrollToolbar.addView(toolsRow)
         toolbar.addView(scrollToolbar)
@@ -178,12 +186,18 @@ class StickerEditorActivity : androidx.appcompat.app.AppCompatActivity() {
         // ── Кнопка сохранить ─────────────────────────────────────────────────
         val saveBtn = android.widget.TextView(this).apply {
             text = "✓"
-            textSize = 24f
+            textSize = 26f
             gravity = Gravity.CENTER
-            setTextColor(android.graphics.Color.parseColor("#0D0D0D"))
-            setBackgroundColor(accent)
-            layoutParams = android.widget.FrameLayout.LayoutParams(dpToPx(72), dpToPx(72)).apply {
+            setTextColor(android.graphics.Color.WHITE)
+            background = android.graphics.drawable.GradientDrawable().apply {
+                shape = android.graphics.drawable.GradientDrawable.RECTANGLE
+                cornerRadius = dpToPx(20).toFloat()
+                setColor(accent)
+            }
+            layoutParams = android.widget.FrameLayout.LayoutParams(dpToPx(64), dpToPx(64)).apply {
                 gravity = Gravity.BOTTOM or Gravity.END
+                bottomMargin = dpToPx(12)
+                rightMargin = dpToPx(12)
             }
             setOnClickListener { saveSticker() }
         }
@@ -202,28 +216,34 @@ class StickerEditorActivity : androidx.appcompat.app.AppCompatActivity() {
     private fun showTextDialog(accent: Int) {
         val container = android.widget.LinearLayout(this).apply {
             orientation = android.widget.LinearLayout.VERTICAL
-            setPadding(dpToPx(20), dpToPx(8), dpToPx(20), dpToPx(8))
+            setPadding(dpToPx(20), dpToPx(8), dpToPx(20), dpToPx(16))
         }
         val input = android.widget.EditText(this).apply {
             hint = "Введите текст"
             setTextColor(android.graphics.Color.WHITE)
             setHintTextColor(android.graphics.Color.parseColor("#666666"))
             textSize = 16f
-            setPadding(dpToPx(12), dpToPx(12), dpToPx(12), dpToPx(12))
-            setBackgroundColor(android.graphics.Color.parseColor("#2A2A2A"))
+            setPadding(dpToPx(14), dpToPx(12), dpToPx(14), dpToPx(12))
+            background = android.graphics.drawable.GradientDrawable().apply {
+                shape = android.graphics.drawable.GradientDrawable.RECTANGLE
+                cornerRadius = dpToPx(12).toFloat()
+                setColor(android.graphics.Color.parseColor("#2C2C2E"))
+            }
         }
-        // Выбор цвета
         val colors = listOf("#FFFFFF","#FF6B35","#FF4444","#44FF88","#4488FF","#FFDD44","#FF44FF","#000000")
         val colorRow = android.widget.LinearLayout(this).apply {
             orientation = android.widget.LinearLayout.HORIZONTAL
-            setPadding(0, dpToPx(12), 0, 0)
+            setPadding(0, dpToPx(14), 0, 0)
         }
         var selectedColor = android.graphics.Color.WHITE
         colors.forEach { hex ->
             val c = android.graphics.Color.parseColor(hex)
             val dot = android.view.View(this).apply {
                 layoutParams = android.widget.LinearLayout.LayoutParams(dpToPx(32), dpToPx(32)).apply { marginEnd = dpToPx(8) }
-                setBackgroundColor(c)
+                background = android.graphics.drawable.GradientDrawable().apply {
+                    shape = android.graphics.drawable.GradientDrawable.OVAL
+                    setColor(c)
+                }
                 setOnClickListener { selectedColor = c }
             }
             colorRow.addView(dot)

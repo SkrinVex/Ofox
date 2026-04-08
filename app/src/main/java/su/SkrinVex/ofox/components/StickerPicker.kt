@@ -53,6 +53,7 @@ fun StickerPicker(
     var selectedPackId by remember { mutableStateOf(initialPackId) }
     var isLoading by remember { mutableStateOf(true) }
     var showCatalog by remember { mutableStateOf(false) }
+    var uploadError by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
 
@@ -77,7 +78,10 @@ fun StickerPicker(
             if (uriStr != null) {
                 scope.launch {
                     isLoading = true
-                    repository.uploadSticker(Uri.parse(uriStr), context, selectedPackId?.takeIf { it > 0 })
+                    val uploaded = repository.uploadSticker(Uri.parse(uriStr), context, selectedPackId?.takeIf { it > 0 })
+                    if (uploaded == null) {
+                        uploadError = "Не удалось загрузить стикер. Попробуйте снова."
+                    }
                     reload()
                 }
             }
@@ -88,7 +92,7 @@ fun StickerPicker(
         if (uri != null) editorLauncher.launch(StickerEditorActivity.createIntent(context, uri))
     }
 
-    LaunchedEffect(Unit) { reload(null) }
+    LaunchedEffect(Unit) { reload(initialPackId) }
 
     if (showCatalog) {
         StickerCatalog(
@@ -109,9 +113,9 @@ fun StickerPicker(
         onDismissRequest = onDismiss,
         containerColor = MaterialTheme.colorScheme.surface,
         dragHandle = { Box(Modifier.padding(vertical = 8.dp)) {
-            Box(Modifier.width(32.dp).height(4.dp)
+            Box(Modifier.width(40.dp).height(4.dp)
                 .clip(CircleShape)
-                .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.2f))
+                .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.15f))
                 .align(Alignment.Center))
         }},
     ) {
@@ -120,11 +124,29 @@ fun StickerPicker(
                 .fillMaxWidth()
                 .height(420.dp)
         ) {
+            // Ошибка загрузки
+            if (uploadError != null) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 12.dp, vertical = 4.dp)
+                        .clip(MaterialTheme.shapes.medium)
+                        .background(MaterialTheme.colorScheme.errorContainer)
+                        .padding(horizontal = 12.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text(uploadError!!, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onErrorContainer, modifier = Modifier.weight(1f))
+                    TextButton(onClick = { uploadError = null }, contentPadding = PaddingValues(horizontal = 8.dp)) {
+                        Text("OK", style = MaterialTheme.typography.labelSmall)
+                    }
+                }
+            }
             // Сетка стикеров
             val currentStickers = if (selectedPackId == null) recent
                                    else packs.find { it.id == selectedPackId }?.stickers ?: emptyList()
 
-            Box(modifier = Modifier.weight(1f)) {
+            Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
                 when {
                     isLoading -> CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
                     currentStickers.isEmpty() -> Column(
@@ -218,96 +240,81 @@ fun StickerPicker(
                 }
             }
 
-            HorizontalDivider()
+            HorizontalDivider(color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f))
 
-            // Нижняя панель: иконки наборов (как в Telegram)
+            // Нижняя панель: иконки наборов
             LazyRow(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(56.dp),
+                    .height(60.dp),
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(0.dp),
-                contentPadding = PaddingValues(horizontal = 4.dp)
+                contentPadding = PaddingValues(horizontal = 6.dp)
             ) {
                 // Недавние
                 item {
                     val sel = selectedPackId == null
-                    Column(
+                    Box(
                         modifier = Modifier
-                            .size(52.dp)
+                            .padding(horizontal = 3.dp)
+                            .size(44.dp)
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(if (sel) MaterialTheme.colorScheme.primary.copy(alpha = 0.15f) else Color.Transparent)
                             .clickable { selectedPackId = null },
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.Center
+                        contentAlignment = Alignment.Center
                     ) {
-                        Text("🕐", fontSize = 24.sp,
-                            modifier = Modifier.weight(1f).wrapContentHeight())
-                        Box(
-                            Modifier.fillMaxWidth().height(2.dp)
-                                .background(if (sel) MaterialTheme.colorScheme.primary else Color.Transparent)
-                        )
+                        Text("🕐", fontSize = 22.sp)
                     }
                 }
                 // Наборы
                 items(packs) { pack ->
                     val sel = selectedPackId == pack.id
                     val preview = pack.stickers?.firstOrNull()?.url
-                    Column(
+                    Box(
                         modifier = Modifier
-                            .size(52.dp)
+                            .padding(horizontal = 3.dp)
+                            .size(44.dp)
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(if (sel) MaterialTheme.colorScheme.primary.copy(alpha = 0.15f) else Color.Transparent)
                             .clickable { selectedPackId = pack.id },
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.Center
+                        contentAlignment = Alignment.Center
                     ) {
-                        Box(
-                            modifier = Modifier.weight(1f).wrapContentHeight(),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            if (preview != null) {
-                                AsyncImage(
-                                    model = preview, contentDescription = pack.name,
-                                    modifier = Modifier.size(30.dp)
-                                )
-                            } else {
-                                Text(pack.name.take(1), fontSize = 18.sp)
-                            }
+                        if (preview != null) {
+                            AsyncImage(model = preview, contentDescription = pack.name, modifier = Modifier.size(30.dp))
+                        } else {
+                            Text(pack.name.take(1), fontSize = 18.sp)
                         }
-                        Box(
-                            Modifier.fillMaxWidth().height(2.dp)
-                                .background(if (sel) MaterialTheme.colorScheme.primary else Color.Transparent)
-                        )
                     }
                 }
                 // Разделитель
                 item {
-                    Box(
-                        Modifier.width(1.dp).height(28.dp)
-                            .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f))
-                    )
+                    Box(Modifier.padding(horizontal = 4.dp).width(1.dp).height(24.dp).background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.1f)))
                 }
                 // Каталог
                 item {
-                    Column(
-                        modifier = Modifier.size(52.dp).clickable { showCatalog = true },
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.Center
+                    Box(
+                        modifier = Modifier
+                            .padding(horizontal = 3.dp)
+                            .size(44.dp)
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(Color.Transparent)
+                            .clickable { showCatalog = true },
+                        contentAlignment = Alignment.Center
                     ) {
-                        Icon(Icons.Default.Explore, null,
-                            tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
-                            modifier = Modifier.size(22.dp).weight(1f).wrapContentHeight())
-                        Box(Modifier.fillMaxWidth().height(2.dp))
+                        Icon(Icons.Default.Explore, null, tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f), modifier = Modifier.size(22.dp))
                     }
                 }
                 // Добавить стикер
                 item {
-                    Column(
-                        modifier = Modifier.size(52.dp).clickable { imagePicker.launch("image/*") },
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.Center
+                    Box(
+                        modifier = Modifier
+                            .padding(horizontal = 3.dp)
+                            .size(44.dp)
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.1f))
+                            .clickable { imagePicker.launch("image/*") },
+                        contentAlignment = Alignment.Center
                     ) {
-                        Icon(Icons.Default.Add, null,
-                            tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(22.dp).weight(1f).wrapContentHeight())
-                        Box(Modifier.fillMaxWidth().height(2.dp))
+                        Icon(Icons.Default.Add, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(22.dp))
                     }
                 }
             }
