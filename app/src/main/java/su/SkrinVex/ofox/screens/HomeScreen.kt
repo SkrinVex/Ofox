@@ -796,6 +796,10 @@ fun HomeScreen(
                 android.util.Log.d("HomeScreen", "sendComment: content=$content replyToId=$replyToId")
                 scope.launch {
                     repository.createComment(selectedPostId, content, replyToId)
+                    val updated = repository.getComments(selectedPostId)
+                    if (updated != null) {
+                        comments = updated
+                    }
                 }
             },
             onDeleteComment = { commentId ->

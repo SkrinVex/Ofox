@@ -729,6 +729,41 @@ class Repository(private val context: Context) {
         }
     }
 
+    suspend fun uploadBanner(imageBytes: ByteArray): Result<String> = withContext(Dispatchers.IO) {
+        try {
+            val part = okhttp3.MultipartBody.Part.createFormData(
+                "banner", "banner.jpg",
+                imageBytes.toRequestBody("image/jpeg".toMediaType())
+            )
+            val response = apiClient.api.uploadBanner(part)
+            val userId = getCurrentUserId()
+            if (userId != -1) {
+                val cached = db.userDao().getUser(userId)
+                if (cached != null) db.userDao().insertUser(cached.copy(bannerImageUrl = response.banner_image_url))
+            }
+            Result.success(response.banner_image_url)
+        } catch (e: retrofit2.HttpException) {
+            val msg = try { org.json.JSONObject(e.response()?.errorBody()?.string() ?: "{}").getString("error") } catch (_: Exception) { "Ошибка загрузки баннера (${e.code()})" }
+            Result.failure(Exception(msg))
+        } catch (e: Exception) {
+            Result.failure(Exception("Ошибка загрузки баннера: ${e.message}"))
+        }
+    }
+
+    suspend fun deleteBanner(): Result<Unit> = withContext(Dispatchers.IO) {
+        try {
+            apiClient.api.deleteBanner()
+            val userId = getCurrentUserId()
+            if (userId != -1) {
+                val cached = db.userDao().getUser(userId)
+                if (cached != null) db.userDao().insertUser(cached.copy(bannerImageUrl = ""))
+            }
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
     suspend fun createChat(userId: Int, userName: String): Long? = withContext(Dispatchers.IO) {
         try {
             android.util.Log.d("Repository", "Creating chat with user $userId ($userName)")
@@ -772,6 +807,7 @@ class Repository(private val context: Context) {
         bio = bio,
         socialLinks = social_links ?: "",
         bannerColor = banner_color ?: "#4CAF50",
+        bannerImageUrl = banner_image_url ?: "",
         avatarUrl = avatar_url ?: ""
     )
 
@@ -885,7 +921,9 @@ class Repository(private val context: Context) {
     }
 
     suspend fun deleteNotifications(ids: List<Int>, types: List<String>) = withContext(Dispatchers.IO) {
-        try { apiClient.api.deleteNotifications(mapOf("ids" to ids, "types" to types)) } catch (_: Exception) {}
+        try { apiClient.api.deleteNotifications(DeleteNotificationsRequest(ids, types)) } catch (e: Exception) {
+            android.util.Log.e("Repository", "deleteNotifications error", e)
+        }
     }
 
     suspend fun getStickers() = withContext(Dispatchers.IO) {

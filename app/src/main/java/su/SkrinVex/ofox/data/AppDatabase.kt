@@ -6,7 +6,7 @@ import kotlinx.coroutines.flow.Flow
 
 @Database(
     entities = [User::class, Post::class, Chat::class, Message::class, Discovery::class],
-    version = 18
+    version = 19
 )
 abstract class AppDatabase : RoomDatabase() {
     abstract fun userDao(): UserDao
@@ -44,6 +44,7 @@ data class User(
     val bio: String = "",
     val socialLinks: String = "",
     val bannerColor: String = "#4CAF50",
+    val bannerImageUrl: String = "",
     val avatarUrl: String = ""
 )
 
@@ -168,7 +169,7 @@ interface PostDao {
 interface ChatDao {
     @Query("SELECT * FROM chats ORDER BY timestamp DESC")
     suspend fun getAllChats(): List<Chat>
-    
+
     @Query("SELECT * FROM chats ORDER BY timestamp DESC")
     fun getAllChatsFlow(): Flow<List<Chat>>
 
@@ -177,10 +178,10 @@ interface ChatDao {
 
     @Query("UPDATE chats SET lastMessage = :message, timestamp = :timestamp WHERE id = :chatId")
     suspend fun updateChat(chatId: Int, message: String, timestamp: Long)
-    
+
     @Query("UPDATE chats SET unreadCount = 0 WHERE id = :chatId")
     suspend fun resetUnreadCount(chatId: Int)
-    
+
     @Query("DELETE FROM chats")
     suspend fun deleteAllChats()
 }
@@ -192,7 +193,7 @@ interface MessageDao {
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertMessage(message: Message)
-    
+
     @Query("DELETE FROM messages WHERE chatId = :chatId")
     suspend fun deleteMessagesByChat(chatId: Int)
 }

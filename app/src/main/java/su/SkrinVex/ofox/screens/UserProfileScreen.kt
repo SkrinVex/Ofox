@@ -285,7 +285,17 @@ fun UserProfileScreen(
                                         .fillMaxWidth()
                                         .height(110.dp)
                                         .background(bannerColor ?: MaterialTheme.colorScheme.primary)
-                                )
+                                ) {
+                                    val bannerImg = user?.bannerImageUrl?.takeIf { it.isNotBlank() }
+                                    if (bannerImg != null) {
+                                        coil.compose.AsyncImage(
+                                            model = bannerImg,
+                                            contentDescription = null,
+                                            contentScale = ContentScale.Crop,
+                                            modifier = Modifier.fillMaxSize()
+                                        )
+                                    }
+                                }
                                 
                                 Box(
                                     modifier = Modifier

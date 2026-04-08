@@ -29,6 +29,7 @@ data class UserResponse(
     val badges: List<BadgeResponse>? = null,
     val social_links: String? = null,
     val banner_color: String? = null,
+    val banner_image_url: String? = null,
     val avatar_url: String? = null
 )
 
@@ -227,6 +228,7 @@ data class CreateAchievementRequest(
 data class GrantAchievementRequest(val userId: Int)
 
 data class AvatarUploadResponse(val avatar_url: String)
+data class BannerUploadResponse(val banner_image_url: String)
 
 data class CommentNotification(
     val id: Int,
@@ -246,3 +248,4 @@ data class CommentNotification(
 data class ReportRequest(val reason: String)
 
 data class PostImagesResponse(val images: List<String>)
+data class DeleteNotificationsRequest(val ids: List<Int>, val types: List<String>)

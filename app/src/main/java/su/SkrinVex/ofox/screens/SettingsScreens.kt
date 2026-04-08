@@ -17,6 +17,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.Tag
 import androidx.compose.material3.*
@@ -24,14 +25,18 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.content.FileProvider
+import com.yalantis.ucrop.UCrop
 import kotlinx.coroutines.launch
 import su.SkrinVex.ofox.components.UserAvatar
 import su.SkrinVex.ofox.data.Repository
+import java.io.File
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -46,12 +51,14 @@ fun EditProfileScreen(repository: Repository, onBack: () -> Unit) {
     var youtube by remember { mutableStateOf("") }
     var bannerColor by remember { mutableStateOf("#4CAF50") }
     var avatarUrl by remember { mutableStateOf<String?>(null) }
+    var bannerImageUrl by remember { mutableStateOf<String?>(null) }
     var isUploadingAvatar by remember { mutableStateOf(false) }
+    var isUploadingBanner by remember { mutableStateOf(false) }
     var avatarError by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
 
-    val colors = listOf("#4CAF50", "#2196F3", "#9C27B0", "#F44336", "#FF9800", "#607D8B", "#000000")
+    val colors = listOf("#4CAF50", "#2196F3", "#9C27B0", "#F44336", "#FF9800", "#E91E8C", "#607D8B", "#000000")
 
     val imagePicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri: Uri? ->
         uri ?: return@rememberLauncherForActivityResult
@@ -98,12 +105,42 @@ fun EditProfileScreen(repository: Repository, onBack: () -> Unit) {
         }
     }
 
+    val bannerCropLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        if (result.resultCode == android.app.Activity.RESULT_OK && result.data != null) {
+            val croppedUri = UCrop.getOutput(result.data!!) ?: return@rememberLauncherForActivityResult
+            scope.launch {
+                isUploadingBanner = true
+                try {
+                    val stream = context.contentResolver.openInputStream(croppedUri)
+                        ?: throw Exception("Не удалось открыть файл")
+                    val bytes = stream.readBytes()
+                    stream.close()
+                    val uploadResult = repository.uploadBanner(bytes)
+                    uploadResult.onSuccess { url -> bannerImageUrl = url }
+                } catch (_: Exception) {}
+                isUploadingBanner = false
+            }
+        }
+    }
+
+    val bannerPicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri: Uri? ->
+        uri ?: return@rememberLauncherForActivityResult
+        val destFile = File(context.cacheDir, "banner_crop_${System.currentTimeMillis()}.jpg")
+        val destUri = Uri.fromFile(destFile)
+        val intent = UCrop.of(uri, destUri)
+            .withAspectRatio(3f, 1f)
+            .withMaxResultSize(1200, 400)
+            .getIntent(context)
+        bannerCropLauncher.launch(intent)
+    }
+
     LaunchedEffect(Unit) {
         user = repository.getCurrentUser()
         name = user?.name ?: ""
         bio = user?.bio ?: ""
         bannerColor = user?.bannerColor ?: "#4CAF50"
         avatarUrl = user?.avatarUrl?.takeIf { it.isNotBlank() }
+        bannerImageUrl = user?.bannerImageUrl?.takeIf { it.isNotBlank() }
         
         try {
             val json = org.json.JSONObject(user?.socialLinks ?: "{}")
@@ -207,8 +244,64 @@ fun EditProfileScreen(repository: Repository, onBack: () -> Unit) {
             )
 
             Spacer(modifier = Modifier.height(8.dp))
-            Text("Цвет баннера", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-            
+            Text("Баннер профиля", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+
+            // Превью баннера
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(90.dp)
+                    .clip(MaterialTheme.shapes.medium)
+                    .background(androidx.compose.ui.graphics.Color(android.graphics.Color.parseColor(bannerColor)))
+            ) {
+                if (!bannerImageUrl.isNullOrBlank()) {
+                    coil.compose.AsyncImage(
+                        model = bannerImageUrl,
+                        contentDescription = null,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize()
+                    )
+                }
+                // Кнопка смены изображения
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(8.dp)
+                        .size(32.dp)
+                        .clip(CircleShape)
+                        .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.8f))
+                        .clickable { bannerPicker.launch("image/*") },
+                    contentAlignment = Alignment.Center
+                ) {
+                    if (isUploadingBanner) {
+                        CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
+                    } else {
+                        Icon(Icons.Default.CameraAlt, contentDescription = "Сменить баннер", modifier = Modifier.size(18.dp))
+                    }
+                }
+                // Кнопка удалить изображение
+                if (!bannerImageUrl.isNullOrBlank()) {
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.TopStart)
+                            .padding(8.dp)
+                            .size(32.dp)
+                            .clip(CircleShape)
+                            .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.8f))
+                            .clickable {
+                                scope.launch {
+                                    repository.deleteBanner()
+                                    bannerImageUrl = null
+                                }
+                            },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(Icons.Default.Close, contentDescription = "Удалить изображение", modifier = Modifier.size(18.dp))
+                    }
+                }
+            }
+
+            Text("Цвет баннера", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f))
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)

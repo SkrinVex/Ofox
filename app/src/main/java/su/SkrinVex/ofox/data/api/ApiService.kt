@@ -28,6 +28,13 @@ interface ApiService {
 
     @DELETE("auth/avatar")
     suspend fun deleteAvatar(): SimpleMessageResponse
+
+    @Multipart
+    @POST("auth/banner")
+    suspend fun uploadBanner(@Part banner: okhttp3.MultipartBody.Part): BannerUploadResponse
+
+    @DELETE("auth/banner")
+    suspend fun deleteBanner(): SimpleMessageResponse
     
     @GET("auth/users/{id}")
     suspend fun getUserById(@Path("id") userId: Int): UserResponse
@@ -163,7 +170,7 @@ interface ApiService {
     suspend fun markNotificationsRead(): SimpleMessageResponse
 
     @POST("notifications/delete")
-    suspend fun deleteNotifications(@Body request: Map<String, List<Any>>): SimpleMessageResponse
+    suspend fun deleteNotifications(@Body request: DeleteNotificationsRequest): SimpleMessageResponse
 
     // Стикеры
     @GET("stickers")
