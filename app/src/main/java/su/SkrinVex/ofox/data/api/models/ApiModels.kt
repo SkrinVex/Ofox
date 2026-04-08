@@ -106,10 +106,50 @@ data class MessageResponse(
     val sender_badges: List<BadgeResponse>? = null,
     val sender_avatar_url: String? = null,
     val text: String,
+    val message_type: String = "text",
     val created_at: String
 )
 
-data class SendMessageRequest(val text: String)
+data class StickerItem(
+    val id: Int,
+    val user_id: Int,
+    val url: String,
+    val emoji: String? = "",
+    val pack_id: Int? = null,
+    val created_at: String? = "",
+    val pack_name: String? = ""
+)
+
+data class StickerPack(
+    val id: Int,
+    val creator_id: Int,
+    val creator_name: String = "",
+    val name: String,
+    val slug: String,
+    val description: String = "",
+    val is_public: Boolean = false,
+    val sticker_count: Int = 0,
+    val preview_url: String? = null,
+    val stickers: List<StickerItem>? = null
+)
+
+data class UserStickersResponse(
+    val packs: List<StickerPack>,
+    val recent: List<StickerItem>
+)
+
+data class CreatePackRequest(
+    val name: String,
+    val description: String = "",
+    val isPublic: Boolean = false
+)
+
+data class StickerUploadResponse(
+    val id: Int,
+    val url: String
+)
+
+data class SendMessageRequest(val text: String, val messageType: String = "text")
 
 data class CommentResponse(
     val id: Int,

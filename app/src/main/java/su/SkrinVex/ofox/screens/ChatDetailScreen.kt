@@ -6,11 +6,13 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Send
+import androidx.compose.material.icons.filled.EmojiEmotions
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -20,8 +22,10 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import coil.compose.AsyncImage
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import su.SkrinVex.ofox.components.StickerPicker
 import su.SkrinVex.ofox.data.Repository
 import su.SkrinVex.ofox.utils.formatTime
 import su.SkrinVex.ofox.components.UserBadges
@@ -33,6 +37,10 @@ fun ChatDetailScreen(repository: Repository, chatId: Int, onBack: () -> Unit, on
     val messages = remember { androidx.compose.runtime.snapshots.SnapshotStateList<su.SkrinVex.ofox.data.Message>() }
     var messageText by remember { mutableStateOf("") }
     var chat by remember { mutableStateOf<su.SkrinVex.ofox.data.Chat?>(null) }
+    var showStickerPicker by remember { mutableStateOf(false) }
+    var stickerPickerInitialPackId by remember { mutableStateOf<Int?>(null) }
+    // url → (packId, packName), packId=null означает "недавние"
+    var stickerPackMap by remember { mutableStateOf(mapOf<String, Pair<Int?, String>>()) }
     val scope = rememberCoroutineScope()
     val listState = rememberLazyListState()
     val context = androidx.compose.ui.platform.LocalContext.current
@@ -51,11 +59,25 @@ fun ChatDetailScreen(repository: Repository, chatId: Int, onBack: () -> Unit, on
         "Супер! 🎉"
     )
 
-    fun loadMessages() {
+    var isLoadingMore by remember { mutableStateOf(false) }
+    var hasMore by remember { mutableStateOf(true) }
+
+    fun loadMessages(before: Int? = null) {
         scope.launch {
-            val loaded = repository.getMessages(chatId)
-            messages.clear()
-            messages.addAll(loaded)
+            if (before == null) {
+                val loaded = repository.getMessages(chatId)
+                messages.clear()
+                messages.addAll(loaded)
+                hasMore = loaded.size >= 30
+                // Скролл вниз сразу после загрузки
+                if (loaded.isNotEmpty()) listState.scrollToItem(loaded.size - 1)
+            } else {
+                isLoadingMore = true
+                val loaded = repository.getMessages(chatId, before = before)
+                if (loaded.isNotEmpty()) messages.addAll(0, loaded)
+                hasMore = loaded.size >= 30
+                isLoadingMore = false
+            }
         }
     }
 
@@ -64,6 +86,23 @@ fun ChatDetailScreen(repository: Repository, chatId: Int, onBack: () -> Unit, on
         val chats = repository.getAllChats()
         chat = chats.find { it.id == chatId }
         loadMessages()
+        val data = repository.getStickers()
+        val packById = data.packs.associateBy { it.id }
+        val map = mutableMapOf<String, Pair<Int?, String>>()
+        data.packs.forEach { pack ->
+            pack.stickers?.forEach { s -> map[s.url] = Pair(pack.id, pack.name) }
+        }
+        // Недавние — pack_name приходит с сервера напрямую
+        data.recent.forEach { s ->
+            if (!map.containsKey(s.url)) {
+                val packId = s.pack_id
+                val packName = s.pack_name?.takeIf { it.isNotBlank() }
+                    ?: packById[packId]?.name
+                    ?: "Недавние"
+                map[s.url] = Pair(packId, packName)
+            }
+        }
+        stickerPackMap = map
     }
 
     DisposableEffect(chatId) {
@@ -74,9 +113,12 @@ fun ChatDetailScreen(repository: Repository, chatId: Int, onBack: () -> Unit, on
         }
     }
 
+    // Скролл вниз при новом сообщении (только если уже внизу)
     LaunchedEffect(messages.size) {
-        if (messages.isNotEmpty()) {
-            listState.animateScrollToItem(messages.size - 1)
+        val lastVisible = listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index
+        val total = messages.size
+        if (total > 0 && (lastVisible == null || lastVisible >= total - 3)) {
+            listState.animateScrollToItem(total - 1)
         }
     }
     
@@ -164,6 +206,14 @@ fun ChatDetailScreen(repository: Repository, chatId: Int, onBack: () -> Unit, on
             }
         }
         
+        // Подгрузка старых сообщений при скролле вверх
+        val firstVisibleIndex by remember { derivedStateOf { listState.firstVisibleItemIndex } }
+        LaunchedEffect(firstVisibleIndex) {
+            if (firstVisibleIndex == 0 && hasMore && !isLoadingMore && messages.isNotEmpty()) {
+                loadMessages(before = messages.first().id)
+            }
+        }
+
         LazyColumn(
             modifier = Modifier
                 .weight(1f)
@@ -174,8 +224,21 @@ fun ChatDetailScreen(repository: Repository, chatId: Int, onBack: () -> Unit, on
             verticalArrangement = Arrangement.spacedBy(8.dp),
             contentPadding = PaddingValues(vertical = 16.dp)
         ) {
-            items(messages) { message ->
-                MessageBubble(message, chat?.name ?: "")
+            if (isLoadingMore) {
+                item { Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                    CircularProgressIndicator(modifier = Modifier.size(24.dp))
+                }}
+            }
+            items(messages, key = { it.id.takeIf { id -> id != 0 } ?: it.timestamp }) { message ->
+                MessageBubble(
+                    message = message,
+                    chatName = chat?.name ?: "",
+                    stickerPackMap = stickerPackMap,
+                    onStickerClick = { packId ->
+                        stickerPickerInitialPackId = packId
+                        showStickerPicker = true
+                    }
+                )
             }
         }
         
@@ -186,6 +249,14 @@ fun ChatDetailScreen(repository: Repository, chatId: Int, onBack: () -> Unit, on
                 .padding(horizontal = 16.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
+            // Кнопка стикеров
+            IconButton(onClick = { showStickerPicker = true }) {
+                Icon(
+                    Icons.Default.EmojiEmotions,
+                    contentDescription = "Стикеры",
+                    tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                )
+            }
             Surface(
                 modifier = Modifier.weight(1f),
                 shape = MaterialTheme.shapes.medium,
@@ -250,10 +321,36 @@ fun ChatDetailScreen(repository: Repository, chatId: Int, onBack: () -> Unit, on
             }
         }
     }
+
+    if (showStickerPicker) {
+        StickerPicker(
+            repository = repository,
+            initialPackId = stickerPickerInitialPackId,
+            onStickerSelected = { sticker ->
+                showStickerPicker = false
+                stickerPickerInitialPackId = null
+                val tempMessage = su.SkrinVex.ofox.data.Message(
+                    id = 0, chatId = chatId, text = sticker.url,
+                    timestamp = System.currentTimeMillis(), isFromMe = true, messageType = "sticker"
+                )
+                messages.add(tempMessage)
+                scope.launch {
+                    repository.sendSticker(chatId, sticker.url)
+                    repository.markStickerUsed(sticker.id)
+                }
+            },
+            onDismiss = { showStickerPicker = false; stickerPickerInitialPackId = null }
+        )
+    }
 }
 
 @Composable
-fun MessageBubble(message: su.SkrinVex.ofox.data.Message, chatName: String = "") {
+fun MessageBubble(
+    message: su.SkrinVex.ofox.data.Message,
+    chatName: String = "",
+    stickerPackMap: Map<String, Pair<Int?, String>> = emptyMap(),
+    onStickerClick: (packId: Int?) -> Unit = {}
+) {
     Column(
         modifier = Modifier.fillMaxWidth(),
         horizontalAlignment = if (message.isFromMe) Alignment.End else Alignment.Start
@@ -278,11 +375,34 @@ fun MessageBubble(message: su.SkrinVex.ofox.data.Message, chatName: String = "")
             }
         }
         
+        if (message.messageType == "sticker") {
+            val packInfo = stickerPackMap[message.text]
+            Column(
+                modifier = Modifier
+                    .padding(start = if (message.isFromMe) 0.dp else 40.dp)
+                    .clickable(enabled = packInfo != null) { onStickerClick(packInfo?.first) },
+                horizontalAlignment = if (message.isFromMe) Alignment.End else Alignment.Start
+            ) {
+                AsyncImage(
+                    model = message.text,
+                    contentDescription = "Стикер",
+                    modifier = Modifier.size(120.dp)
+                )
+                Text(
+                    text = formatTime(message.timestamp),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
+                    modifier = Modifier.padding(top = 2.dp)
+                )
+            }
+            return
+        }
+
         Card(
             colors = CardDefaults.cardColors(
-                containerColor = if (message.isFromMe) 
-                    MaterialTheme.colorScheme.primary 
-                else 
+                containerColor = if (message.isFromMe)
+                    MaterialTheme.colorScheme.primary
+                else
                     MaterialTheme.colorScheme.surfaceVariant
             ),
             shape = RoundedCornerShape(

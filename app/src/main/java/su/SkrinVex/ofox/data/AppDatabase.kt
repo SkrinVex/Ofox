@@ -6,7 +6,7 @@ import kotlinx.coroutines.flow.Flow
 
 @Database(
     entities = [User::class, Post::class, Chat::class, Message::class, Discovery::class],
-    version = 17
+    version = 18
 )
 abstract class AppDatabase : RoomDatabase() {
     abstract fun userDao(): UserDao
@@ -92,7 +92,8 @@ data class Message(
     val isFromMe: Boolean,
     val senderId: Int = 0,
     val senderName: String = "",
-    val senderAvatarUrl: String = ""
+    val senderAvatarUrl: String = "",
+    val messageType: String = "text" // "text" | "sticker"
 )
 
 @Entity(tableName = "discoveries")

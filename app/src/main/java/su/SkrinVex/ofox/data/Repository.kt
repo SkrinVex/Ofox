@@ -499,17 +499,20 @@ class Repository(private val context: Context) {
         }
     }
 
-    suspend fun getMessages(chatId: Int): List<Message> = withContext(Dispatchers.IO) {
+    suspend fun getMessages(chatId: Int, before: Int? = null): List<Message> = withContext(Dispatchers.IO) {
         try {
             val currentUserId = getCurrentUserId()
-            val messages = apiClient.api.getMessages(chatId).map { it.toMessage(currentUserId) }
-            db.messageDao().deleteMessagesByChat(chatId)
-            messages.forEach { db.messageDao().insertMessage(it) }
-            apiClient.api.markChatAsRead(chatId)
-            db.chatDao().resetUnreadCount(chatId)
+            val messages = apiClient.api.getMessages(chatId, before = before).map { it.toMessage(currentUserId) }
+            if (before == null) {
+                // Первая загрузка — кэшируем
+                db.messageDao().deleteMessagesByChat(chatId)
+                messages.forEach { db.messageDao().insertMessage(it) }
+                apiClient.api.markChatAsRead(chatId)
+                db.chatDao().resetUnreadCount(chatId)
+            }
             messages
         } catch (e: Exception) {
-            db.messageDao().getMessages(chatId)
+            if (before == null) db.messageDao().getMessages(chatId) else emptyList()
         }
     }
 
@@ -743,7 +746,7 @@ class Repository(private val context: Context) {
     }
 
     // Helpers
-    private fun isValidEmail(email: String): Boolean = Patterns.EMAIL_ADDRESS.matcher(email).matches()
+    private fun isValidEmail(email: String): Boolean = email.contains("@") && email.substringBefore("@").isNotEmpty() && email.substringAfter("@").contains(".")
 
     private fun UserResponse.toUser() = User(
         id = id, 
@@ -838,7 +841,8 @@ class Repository(private val context: Context) {
         isFromMe = sender_id == currentUserId,
         senderId = sender_id,
         senderName = sender_name,
-        senderAvatarUrl = sender_avatar_url ?: ""
+        senderAvatarUrl = sender_avatar_url ?: "",
+        messageType = message_type
     )
 
     private fun parseTimestamp(dateStr: String): Long {
@@ -866,6 +870,80 @@ class Repository(private val context: Context) {
 
     suspend fun deleteNotifications(ids: List<Int>, types: List<String>) = withContext(Dispatchers.IO) {
         try { apiClient.api.deleteNotifications(mapOf("ids" to ids, "types" to types)) } catch (_: Exception) {}
+    }
+
+    suspend fun getStickers() = withContext(Dispatchers.IO) {
+        try { apiClient.api.getUserStickers() } catch (e: Exception) {
+            android.util.Log.e("Repository", "getStickers error", e)
+            su.SkrinVex.ofox.data.api.models.UserStickersResponse(emptyList(), emptyList())
+        }
+    }
+
+    suspend fun uploadSticker(uri: android.net.Uri, context: android.content.Context, packId: Int? = null, emoji: String = "") = withContext(Dispatchers.IO) {
+        try {
+            val stream = context.contentResolver.openInputStream(uri) ?: return@withContext null
+            val bytes = stream.readBytes()
+            stream.close()
+            val mimeType = context.contentResolver.getType(uri) ?: "image/png"
+            val body = okhttp3.RequestBody.create(mimeType.toMediaTypeOrNull(), bytes)
+            val part = okhttp3.MultipartBody.Part.createFormData("sticker", "sticker.png", body)
+            val packPart = packId?.let {
+                okhttp3.MultipartBody.Part.createFormData("packId", it.toString())
+            }
+            val emojiPart = if (emoji.isNotBlank())
+                okhttp3.MultipartBody.Part.createFormData("emoji", emoji) else null
+            apiClient.api.uploadSticker(part, packPart, emojiPart)
+        } catch (e: Exception) {
+            android.util.Log.e("Repository", "uploadSticker error", e)
+            null
+        }
+    }
+
+    suspend fun deleteSticker(id: Int) = withContext(Dispatchers.IO) {
+        try { apiClient.api.deleteSticker(id) } catch (_: Exception) {}
+    }
+
+    suspend fun markStickerUsed(stickerId: Int) = withContext(Dispatchers.IO) {
+        try { apiClient.api.markStickerUsed(stickerId) } catch (_: Exception) {}
+    }
+
+    suspend fun getPublicPacks() = withContext(Dispatchers.IO) {
+        try { apiClient.api.getPublicPacks() } catch (e: Exception) { emptyList() }
+    }
+
+    suspend fun getMyPacks() = withContext(Dispatchers.IO) {
+        try { apiClient.api.getMyPacks() } catch (e: Exception) { emptyList<StickerPack>() }
+    }
+
+    suspend fun getPackBySlug(slug: String) = withContext(Dispatchers.IO) {
+        try { apiClient.api.getPackBySlug(slug) } catch (e: Exception) { null }
+    }
+
+    suspend fun createPack(name: String, description: String = "", isPublic: Boolean = false) = withContext(Dispatchers.IO) {
+        try { apiClient.api.createPack(su.SkrinVex.ofox.data.api.models.CreatePackRequest(name, description, isPublic)) }
+        catch (e: Exception) { android.util.Log.e("Repository", "createPack error", e); null }
+    }
+
+    suspend fun deletePack(id: Int) = withContext(Dispatchers.IO) {
+        try { apiClient.api.deletePack(id) } catch (_: Exception) {}
+    }
+
+    suspend fun installPack(packId: Int) = withContext(Dispatchers.IO) {
+        try { apiClient.api.installPack(packId) } catch (_: Exception) {}
+    }
+
+    suspend fun uninstallPack(packId: Int) = withContext(Dispatchers.IO) {
+        try { apiClient.api.uninstallPack(packId) } catch (_: Exception) {}
+    }
+
+    suspend fun sendSticker(chatId: Int, stickerUrl: String): Message? = withContext(Dispatchers.IO) {
+        try {
+            val response = apiClient.api.sendMessage(chatId, SendMessageRequest(stickerUrl, "sticker"))
+            response.toMessage(getCurrentUserId())
+        } catch (e: Exception) {
+            android.util.Log.e("Repository", "sendSticker error", e)
+            null
+        }
     }
 
     // Discovery features

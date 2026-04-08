@@ -55,6 +55,20 @@
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="ofox" android:host="stickers" />
+            </intent-filter>
+
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="ofox" android:host="stickers" />
+            </intent-filter>
+
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="ofox" android:host="discovery" />
             </intent-filter>
             
@@ -71,7 +85,30 @@
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="https" android:host="api.skrinvex.su" android:pathPrefix="/ofox/discovery/" />
             </intent-filter>
+
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="https" android:host="api.skrinvex.su" android:pathPrefix="/ofox/stickers/preview/" />
+            </intent-filter>
         </activity>
+
+        <provider
+            android:name=".StickerContentProvider"
+            android:authorities="${applicationId}.stickers"
+            android:exported="true"
+            android:grantUriPermissions="true" />
+
+        <activity
+            android:name=".screens.StickerEditorActivity"
+            android:exported="false"
+            android:theme="@style/Theme.Ofox.Editor" />
+
+        <activity
+            android:name="com.yalantis.ucrop.UCropActivity"
+            android:screenOrientation="portrait"
+            android:theme="@style/Theme.AppCompat.Light.NoActionBar" />
 
         <service
             android:name=".account.OfoxAuthenticatorService"

@@ -77,7 +77,11 @@ interface ApiService {
     suspend fun createChat(@Body request: CreateChatRequest): ChatResponse
     
     @GET("chats/{chatId}/messages")
-    suspend fun getMessages(@Path("chatId") chatId: Int): List<MessageResponse>
+    suspend fun getMessages(
+        @Path("chatId") chatId: Int,
+        @Query("limit") limit: Int = 30,
+        @Query("before") before: Int? = null
+    ): List<MessageResponse>
     
     @POST("chats/{chatId}/messages")
     suspend fun sendMessage(@Path("chatId") chatId: Int, @Body message: SendMessageRequest): MessageResponse
@@ -157,6 +161,49 @@ interface ApiService {
 
     @POST("notifications/delete")
     suspend fun deleteNotifications(@Body request: Map<String, List<Any>>): SimpleMessageResponse
+
+    // Стикеры
+    @GET("stickers")
+    suspend fun getUserStickers(): UserStickersResponse
+
+    @Multipart
+    @POST("stickers")
+    suspend fun uploadSticker(
+        @Part sticker: okhttp3.MultipartBody.Part,
+        @Part packId: okhttp3.MultipartBody.Part? = null,
+        @Part emoji: okhttp3.MultipartBody.Part? = null
+    ): StickerItem
+
+    @DELETE("stickers/{id}")
+    suspend fun deleteSticker(@Path("id") id: Int): SimpleMessageResponse
+
+    @POST("stickers/{stickerId}/used")
+    suspend fun markStickerUsed(@Path("stickerId") stickerId: Int): SimpleMessageResponse
+
+    @GET("stickers/packs")
+    suspend fun getPublicPacks(): List<StickerPack>
+
+    @GET("stickers/packs/my")
+    suspend fun getMyPacks(): List<StickerPack>
+
+    @GET("stickers/packs/{slug}")
+    suspend fun getPackBySlug(@Path("slug") slug: String): StickerPack
+
+    @POST("stickers/packs")
+    suspend fun createPack(@Body request: CreatePackRequest): StickerPack
+
+    @PUT("stickers/packs/{id}")
+    suspend fun updatePack(@Path("id") id: Int, @Body request: CreatePackRequest): StickerPack
+
+    @DELETE("stickers/packs/{id}")
+    suspend fun deletePack(@Path("id") id: Int): SimpleMessageResponse
+
+    @POST("stickers/packs/{packId}/install")
+    suspend fun installPack(@Path("packId") packId: Int): SimpleMessageResponse
+
+    @DELETE("stickers/packs/{packId}/install")
+    suspend fun uninstallPack(@Path("packId") packId: Int): SimpleMessageResponse
+
     @GET("discoveries/{discoveryId}/chat")
     suspend fun getOrCreateDiscoveryChat(@Path("discoveryId") discoveryId: Int): ChatResponse
     

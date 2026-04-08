@@ -91,6 +91,7 @@ dependencies {
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.activity.compose)
+    implementation("androidx.appcompat:appcompat:1.7.0")
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.compose.ui)
     implementation(libs.androidx.compose.ui.graphics)
@@ -121,6 +122,12 @@ dependencies {
 
     // Telephoto — зум изображений для Compose
     implementation("me.saket.telephoto:zoomable-image-coil:0.11.0")
+
+    // uCrop — обрезка изображений для стикеров
+    implementation("com.github.yalantis:ucrop:2.2.8")
+
+    // PhotoEditor — редактор изображений (текст, эмодзи, рисование)
+    implementation("com.burhanrashid52:photoeditor:3.0.2")
 
     // Pager для полноэкранного просмотра изображений
     implementation("androidx.compose.foundation:foundation:1.6.0")

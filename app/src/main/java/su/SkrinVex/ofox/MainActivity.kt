@@ -277,6 +277,13 @@ class MainActivity : ComponentActivity() {
                                         }
                                     }
                                 }
+                                is DeepLinkData.StickerPack -> {
+                                    kotlinx.coroutines.delay(300)
+                                    navController.navigate("sticker_pack/${it.slug}") {
+                                        launchSingleTop = true
+                                    }
+                                    pendingDeepLink.value = null
+                                }
                             }
                         }
                     }
@@ -480,6 +487,14 @@ class MainActivity : ComponentActivity() {
                                     onNavigateToAchievements = { }
                                 )
                             }
+                            composable("sticker_pack/{slug}") { backStackEntry ->
+                                val slug = backStackEntry.arguments?.getString("slug") ?: ""
+                                StickerPackScreen(
+                                    slug = slug,
+                                    repository = repository,
+                                    onBack = { navController.popBackStack() }
+                                )
+                            }
                         }
                         // Bottom nav поверх контента
                         androidx.compose.animation.AnimatedVisibility(
@@ -535,10 +550,16 @@ class MainActivity : ComponentActivity() {
     
     private fun handleDeepLink(intent: Intent?) {
         val chatId = intent?.getIntExtra("chat_id", -1) ?: -1
-        if (chatId != -1) pendingChatId.value = chatId
+        if (chatId != -1) {
+            pendingChatId.value = chatId
+            intent?.removeExtra("chat_id")  // чтобы recreate() не повторил навигацию
+        }
 
         val postId = intent?.getIntExtra("post_id", -1) ?: -1
-        if (postId != -1) pendingDeepLink.value = DeepLinkData.Post(postId)
+        if (postId != -1) {
+            pendingDeepLink.value = DeepLinkData.Post(postId)
+            intent?.removeExtra("post_id")
+        }
 
         intent?.data?.let { uri ->
             android.util.Log.d("OFOX", "Deep link received: $uri")
@@ -562,6 +583,16 @@ class MainActivity : ComponentActivity() {
                         android.util.Log.d("OFOX", "Set pendingDeepLink to Discovery($discoveryId)")
                     }
                 }
+                uri.host == "stickers" -> {
+                    val slug = uri.lastPathSegment
+                    android.util.Log.d("OFOX", "Sticker pack deep link: $slug")
+                    if (slug != null) pendingDeepLink.value = DeepLinkData.StickerPack(slug)
+                }
+                uri.host == "api.skrinvex.su" && uri.path?.startsWith("/ofox/stickers/preview/") == true -> {
+                    val slug = uri.lastPathSegment
+                    android.util.Log.d("OFOX", "Sticker pack https deep link: $slug")
+                    if (slug != null) pendingDeepLink.value = DeepLinkData.StickerPack(slug)
+                }
             }
         } ?: android.util.Log.d("OFOX", "No deep link data in intent")
     }
@@ -570,4 +601,5 @@ class MainActivity : ComponentActivity() {
 sealed class DeepLinkData {
     data class Post(val postId: Int) : DeepLinkData()
     data class Discovery(val discoveryId: Int) : DeepLinkData()
+    data class StickerPack(val slug: String) : DeepLinkData()
 }
