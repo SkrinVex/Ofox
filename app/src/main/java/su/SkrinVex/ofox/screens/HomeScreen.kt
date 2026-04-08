@@ -287,6 +287,7 @@ fun HomeScreen(
                 }
                 is su.SkrinVex.ofox.data.api.WSEvent.NewMessage,
                 is su.SkrinVex.ofox.data.api.WSEvent.ChatUpdate,
+                is su.SkrinVex.ofox.data.api.WSEvent.Typing,
                 is su.SkrinVex.ofox.data.api.WSEvent.Warning,
                 is su.SkrinVex.ofox.data.api.WSEvent.Ban,
                 is su.SkrinVex.ofox.data.api.WSEvent.CommentReply -> {}
@@ -747,6 +748,7 @@ fun HomeScreen(
     }
 
     if (showComments) {
+        key(selectedPostId) {
         su.SkrinVex.ofox.components.CommentsBottomSheet(
             postId = selectedPostId,
             comments = comments,
@@ -783,6 +785,7 @@ fun HomeScreen(
                 navController?.navigate("user_profile/$authorId")
             }
         )
+        } // key
     }
 }
 

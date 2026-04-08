@@ -936,6 +936,10 @@ class Repository(private val context: Context) {
         try { apiClient.api.uninstallPack(packId) } catch (_: Exception) {}
     }
 
+    suspend fun sendTyping(chatId: Int) = withContext(Dispatchers.IO) {
+        try { apiClient.api.sendTyping(chatId) } catch (_: Exception) {}
+    }
+
     suspend fun sendSticker(chatId: Int, stickerUrl: String): Message? = withContext(Dispatchers.IO) {
         try {
             val response = apiClient.api.sendMessage(chatId, SendMessageRequest(stickerUrl, "sticker"))

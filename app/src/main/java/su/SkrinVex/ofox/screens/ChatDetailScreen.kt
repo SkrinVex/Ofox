@@ -59,6 +59,7 @@ fun ChatDetailScreen(repository: Repository, chatId: Int, onBack: () -> Unit, on
         "Супер! 🎉"
     )
 
+    var lastTypingSent by remember { mutableStateOf(0L) }
     var isLoadingMore by remember { mutableStateOf(false) }
     var hasMore by remember { mutableStateOf(true) }
 
@@ -122,12 +123,20 @@ fun ChatDetailScreen(repository: Repository, chatId: Int, onBack: () -> Unit, on
         }
     }
     
+    var isTyping by remember { mutableStateOf(false) }
+
     LaunchedEffect(wsClient.events) {
         wsClient.events.collect { event ->
             when (event) {
+                is su.SkrinVex.ofox.data.api.WSEvent.Typing -> {
+                    if (event.chatId == chatId) {
+                        isTyping = true
+                        kotlinx.coroutines.delay(3000)
+                        isTyping = false
+                    }
+                }
                 is su.SkrinVex.ofox.data.api.WSEvent.NewMessage -> {
                     if (event.chatId == chatId) {
-                        val currentUserId = repository.getCurrentUserId()
                         val newMessage = su.SkrinVex.ofox.data.Message(
                             id = 0,
                             chatId = chatId,
@@ -203,6 +212,13 @@ fun ChatDetailScreen(repository: Repository, chatId: Int, onBack: () -> Unit, on
                         UserBadges(badges)
                     }
                 }
+                if (isTyping) {
+                    Text(
+                        "печатает...",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
             }
         }
         
@@ -264,7 +280,14 @@ fun ChatDetailScreen(repository: Repository, chatId: Int, onBack: () -> Unit, on
             ) {
                 TextField(
                     value = messageText,
-                    onValueChange = { messageText = it },
+                    onValueChange = {
+                        messageText = it
+                        val now = System.currentTimeMillis()
+                        if (it.isNotBlank() && now - lastTypingSent > 2000) {
+                            lastTypingSent = now
+                            scope.launch { repository.sendTyping(chatId) }
+                        }
+                    },
                     modifier = Modifier.fillMaxWidth(),
                     placeholder = { 
                         Text(
@@ -303,6 +326,7 @@ fun ChatDetailScreen(repository: Repository, chatId: Int, onBack: () -> Unit, on
                             )
                             messages.add(tempMessage)
                             scope.launch {
+                                listState.scrollToItem(messages.size - 1)
                                 repository.sendMessage(chatId, text)
                             }
                         }
@@ -335,6 +359,7 @@ fun ChatDetailScreen(repository: Repository, chatId: Int, onBack: () -> Unit, on
                 )
                 messages.add(tempMessage)
                 scope.launch {
+                    listState.scrollToItem(messages.size - 1)
                     repository.sendSticker(chatId, sticker.url)
                     repository.markStickerUsed(sticker.id)
                 }
