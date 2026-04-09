@@ -895,15 +895,22 @@ fun ImageWithShimmer(url: String, modifier: Modifier = Modifier) {
         targetValue = if (isLoading) 1f else 0f,
         animationSpec = androidx.compose.animation.core.tween(300)
     )
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val request = remember(url) {
+        coil.request.ImageRequest.Builder(context)
+            .data(url)
+            .memoryCacheKey(url)
+            .diskCacheKey(url.substringBefore("?"))
+            .diskCachePolicy(coil.request.CachePolicy.ENABLED)
+            .memoryCachePolicy(coil.request.CachePolicy.ENABLED)
+            .crossfade(false)
+            .allowHardware(true)
+            .build()
+    }
 
     Box(modifier = modifier) {
         coil.compose.AsyncImage(
-            model = coil.request.ImageRequest.Builder(androidx.compose.ui.platform.LocalContext.current)
-                .data(url)
-                .diskCachePolicy(coil.request.CachePolicy.ENABLED)
-                .memoryCachePolicy(coil.request.CachePolicy.ENABLED)
-                .crossfade(true)
-                .build(),
+            model = request,
             contentDescription = null,
             contentScale = androidx.compose.ui.layout.ContentScale.Crop,
             modifier = Modifier.fillMaxSize(),

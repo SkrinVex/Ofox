@@ -537,8 +537,17 @@ fun MessageBubble(
                     .clickable { onStickerClick(message.text) },
                 horizontalAlignment = if (message.isFromMe) Alignment.End else Alignment.Start
             ) {
+                val stickerContext = androidx.compose.ui.platform.LocalContext.current
                 AsyncImage(
-                    model = message.text,
+                    model = remember(message.text) {
+                        coil.request.ImageRequest.Builder(stickerContext)
+                            .data(message.text)
+                            .memoryCacheKey(message.text)
+                            .diskCacheKey(message.text.substringBefore("?"))
+                            .crossfade(false)
+                            .allowHardware(true)
+                            .build()
+                    },
                     contentDescription = "Стикер",
                     modifier = Modifier.size(120.dp)
                 )

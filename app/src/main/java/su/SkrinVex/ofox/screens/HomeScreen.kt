@@ -383,19 +383,19 @@ fun HomeScreen(
                 contentPadding = PaddingValues(start = 16.dp, top = 96.dp, end = 16.dp, bottom = 80.dp)
             ) {
                 items(uniquePosts, key = { it.id }) { post ->
-                    val badges = try {
-                        if (post.authorBadges.isNotEmpty()) {
-                            val jsonArray = org.json.JSONArray(post.authorBadges)
-                            (0 until jsonArray.length()).map { i ->
-                                val obj = jsonArray.getJSONObject(i)
-                                su.SkrinVex.ofox.data.api.models.BadgeResponse(
-                                    badge_type = obj.getString("badge_type"),
-                                    description = obj.getString("description")
-                                )
-                            }
-                        } else emptyList()
-                    } catch (e: Exception) {
-                        emptyList()
+                    val badges = remember(post.authorBadges) {
+                        try {
+                            if (post.authorBadges.isNotEmpty()) {
+                                val jsonArray = org.json.JSONArray(post.authorBadges)
+                                (0 until jsonArray.length()).map { i ->
+                                    val obj = jsonArray.getJSONObject(i)
+                                    su.SkrinVex.ofox.data.api.models.BadgeResponse(
+                                        badge_type = obj.getString("badge_type"),
+                                        description = obj.getString("description")
+                                    )
+                                }
+                            } else emptyList()
+                        } catch (e: Exception) { emptyList() }
                     }
 
                     val isHighlighted = localHighlightPostId == post.id

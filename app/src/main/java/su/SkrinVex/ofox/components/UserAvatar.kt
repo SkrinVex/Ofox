@@ -50,26 +50,21 @@ fun UserAvatar(
         )
 
         if (url != null && !loadFailed) {
-            android.util.Log.d("AVATAR", "AsyncImage loading url=$url")
             AsyncImage(
                 model = ImageRequest.Builder(context)
                     .data(url)
-                    // Ключ кэша = URL без query для диска, полный URL для памяти
                     .memoryCacheKey(url)
                     .diskCacheKey(url.substringBefore("?"))
                     .diskCachePolicy(CachePolicy.ENABLED)
                     .memoryCachePolicy(CachePolicy.ENABLED)
-                    .crossfade(false) // без анимации — нет мигания
+                    .crossfade(false)
+                    .allowHardware(true)
                     .build(),
                 contentDescription = name,
                 contentScale = ContentScale.Crop,
                 modifier = Modifier.fillMaxSize(),
                 onState = { state ->
-                    android.util.Log.d("AVATAR", "Coil state=$state")
-                    if (state is AsyncImagePainter.State.Error) {
-                        android.util.Log.e("AVATAR", "Coil error: ${state.result.throwable}")
-                        loadFailed = true
-                    }
+                    if (state is AsyncImagePainter.State.Error) loadFailed = true
                 }
             )
         }
