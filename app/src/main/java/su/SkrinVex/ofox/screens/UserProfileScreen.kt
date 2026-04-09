@@ -378,7 +378,10 @@ fun UserProfileScreen(
                                     modifier = Modifier.fillMaxWidth(),
                                     horizontalArrangement = Arrangement.SpaceEvenly
                                 ) {
-                                    val postCountText = if (userPosts.size > 100) "100+" else "${userPosts.size}"
+                                    val postCountText = when {
+                                        hasMorePosts -> "${userPosts.size}+"
+                                        else -> "${userPosts.size}"
+                                    }
                                     StatItem(postCountText, "Постов")
                                     StatItem("$subscribersCount", "Подписчиков")
                                 }

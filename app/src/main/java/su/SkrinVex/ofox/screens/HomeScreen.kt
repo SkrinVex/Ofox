@@ -25,6 +25,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.zIndex
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.ui.text.font.FontWeight
@@ -74,6 +75,7 @@ fun HomeScreen(
     val subscribedToMeMap = remember { mutableStateMapOf<Int, Boolean>() }
     var hiddenAuthorIds by remember { mutableStateOf(repository.getHiddenAuthorIds()) }
     var imageUploadError by remember { mutableStateOf<String?>(null) }
+    val snackbarHostState = remember { SnackbarHostState() }
 
     // Обновляем список скрытых авторов при каждом появлении экрана
     LaunchedEffect(Unit) {
@@ -332,6 +334,19 @@ fun HomeScreen(
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
+        SnackbarHost(
+            hostState = snackbarHostState,
+            modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 100.dp).zIndex(10f),
+            snackbar = { data ->
+                Snackbar(
+                    snackbarData = data,
+                    shape = MaterialTheme.shapes.medium,
+                    containerColor = MaterialTheme.colorScheme.inverseSurface,
+                    contentColor = MaterialTheme.colorScheme.inverseOnSurface,
+                    actionColor = MaterialTheme.colorScheme.primary
+                )
+            }
+        )
         if (isLoading && posts.isEmpty()) {
             Box(
                 modifier = Modifier.fillMaxSize(),
@@ -567,7 +582,14 @@ fun HomeScreen(
                     }
                     action.startsWith("report:") -> {
                         val reason = action.removePrefix("report:")
-                        scope.launch { repository.reportPost(selectedPostId, reason) }
+                        scope.launch {
+                            try {
+                                repository.reportPost(selectedPostId, reason)
+                                snackbarHostState.showSnackbar("Жалоба отправлена. Спасибо!")
+                            } catch (_: Exception) {
+                                snackbarHostState.showSnackbar("Не удалось отправить жалобу")
+                            }
+                        }
                         showPostMenu = false
                     }
                     action == "Не показывать от автора" -> {
@@ -660,17 +682,9 @@ fun HomeScreen(
         imageUploadError?.let { error ->
             Box(modifier = Modifier.fillMaxSize()) {
                 Snackbar(
-                    modifier = Modifier
-                        .align(Alignment.BottomCenter)
-                        .padding(16.dp),
-                    action = {
-                        TextButton(onClick = { imageUploadError = null }) {
-                            Text("OK")
-                        }
-                    }
-                ) {
-                    Text(error)
-                }
+                    modifier = Modifier.align(Alignment.BottomCenter).padding(16.dp),
+                    action = { TextButton(onClick = { imageUploadError = null }) { Text("OK") } }
+                ) { Text(error) }
             }
         }
     }
