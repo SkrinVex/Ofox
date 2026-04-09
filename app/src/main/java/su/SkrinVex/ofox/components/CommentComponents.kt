@@ -233,16 +233,8 @@ fun CommentsBottomSheet(
                             comment = comments[index],
                             currentUserId = currentUserId,
                             isHighlighted = highlightedCommentId == comments[index].id,
-                            onLongPress = {
-                                if (comments[index].author_id == currentUserId) {
-                                    selectedCommentId = comments[index].id
-                                }
-                            },
-                            onMenuClick = {
-                                if (comments[index].author_id == currentUserId) {
-                                    selectedCommentId = comments[index].id
-                                }
-                            },
+                            onLongPress = { selectedCommentId = comments[index].id },
+                            onMenuClick = { selectedCommentId = comments[index].id },
                             onAuthorClick = {
                                 if (comments[index].author_id != currentUserId) {
                                     onAuthorClick(comments[index].author_id)
@@ -384,13 +376,16 @@ fun CommentsBottomSheet(
     }
 
     if (selectedCommentId != null && !showDeleteDialog) {
+        val selectedComment = comments.find { it.id == selectedCommentId }
         CommentOptionsBottomSheet(
             onDismiss = { selectedCommentId = null },
             onDelete = {
                 commentIdToDelete = selectedCommentId
                 selectedCommentId = null
                 showDeleteDialog = true
-            }
+            },
+            content = selectedComment?.content ?: "",
+            canDelete = selectedComment?.author_id == currentUserId
         )
     }
 
@@ -477,15 +472,16 @@ fun CommentsBottomSheet(
 @Composable
 fun CommentOptionsBottomSheet(
     onDismiss: () -> Unit,
-    onDelete: () -> Unit
+    onDelete: () -> Unit,
+    content: String = "",
+    canDelete: Boolean = true
 ) {
+    val context = androidx.compose.ui.platform.LocalContext.current
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         containerColor = MaterialTheme.colorScheme.surface
     ) {
-        Column(
-            modifier = Modifier.padding(16.dp)
-        ) {
+        Column(modifier = Modifier.padding(16.dp)) {
             Text(
                 text = "Действия с комментарием",
                 style = MaterialTheme.typography.titleMedium,
@@ -497,23 +493,31 @@ fun CommentOptionsBottomSheet(
                 modifier = Modifier
                     .fillMaxWidth()
                     .clickable {
-                        onDelete()
+                        val cm = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                        cm.setPrimaryClip(android.content.ClipData.newPlainText("comment", content))
+                        android.widget.Toast.makeText(context, "Текст скопирован", android.widget.Toast.LENGTH_SHORT).show()
                         onDismiss()
                     }
                     .padding(vertical = 12.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Icon(
-                    Icons.Default.Delete,
-                    contentDescription = "Удалить",
-                    tint = MaterialTheme.colorScheme.primary
-                )
+                Icon(Icons.Default.ContentCopy, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
                 Spacer(modifier = Modifier.width(16.dp))
-                Text(
-                    text = "Удалить комментарий",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurface
-                )
+                Text("Копировать текст", style = MaterialTheme.typography.bodyMedium)
+            }
+
+            if (canDelete) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { onDelete(); onDismiss() }
+                        .padding(vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(Icons.Default.Delete, contentDescription = null, tint = MaterialTheme.colorScheme.error)
+                    Spacer(modifier = Modifier.width(16.dp))
+                    Text("Удалить комментарий", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.error)
+                }
             }
 
             Spacer(modifier = Modifier.height(16.dp))

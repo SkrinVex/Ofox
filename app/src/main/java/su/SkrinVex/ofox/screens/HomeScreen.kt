@@ -600,9 +600,9 @@ fun HomeScreen(
                         showPostMenu = false
                     }
                     action == "Скопировать текст" -> {
-                        val ctx = context
-                        val clipboard = ctx.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                        val clipboard = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
                         clipboard.setPrimaryClip(android.content.ClipData.newPlainText("post", selectedPost?.content ?: ""))
+                        scope.launch { snackbarHostState.showSnackbar("Текст скопирован") }
                         showPostMenu = false
                     }
                     else -> showPostMenu = false

@@ -301,11 +301,9 @@ fun CreativePostCard(
             val hasOverflow = remember { mutableStateOf(false) }
 
             Column {
-                HashtagText(
+                LinkedText(
                     text = post.content,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurface,
-                    hashtagColor = MaterialTheme.colorScheme.primary,
+                    style = MaterialTheme.typography.bodyMedium.copy(color = MaterialTheme.colorScheme.onSurface),
                     maxLines = if (isExpanded) Int.MAX_VALUE else 5,
                     onTextLayout = { result ->
                         if (!isExpanded && !hasOverflow.value) {

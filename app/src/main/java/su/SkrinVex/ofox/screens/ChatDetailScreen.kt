@@ -579,13 +579,13 @@ fun MessageBubble(
                 .padding(start = if (message.isFromMe) 0.dp else 40.dp)
         ) {
             Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
-                Text(
+                val textColor = if (message.isFromMe) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface
+                // Для своих: белый полупрозрачный с подчёркиванием хорошо виден на цветном фоне
+                val linkColor = if (message.isFromMe) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.primary
+                su.SkrinVex.ofox.components.LinkedText(
                     text = message.text,
-                    color = if (message.isFromMe) 
-                        MaterialTheme.colorScheme.onPrimary 
-                    else 
-                        MaterialTheme.colorScheme.onSurface,
-                    style = MaterialTheme.typography.bodyLarge
+                    style = MaterialTheme.typography.bodyLarge.copy(color = textColor),
+                    linkColor = linkColor
                 )
                 Row(
                     modifier = Modifier.align(Alignment.End),
