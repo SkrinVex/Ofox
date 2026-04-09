@@ -115,6 +115,7 @@ fun HomeScreen(
     LaunchedEffect(highlightPostId) {
         if (highlightPostId != null && highlightPostId != localHighlightPostId) {
             localHighlightPostId = highlightPostId
+            scope.launch { repository.markNotificationsReadByPost(highlightPostId) }
             kotlinx.coroutines.delay(5000)
             localHighlightPostId = null
         }
@@ -291,7 +292,8 @@ fun HomeScreen(
                 is su.SkrinVex.ofox.data.api.WSEvent.Typing,
                 is su.SkrinVex.ofox.data.api.WSEvent.Warning,
                 is su.SkrinVex.ofox.data.api.WSEvent.Ban,
-                is su.SkrinVex.ofox.data.api.WSEvent.CommentReply -> {}
+                is su.SkrinVex.ofox.data.api.WSEvent.CommentReply,
+                is su.SkrinVex.ofox.data.api.WSEvent.PostComment -> {}
                 is su.SkrinVex.ofox.data.api.WSEvent.ContentDeleted -> {
                     if (event.contentType == "post") {
                         posts.removeAll { it.id == event.contentId }

@@ -920,6 +920,10 @@ class Repository(private val context: Context) {
         try { apiClient.api.markNotificationsRead() } catch (_: Exception) {}
     }
 
+    suspend fun markNotificationsReadByPost(postId: Int) = withContext(Dispatchers.IO) {
+        try { apiClient.api.markNotificationsReadByPost(postId) } catch (_: Exception) {}
+    }
+
     suspend fun deleteNotifications(ids: List<Int>, types: List<String>) = withContext(Dispatchers.IO) {
         try { apiClient.api.deleteNotifications(DeleteNotificationsRequest(ids, types)) } catch (e: Exception) {
             android.util.Log.e("Repository", "deleteNotifications error", e)

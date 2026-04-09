@@ -169,6 +169,9 @@ interface ApiService {
     @POST("notifications/read")
     suspend fun markNotificationsRead(): SimpleMessageResponse
 
+    @POST("notifications/read-by-post/{postId}")
+    suspend fun markNotificationsReadByPost(@Path("postId") postId: Int): SimpleMessageResponse
+
     @POST("notifications/delete")
     suspend fun deleteNotifications(@Body request: DeleteNotificationsRequest): SimpleMessageResponse
 

@@ -77,7 +77,38 @@ class OfoxFirebaseMessagingService : FirebaseMessagingService() {
                         showNotification(
                             postId + 100000,
                             "$actorName ответил на ваш комментарий",
-                            body, bitmap, CHANNEL_COMMENTS, postId = postId
+                            body, bitmap, CHANNEL_COMMENTS, postId = postId, notifType = "comment_reply"
+                        )
+                    }
+                }
+            }
+            "post_comment" -> {
+                val postId = data["postId"]?.toIntOrNull() ?: return
+                val actorName = data["actorName"] ?: "Кто-то"
+                val body = data["message"] ?: ""
+                val avatarUrl = data["senderAvatarUrl"]
+                CoroutineScope(Dispatchers.IO).launch {
+                    val bitmap = avatarUrl?.let { loadCircleBitmap(it) }
+                    withContext(Dispatchers.Main) {
+                        showNotification(
+                            postId + 200000,
+                            "$actorName прокомментировал ваш пост",
+                            body, bitmap, CHANNEL_COMMENTS, postId = postId, notifType = "post_comment"
+                        )
+                    }
+                }
+            }
+            "new_post" -> {
+                val postId = data["postId"]?.toIntOrNull() ?: return
+                val actorName = data["actorName"] ?: "Кто-то"
+                val avatarUrl = data["senderAvatarUrl"]
+                CoroutineScope(Dispatchers.IO).launch {
+                    val bitmap = avatarUrl?.let { loadCircleBitmap(it) }
+                    withContext(Dispatchers.Main) {
+                        showNotification(
+                            postId + 300000,
+                            "$actorName опубликовал новый пост",
+                            "", bitmap, CHANNEL_COMMENTS, postId = postId, notifType = "new_post"
                         )
                     }
                 }
@@ -87,13 +118,14 @@ class OfoxFirebaseMessagingService : FirebaseMessagingService() {
 
     private fun showNotification(
         notifId: Int, title: String, body: String, avatar: Bitmap?,
-        channelId: String, chatId: Int? = null, postId: Int? = null
+        channelId: String, chatId: Int? = null, postId: Int? = null, notifType: String? = null
     ) {
         ensureChannels()
         val intent = Intent(this, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
             chatId?.let { putExtra("chat_id", it) }
             postId?.let { putExtra("post_id", it) }
+            notifType?.let { putExtra("notif_type", it) }
         }
         val pi = PendingIntent.getActivity(this, notifId, intent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)

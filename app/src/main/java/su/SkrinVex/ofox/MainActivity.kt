@@ -327,7 +327,8 @@ class MainActivity : ComponentActivity() {
                                     android.util.Log.d("MainActivity", "Reloading chats due to: $event")
                                     repository.getAllChats()
                                 }
-                                is su.SkrinVex.ofox.data.api.WSEvent.CommentReply -> {
+                                is su.SkrinVex.ofox.data.api.WSEvent.CommentReply,
+                                is su.SkrinVex.ofox.data.api.WSEvent.PostComment -> {
                                     notifUnreadCount++
                                 }
                                 else -> {}
@@ -571,6 +572,7 @@ class MainActivity : ComponentActivity() {
         if (postId != -1) {
             pendingDeepLink.value = DeepLinkData.Post(postId)
             intent?.removeExtra("post_id")
+            intent?.removeExtra("notif_type")
         }
 
         intent?.data?.let { uri ->

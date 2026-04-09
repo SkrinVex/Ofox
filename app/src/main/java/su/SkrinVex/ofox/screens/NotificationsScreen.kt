@@ -104,7 +104,7 @@ fun NotificationsScreen(
                         onClick = {
                             if (isSelecting) {
                                 selected = if (isSelected) selected - notif.id else selected + notif.id
-                            } else if (notif.type == "comment_reply" && notif.post_id != null) {
+                            } else if (notif.post_id != null && notif.type in listOf("comment_reply", "post_comment", "new_post")) {
                                 onPostClick(notif.post_id)
                             }
                         },
@@ -186,7 +186,11 @@ fun NotificationItem(
                 }
                 Text(
                     text = if (isSystem) (notif.body ?: "")
-                           else "ответил на ваш комментарий: ${notif.comment_content ?: ""}",
+                           else when (notif.type) {
+                               "post_comment" -> "прокомментировал ваш пост: ${notif.comment_content ?: ""}"
+                               "new_post" -> "опубликовал новый пост"
+                               else -> "ответил на ваш комментарий: ${notif.comment_content ?: ""}"
+                           },
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
                     maxLines = 2,

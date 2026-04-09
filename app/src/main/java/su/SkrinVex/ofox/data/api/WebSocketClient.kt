@@ -122,6 +122,11 @@ class WebSocketClient(private val context: Context) {
                             _events.value = WSEvent.CommentReply(postId)
                             Log.d("WebSocket", "Comment reply event: postId=$postId")
                         }
+                        "post_comment" -> {
+                            val postId = json.getInt("postId")
+                            _events.value = WSEvent.PostComment(postId)
+                            Log.d("WebSocket", "Post comment event: postId=$postId")
+                        }
                         "warning" -> {
                             val data = json.getJSONObject("data")
                             _events.value = WSEvent.Warning(
@@ -201,6 +206,7 @@ sealed class WSEvent {
     data class Ban(val reason: String, val expiresAt: String?) : WSEvent()
     data class ContentDeleted(val contentType: String, val contentId: Int, val reason: String) : WSEvent()
     data class CommentReply(val postId: Int) : WSEvent()
+    data class PostComment(val postId: Int) : WSEvent()
     data class Typing(val chatId: Int, val userId: Int, val userName: String) : WSEvent()
 }
 
