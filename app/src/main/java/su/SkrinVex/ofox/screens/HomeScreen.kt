@@ -45,6 +45,7 @@ fun HomeScreen(
     repository: Repository,
     navController: androidx.navigation.NavController? = null,
     highlightPostId: Int? = null,
+    hideOnScroll: Boolean = false,
     onBarsVisibilityChange: (Boolean) -> Unit = {}
 ) {
     var showShareMenu by remember { mutableStateOf(false) }
@@ -94,21 +95,23 @@ fun HomeScreen(
                 val scrollingUp = index < prevIndex || (index == prevIndex && offset < prevOffset - 10)
                 if (scrollingDown && barsVisible) {
                     barsVisible = false
-                    onBarsVisibilityChange(false)
+                    if (hideOnScroll) onBarsVisibilityChange(false)
                 } else if (scrollingUp && !barsVisible) {
                     barsVisible = true
-                    onBarsVisibilityChange(true)
+                    if (hideOnScroll) onBarsVisibilityChange(true)
                 }
                 prevIndex = index
                 prevOffset = offset
             }
     }
     val topBarAlpha by androidx.compose.animation.core.animateFloatAsState(
-        targetValue = if (barsVisible) 1f else 0f,
+        targetValue = if (!hideOnScroll || barsVisible) 1f else 0f,
         animationSpec = androidx.compose.animation.core.tween(200)
     )
+    // FAB скрывается при скролле всегда
+    val fabVisible by remember { derivedStateOf { listState.firstVisibleItemIndex == 0 && listState.firstVisibleItemScrollOffset < 50 } }
     val fabScale by androidx.compose.animation.core.animateFloatAsState(
-        targetValue = if (barsVisible) 1f else 0f,
+        targetValue = if (fabVisible) 1f else 0f,
         animationSpec = androidx.compose.animation.core.tween(200)
     )
 

@@ -24,6 +24,7 @@ fun CustomizationScreen(onBack: () -> Unit, onThemeClick: () -> Unit, onFontSize
     val context = LocalContext.current
     val prefs = remember { context.getSharedPreferences("ofox_prefs", android.content.Context.MODE_PRIVATE) }
     var compactNav by remember { mutableStateOf(prefs.getBoolean("compact_nav", false)) }
+    var hideOnScroll by remember { mutableStateOf(prefs.getBoolean("hide_bars_on_scroll", false)) }
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -81,13 +82,38 @@ fun CustomizationScreen(onBack: () -> Unit, onThemeClick: () -> Unit, onFontSize
                     Spacer(Modifier.width(16.dp))
                     Column(modifier = Modifier.weight(1f)) {
                         Text("Компактное меню", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                        Text("Скрыть подписи в панели навигации", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f))
+                        Text("Плавающая панель без подписей", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f))
                     }
                     Switch(
                         checked = compactNav,
                         onCheckedChange = {
                             compactNav = it
                             prefs.edit().putBoolean("compact_nav", it).apply()
+                        }
+                    )
+                }
+            }
+
+            // Скрытие при скролле
+            Card(
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                shape = MaterialTheme.shapes.medium
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(16.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(Icons.Default.HideSource, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(32.dp))
+                    Spacer(Modifier.width(16.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("Скрывать при скролле", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                        Text("Топ-бар и навигация скрываются при прокрутке", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f))
+                    }
+                    Switch(
+                        checked = hideOnScroll,
+                        onCheckedChange = {
+                            hideOnScroll = it
+                            prefs.edit().putBoolean("hide_bars_on_scroll", it).apply()
                         }
                     )
                 }

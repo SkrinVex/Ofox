@@ -53,9 +53,10 @@ fun FeedScreen(
     val scope = rememberCoroutineScope()
     val listState = rememberLazyListState()
     val fabExpanded by remember {
-        derivedStateOf {
-            listState.firstVisibleItemIndex == 0
-        }
+        derivedStateOf { listState.firstVisibleItemIndex == 0 }
+    }
+    val fabVisible by remember {
+        derivedStateOf { listState.firstVisibleItemIndex == 0 && listState.firstVisibleItemScrollOffset < 100 }
     }
 
     LaunchedEffect(highlightDiscoveryId) {
@@ -123,7 +124,7 @@ fun FeedScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .background(MaterialTheme.colorScheme.background),
-            contentPadding = PaddingValues(16.dp),
+            contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 120.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
         item {
@@ -307,17 +308,23 @@ fun FeedScreen(
         }
         }
         
-        ExtendedFloatingActionButton(
-            onClick = { showCreateDialog = true },
-            expanded = fabExpanded,
-            icon = { Icon(Icons.Default.Add, contentDescription = "Создать") },
-            text = { Text("Создать открытие") },
-            modifier = Modifier
-                .align(Alignment.BottomEnd)
-                .navigationBarsPadding()
-                .padding(end = 16.dp, bottom = 96.dp),
-            containerColor = MaterialTheme.colorScheme.primary
-        )
+        androidx.compose.animation.AnimatedVisibility(
+            visible = fabVisible,
+            enter = androidx.compose.animation.fadeIn() + androidx.compose.animation.scaleIn(),
+            exit = androidx.compose.animation.fadeOut() + androidx.compose.animation.scaleOut(),
+            modifier = Modifier.align(Alignment.BottomEnd)
+        ) {
+            ExtendedFloatingActionButton(
+                onClick = { showCreateDialog = true },
+                expanded = fabExpanded,
+                icon = { Icon(Icons.Default.Add, contentDescription = "Создать") },
+                text = { Text("Создать открытие") },
+                modifier = Modifier
+                    .navigationBarsPadding()
+                    .padding(end = 16.dp, bottom = 96.dp),
+                containerColor = MaterialTheme.colorScheme.primary
+            )
+        }
     }
     
     if (showCreateDialog) {

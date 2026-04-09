@@ -9,10 +9,13 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.lifecycleScope
 import androidx.navigation.compose.NavHost
@@ -301,10 +304,12 @@ class MainActivity : ComponentActivity() {
 
                     val mainPrefs = remember { getSharedPreferences("ofox_prefs", android.content.Context.MODE_PRIVATE) }
                     var compactNav by remember { mutableStateOf(mainPrefs.getBoolean("compact_nav", false)) }
+                    var hideOnScroll by remember { mutableStateOf(mainPrefs.getBoolean("hide_bars_on_scroll", false)) }
                     // Перечитываем при возврате на главные экраны
                     LaunchedEffect(currentRoute) {
                         if (currentRoute in listOf(Screen.Home.route, Screen.Chats.route, Screen.Feed.route, Screen.Settings.route)) {
                             compactNav = mainPrefs.getBoolean("compact_nav", false)
+                            hideOnScroll = mainPrefs.getBoolean("hide_bars_on_scroll", false)
                         }
                     }
                     
@@ -355,7 +360,8 @@ class MainActivity : ComponentActivity() {
                                     repository = repository,
                                     navController = navController,
                                     highlightPostId = postId,
-                                    onBarsVisibilityChange = { visible -> bottomBarVisible = visible }
+                                    hideOnScroll = hideOnScroll,
+                                    onBarsVisibilityChange = { visible -> if (hideOnScroll) bottomBarVisible = visible }
                                 )
                                 
                                 if (postId != null) {
@@ -367,7 +373,7 @@ class MainActivity : ComponentActivity() {
                                     }
                                 }
                             }
-                            composable(Screen.Chats.route) { ChatsScreen(repository, navController, bottomPadding = if (compactNav) 56.dp else 80.dp) }
+                            composable(Screen.Chats.route) { ChatsScreen(repository, navController, bottomPadding = 100.dp) }
                             composable("notifications") {
                                 LaunchedEffect(Unit) { notifUnreadCount = 0 }
                                 su.SkrinVex.ofox.screens.NotificationsScreen(
@@ -519,38 +525,130 @@ class MainActivity : ComponentActivity() {
                             exit = androidx.compose.animation.slideOutVertically { it },
                             modifier = Modifier.align(Alignment.BottomCenter)
                         ) {
-                            NavigationBar(
-                                containerColor = MaterialTheme.colorScheme.surface,
-                                modifier = if (compactNav) Modifier.height(56.dp).navigationBarsPadding() else Modifier.navigationBarsPadding()
-                            ) {
-                                bottomNavItems.forEach { screen ->
-                                    NavigationBarItem(
-                                        icon = {
-                                            BadgedBox(badge = {
-                                                if (screen.route == Screen.Chats.route && totalUnread > 0) {
-                                                    Badge { Text(if (totalUnread > 9) "9+" else totalUnread.toString()) }
+                            if (compactNav) {
+                                // Компактный — плавающий без подписей, стеклянный эффект
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .navigationBarsPadding()
+                                        .padding(horizontal = 16.dp, vertical = 12.dp)
+                                ) {
+                                    Surface(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        shape = androidx.compose.foundation.shape.RoundedCornerShape(28.dp),
+                                        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.85f),
+                                        shadowElevation = 12.dp,
+                                        tonalElevation = 6.dp
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth().height(60.dp),
+                                            horizontalArrangement = Arrangement.SpaceEvenly,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            bottomNavItems.forEach { screen ->
+                                                val selected = currentRoute == screen.route
+                                                Box(
+                                                    modifier = Modifier
+                                                        .weight(1f)
+                                                        .fillMaxHeight()
+                                                        .clickable(
+                                                            indication = null,
+                                                            interactionSource = remember { MutableInteractionSource() }
+                                                        ) {
+                                                            navController.navigate(screen.route) {
+                                                                popUpTo(navController.graph.startDestinationId)
+                                                                launchSingleTop = true
+                                                            }
+                                                        },
+                                                    contentAlignment = Alignment.Center
+                                                ) {
+                                                    BadgedBox(badge = {
+                                                        if (screen.route == Screen.Chats.route && totalUnread > 0) {
+                                                            Badge { Text(if (totalUnread > 9) "9+" else totalUnread.toString()) }
+                                                        }
+                                                        if (screen.route == Screen.Settings.route && hasUndeliveredWarnings) {
+                                                            Badge(containerColor = MaterialTheme.colorScheme.error)
+                                                        }
+                                                    }) {
+                                                        Icon(
+                                                            screen.icon,
+                                                            contentDescription = screen.title,
+                                                            tint = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
+                                                            modifier = Modifier.size(26.dp)
+                                                        )
+                                                    }
                                                 }
-                                                if (screen.route == Screen.Settings.route && hasUndeliveredWarnings) {
-                                                    Badge(containerColor = MaterialTheme.colorScheme.error)
-                                                }
-                                            }) { Icon(screen.icon, contentDescription = screen.title) }
-                                        },
-                                        label = if (compactNav) null else ({ Text(screen.title) }),
-                                        selected = currentRoute == screen.route,
-                                        onClick = {
-                                            navController.navigate(screen.route) {
-                                                popUpTo(navController.graph.startDestinationId)
-                                                launchSingleTop = true
                                             }
-                                        },
-                                        colors = NavigationBarItemDefaults.colors(
-                                            selectedIconColor = MaterialTheme.colorScheme.primary,
-                                            selectedTextColor = MaterialTheme.colorScheme.primary,
-                                            unselectedIconColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
-                                            unselectedTextColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
-                                            indicatorColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.1f)
-                                        )
-                                    )
+                                        }
+                                    }
+                                }
+                            } else {
+                                // Обычный — плавающий pill с подписями, стеклянный эффект
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .navigationBarsPadding()
+                                        .padding(horizontal = 16.dp, vertical = 12.dp)
+                                ) {
+                                    Surface(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        shape = androidx.compose.foundation.shape.RoundedCornerShape(28.dp),
+                                        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.85f),
+                                        shadowElevation = 12.dp,
+                                        tonalElevation = 6.dp
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth().height(64.dp),
+                                            horizontalArrangement = Arrangement.SpaceEvenly,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            bottomNavItems.forEach { screen ->
+                                                val selected = currentRoute == screen.route
+                                                Box(
+                                                    modifier = Modifier
+                                                        .weight(1f)
+                                                        .fillMaxHeight()
+                                                        .clickable(
+                                                            indication = null,
+                                                            interactionSource = remember { MutableInteractionSource() }
+                                                        ) {
+                                                            navController.navigate(screen.route) {
+                                                                popUpTo(navController.graph.startDestinationId)
+                                                                launchSingleTop = true
+                                                            }
+                                                        },
+                                                    contentAlignment = Alignment.Center
+                                                ) {
+                                                    Column(
+                                                        horizontalAlignment = Alignment.CenterHorizontally,
+                                                        verticalArrangement = Arrangement.spacedBy(2.dp)
+                                                    ) {
+                                                        BadgedBox(badge = {
+                                                            if (screen.route == Screen.Chats.route && totalUnread > 0) {
+                                                                Badge { Text(if (totalUnread > 9) "9+" else totalUnread.toString()) }
+                                                            }
+                                                            if (screen.route == Screen.Settings.route && hasUndeliveredWarnings) {
+                                                                Badge(containerColor = MaterialTheme.colorScheme.error)
+                                                            }
+                                                        }) {
+                                                            Icon(
+                                                                screen.icon,
+                                                                contentDescription = screen.title,
+                                                                tint = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
+                                                                modifier = Modifier.size(24.dp)
+                                                            )
+                                                        }
+                                                        Text(
+                                                            screen.title,
+                                                            style = MaterialTheme.typography.labelSmall,
+                                                            color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
+                                                            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal
+                                                        )
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
                                 }
                             }
                         }
