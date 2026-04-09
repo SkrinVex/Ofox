@@ -298,38 +298,39 @@ fun DiscoveryDiscussionScreen(
     
     if (showLeaveDialog) {
         Dialog(onDismissRequest = { showLeaveDialog = false }) {
-            Card(
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
-            ) {
+            Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
                 Column(modifier = Modifier.padding(24.dp)) {
                     Text(
-                        "Покинуть открытие?",
+                        if (isCreator) "Удалить открытие?" else "Покинуть открытие?",
                         style = MaterialTheme.typography.titleLarge,
                         fontWeight = FontWeight.Bold
                     )
                     Spacer(modifier = Modifier.height(16.dp))
                     Text(
-                        "Вы уверены, что хотите покинуть это открытие?",
+                        if (isCreator) "Открытие будет удалено навсегда вместе со всеми постами и чатом. Это действие нельзя отменить."
+                        else "Вы уверены, что хотите покинуть это открытие?",
                         style = MaterialTheme.typography.bodyMedium
                     )
                     Spacer(modifier = Modifier.height(24.dp))
                     Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        OutlinedButton(
-                            onClick = { showLeaveDialog = false },
-                            modifier = Modifier.weight(1f)
-                        ) {
+                        OutlinedButton(onClick = { showLeaveDialog = false }, modifier = Modifier.weight(1f)) {
                             Text("Отмена")
                         }
                         Button(
                             onClick = {
                                 scope.launch {
-                                    discovery?.let { repository.toggleJoinDiscovery(it) }
+                                    if (isCreator) {
+                                        repository.deleteDiscovery(discoveryId)
+                                    } else {
+                                        discovery?.let { repository.toggleJoinDiscovery(it) }
+                                    }
                                     onBack()
                                 }
                             },
-                            modifier = Modifier.weight(1f)
+                            modifier = Modifier.weight(1f),
+                            colors = if (isCreator) ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error) else ButtonDefaults.buttonColors()
                         ) {
-                            Text("Покинуть")
+                            Text(if (isCreator) "Удалить" else "Покинуть")
                         }
                     }
                 }
@@ -378,9 +379,9 @@ fun DiscoveryDiscussionScreen(
                 Spacer(modifier = Modifier.height(16.dp))
                 
                 MenuButton(
-                    icon = Icons.Default.ExitToApp,
-                    title = "Покинуть",
-                    description = "Выйти из открытия",
+                    icon = if (isCreator) Icons.Default.Delete else Icons.Default.ExitToApp,
+                    title = if (isCreator) "Удалить открытие" else "Покинуть",
+                    description = if (isCreator) "Удалить это открытие навсегда" else "Выйти из открытия",
                     onClick = {
                         showMenuSheet = false
                         showLeaveDialog = true

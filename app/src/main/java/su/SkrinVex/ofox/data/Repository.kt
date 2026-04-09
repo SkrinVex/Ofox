@@ -441,6 +441,17 @@ class Repository(private val context: Context) {
         }
     }
 
+    suspend fun deleteDiscovery(discoveryId: Int): Boolean = withContext(Dispatchers.IO) {
+        try {
+            apiClient.api.deleteDiscovery(discoveryId)
+            db.discoveryDao().deleteDiscovery(discoveryId)
+            true
+        } catch (e: Exception) {
+            android.util.Log.e("Repository", "Failed to delete discovery", e)
+            false
+        }
+    }
+
     suspend fun toggleJoinDiscovery(discovery: Discovery): Discovery? = withContext(Dispatchers.IO) {
         try {
             val response = apiClient.api.toggleJoinDiscovery(discovery.id)

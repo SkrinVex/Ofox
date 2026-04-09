@@ -216,4 +216,7 @@ interface DiscoveryDao {
 
     @Query("UPDATE discoveries SET isJoined = :isJoined, participants = :participants WHERE id = :id")
     suspend fun updateJoinStatus(id: Int, isJoined: Boolean, participants: Int)
+
+    @Query("DELETE FROM discoveries WHERE id = :id")
+    suspend fun deleteDiscovery(id: Int)
 }

@@ -76,6 +76,9 @@ interface ApiService {
     
     @POST("discoveries/{id}/join")
     suspend fun toggleJoinDiscovery(@Path("id") discoveryId: Int): DiscoveryResponse
+
+    @DELETE("discoveries/{id}")
+    suspend fun deleteDiscovery(@Path("id") discoveryId: Int): SimpleMessageResponse
     
     @GET("chats")
     suspend fun getChats(): List<ChatResponse>
