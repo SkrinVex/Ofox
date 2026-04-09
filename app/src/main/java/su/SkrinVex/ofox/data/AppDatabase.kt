@@ -6,7 +6,7 @@ import kotlinx.coroutines.flow.Flow
 
 @Database(
     entities = [User::class, Post::class, Chat::class, Message::class, Discovery::class],
-    version = 19
+    version = 20
 )
 abstract class AppDatabase : RoomDatabase() {
     abstract fun userDao(): UserDao
@@ -81,7 +81,9 @@ data class Chat(
     val userId: Int = 0,
     val userBadges: String = "",
     val unreadCount: Int = 0,
-    val userAvatarUrl: String = ""
+    val userAvatarUrl: String = "",
+    val discoveryId: Int = 0,
+    val discoveryTitle: String = ""
 )
 
 @Entity(tableName = "messages")
@@ -172,6 +174,9 @@ interface ChatDao {
 
     @Query("SELECT * FROM chats ORDER BY timestamp DESC")
     fun getAllChatsFlow(): Flow<List<Chat>>
+
+    @Query("SELECT * FROM chats WHERE id = :chatId LIMIT 1")
+    suspend fun getChatById(chatId: Int): Chat?
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertChat(chat: Chat): Long

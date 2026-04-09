@@ -293,7 +293,8 @@ fun HomeScreen(
                 is su.SkrinVex.ofox.data.api.WSEvent.Warning,
                 is su.SkrinVex.ofox.data.api.WSEvent.Ban,
                 is su.SkrinVex.ofox.data.api.WSEvent.CommentReply,
-                is su.SkrinVex.ofox.data.api.WSEvent.PostComment -> {}
+                is su.SkrinVex.ofox.data.api.WSEvent.PostComment,
+                is su.SkrinVex.ofox.data.api.WSEvent.DiscoveryMessage -> {}
                 is su.SkrinVex.ofox.data.api.WSEvent.ContentDeleted -> {
                     if (event.contentType == "post") {
                         posts.removeAll { it.id == event.contentId }

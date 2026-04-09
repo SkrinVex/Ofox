@@ -9,10 +9,12 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Explore
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.People
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -36,6 +38,8 @@ fun ChatsScreen(repository: Repository, navController: NavController, bottomPadd
     val scope = rememberCoroutineScope()
     val context = androidx.compose.ui.platform.LocalContext.current
     val wsClient = remember { su.SkrinVex.ofox.data.api.WebSocketClient.getInstance(context) }
+    val personalChats by remember(chats) { derivedStateOf { chats.filter { it.discoveryId == 0 } } }
+    val discoveryChats by remember(chats) { derivedStateOf { chats.filter { it.discoveryId != 0 } } }
 
     fun loadChats() {
         scope.launch {
@@ -161,102 +165,43 @@ fun ChatsScreen(repository: Repository, navController: NavController, bottomPadd
                         }
                     }
                 }
-                items(chats) { chat ->
-                val badges = try {
-                    if (chat.userBadges.isNotEmpty()) {
-                        val jsonArray = org.json.JSONArray(chat.userBadges)
-                        (0 until jsonArray.length()).map { i ->
-                            val obj = jsonArray.getJSONObject(i)
-                            BadgeResponse(
-                                badge_type = obj.getString("badge_type"),
-                                description = obj.getString("description")
-                            )
-                        }
-                    } else emptyList()
-                } catch (e: Exception) {
-                    emptyList()
+                // Личные чаты
+                if (personalChats.isNotEmpty()) {
+                    items(personalChats) { chat ->
+                        PersonalChatItem(chat = chat, onClick = { navController.navigate("chat/${chat.id}") })
+                    }
                 }
-                
-                Card(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable {
-                            navController.navigate("chat/${chat.id}")
-                        },
-                    colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.surface
-                    ),
-                    shape = MaterialTheme.shapes.medium
-                ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(16.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        UserAvatar(
-                            name = chat.name,
-                            avatarUrl = chat.userAvatarUrl.takeIf { it.isNotBlank() },
-                            size = 48.dp
-                        )
-                        
-                        Spacer(modifier = Modifier.width(12.dp))
-                        
-                        Column(modifier = Modifier.weight(1f)) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(6.dp)
-                            ) {
-                                Text(
-                                    text = chat.name,
-                                    style = MaterialTheme.typography.titleMedium,
-                                    color = MaterialTheme.colorScheme.onSurface,
-                                    fontWeight = FontWeight.SemiBold
-                                )
-                                if (badges.isNotEmpty()) {
-                                    UserBadges(badges)
-                                }
-                            }
-                            Text(
-                                text = chat.lastMessage,
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
-                                fontWeight = if (chat.unreadCount > 0) FontWeight.Bold else FontWeight.Normal
-                            )
-                        }
-                        
-                        Column(
-                            horizontalAlignment = Alignment.End,
-                            verticalArrangement = Arrangement.spacedBy(4.dp)
+
+                // Раздел чатов открытий
+                if (discoveryChats.isNotEmpty()) {
+                    item {
+                        Row(
+                            modifier = Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            Text(
-                                text = formatTime(chat.timestamp),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
+                            Icon(
+                                Icons.Default.Explore,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(16.dp)
                             )
-                            if (chat.unreadCount > 0) {
-                                Box(
-                                    modifier = Modifier
-                                        .size(20.dp)
-                                        .clip(CircleShape)
-                                        .background(MaterialTheme.colorScheme.primary),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Text(
-                                        text = if (chat.unreadCount > 9) "9+" else chat.unreadCount.toString(),
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = MaterialTheme.colorScheme.onPrimary,
-                                        fontWeight = FontWeight.Bold
-                                    )
-                                }
-                            }
+                            Text(
+                                "Открытия",
+                                style = MaterialTheme.typography.labelLarge,
+                                color = MaterialTheme.colorScheme.primary,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                            HorizontalDivider(modifier = Modifier.weight(1f), color = MaterialTheme.colorScheme.primary.copy(alpha = 0.3f))
                         }
+                    }
+                    items(discoveryChats) { chat ->
+                        DiscoveryChatItem(chat = chat, onClick = { navController.navigate("chat/${chat.id}") })
                     }
                 }
             }
-        }
-        }
-    }
+        } // end else
+        } // end Column
         
         FloatingActionButton(
             onClick = { showAddChatDialog = true },
@@ -268,7 +213,7 @@ fun ChatsScreen(repository: Repository, navController: NavController, bottomPadd
         ) {
             Icon(Icons.Default.Add, contentDescription = "Добавить чат")
         }
-    }
+    } // end Box
     
     if (showAddChatDialog) {
         AddChatDialog(
@@ -412,6 +357,95 @@ fun AddChatDialog(
                     shape = MaterialTheme.shapes.medium
                 ) {
                     Text("Отмена")
+                }
+            }
+        }
+    }
+}
+
+
+@Composable
+fun PersonalChatItem(chat: su.SkrinVex.ofox.data.Chat, onClick: () -> Unit) {
+    val badges = try {
+        if (chat.userBadges.isNotEmpty()) {
+            val arr = org.json.JSONArray(chat.userBadges)
+            (0 until arr.length()).map { i ->
+                val o = arr.getJSONObject(i)
+                BadgeResponse(badge_type = o.getString("badge_type"), description = o.getString("description"))
+            }
+        } else emptyList()
+    } catch (e: Exception) { emptyList() }
+
+    Card(
+        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        shape = MaterialTheme.shapes.medium
+    ) {
+        Row(modifier = Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+            UserAvatar(name = chat.name, avatarUrl = chat.userAvatarUrl.takeIf { it.isNotBlank() }, size = 48.dp)
+            Spacer(modifier = Modifier.width(12.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text(chat.name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                    if (badges.isNotEmpty()) UserBadges(badges)
+                }
+                Text(
+                    chat.lastMessage,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
+                    fontWeight = if (chat.unreadCount > 0) FontWeight.Bold else FontWeight.Normal,
+                    maxLines = 1
+                )
+            }
+            Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(formatTime(chat.timestamp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f))
+                if (chat.unreadCount > 0) {
+                    Box(
+                        modifier = Modifier.size(20.dp).clip(CircleShape).background(MaterialTheme.colorScheme.primary),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(if (chat.unreadCount > 9) "9+" else chat.unreadCount.toString(), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onPrimary, fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun DiscoveryChatItem(chat: su.SkrinVex.ofox.data.Chat, onClick: () -> Unit) {
+    Card(
+        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f)),
+        shape = MaterialTheme.shapes.medium
+    ) {
+        Row(modifier = Modifier.fillMaxWidth().padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+            Box(
+                modifier = Modifier.size(48.dp).clip(CircleShape).background(MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(Icons.Default.Explore, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(24.dp))
+            }
+            Spacer(modifier = Modifier.width(12.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(chat.name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                Text(
+                    chat.lastMessage,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
+                    fontWeight = if (chat.unreadCount > 0) FontWeight.Bold else FontWeight.Normal,
+                    maxLines = 1
+                )
+            }
+            Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(formatTime(chat.timestamp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f))
+                if (chat.unreadCount > 0) {
+                    Box(
+                        modifier = Modifier.size(20.dp).clip(CircleShape).background(MaterialTheme.colorScheme.primary),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(if (chat.unreadCount > 9) "9+" else chat.unreadCount.toString(), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onPrimary, fontWeight = FontWeight.Bold)
+                    }
                 }
             }
         }

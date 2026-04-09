@@ -14,6 +14,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.EmojiEmotions
+import androidx.compose.material.icons.filled.Explore
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -88,8 +89,7 @@ fun ChatDetailScreen(repository: Repository, chatId: Int, onBack: () -> Unit, on
 
     LaunchedEffect(chatId) {
         ActiveChatTracker.activeChatId = chatId
-        val chats = repository.getAllChats()
-        chat = chats.find { it.id == chatId }
+        chat = repository.getChatById(chatId)
         loadMessages()
         val data = repository.getStickers()
         val packById = data.packs.associateBy { it.id }
@@ -153,6 +153,20 @@ fun ChatDetailScreen(repository: Repository, chatId: Int, onBack: () -> Unit, on
                         }
                     }
                 }
+                is su.SkrinVex.ofox.data.api.WSEvent.DiscoveryMessage -> {
+                    if (event.chatId == chatId) {
+                        val newMessage = su.SkrinVex.ofox.data.Message(
+                            id = 0,
+                            chatId = chatId,
+                            text = event.message,
+                            timestamp = event.timestamp,
+                            isFromMe = false
+                        )
+                        if (!messages.any { it.text == event.message && it.timestamp == event.timestamp }) {
+                            messages.add(newMessage)
+                        }
+                    }
+                }
                 else -> {}
             }
         }
@@ -183,6 +197,7 @@ fun ChatDetailScreen(repository: Repository, chatId: Int, onBack: () -> Unit, on
     }
 
     Column(modifier = Modifier.fillMaxSize()) {
+        val isDiscoveryChat = (chat?.discoveryId ?: 0) != 0
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -192,36 +207,66 @@ fun ChatDetailScreen(repository: Repository, chatId: Int, onBack: () -> Unit, on
             IconButton(onClick = onBack) {
                 Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Назад")
             }
-            val profileClickModifier = Modifier.clickable {
-                chat?.userId?.let { onNavigateToProfile(it) }
-            }
-            su.SkrinVex.ofox.components.UserAvatar(
-                name = chat?.name ?: "?",
-                avatarUrl = chat?.userAvatarUrl?.takeIf { it.isNotBlank() },
-                size = 40.dp,
-                modifier = profileClickModifier
-            )
-            Spacer(modifier = Modifier.width(12.dp))
-            Column(modifier = profileClickModifier) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+            if (isDiscoveryChat) {
+                Box(
+                    modifier = androidx.compose.ui.Modifier
+                        .size(40.dp)
+                        .clip(androidx.compose.foundation.shape.CircleShape)
+                        .background(MaterialTheme.colorScheme.primaryContainer),
+                    contentAlignment = Alignment.Center
                 ) {
+                    Icon(
+                        Icons.Default.Explore,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = androidx.compose.ui.Modifier.size(22.dp)
+                    )
+                }
+                Spacer(modifier = Modifier.width(12.dp))
+                Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        chat?.name ?: "Чат",
-                        style = MaterialTheme.typography.titleLarge,
+                        chat?.name ?: "Открытие",
+                        style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.SemiBold
                     )
-                    if (badges.isNotEmpty()) {
-                        UserBadges(badges)
-                    }
-                }
-                if (isTyping) {
                     Text(
-                        "печатает...",
+                        "Чат открытия",
                         style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.primary
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
                     )
+                }
+            } else {
+                val profileClickModifier = Modifier.clickable {
+                    chat?.userId?.let { onNavigateToProfile(it) }
+                }
+                su.SkrinVex.ofox.components.UserAvatar(
+                    name = chat?.name ?: "?",
+                    avatarUrl = chat?.userAvatarUrl?.takeIf { it.isNotBlank() },
+                    size = 40.dp,
+                    modifier = profileClickModifier
+                )
+                Spacer(modifier = Modifier.width(12.dp))
+                Column(modifier = profileClickModifier) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Text(
+                            chat?.name ?: "Чат",
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        if (badges.isNotEmpty()) {
+                            UserBadges(badges)
+                        }
+                    }
+                    if (isTyping) {
+                        Text(
+                            "печатает...",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    }
                 }
             }
         }
@@ -265,12 +310,12 @@ fun ChatDetailScreen(repository: Repository, chatId: Int, onBack: () -> Unit, on
                                 if (pack != null) {
                                     stickerInfoPackId = pack.id
                                     stickerInfoPackName = pack.name
-                                    // Кэшируем
                                     stickerPackMap = stickerPackMap + (stickerUrl to Pair(pack.id, pack.name))
                                 }
                             }
                         }
-                    }
+                    },
+                    onSenderClick = if ((chat?.discoveryId ?: 0) != 0) onNavigateToProfile else null
                 )
             }
         }
@@ -454,15 +499,19 @@ fun MessageBubble(
     message: su.SkrinVex.ofox.data.Message,
     chatName: String = "",
     stickerPackMap: Map<String, Pair<Int?, String>> = emptyMap(),
-    onStickerClick: (stickerUrl: String) -> Unit = {}
+    onStickerClick: (stickerUrl: String) -> Unit = {},
+    onSenderClick: ((Int) -> Unit)? = null
 ) {
     Column(
         modifier = Modifier.fillMaxWidth(),
         horizontalAlignment = if (message.isFromMe) Alignment.End else Alignment.Start
     ) {
         if (!message.isFromMe) {
+            val senderClickMod = if (onSenderClick != null && message.senderId != 0)
+                Modifier.clickable { onSenderClick(message.senderId) }
+            else Modifier
             Row(
-                modifier = Modifier.padding(start = 4.dp, bottom = 4.dp),
+                modifier = Modifier.padding(start = 4.dp, bottom = 4.dp).then(senderClickMod),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 su.SkrinVex.ofox.components.UserAvatar(

@@ -483,6 +483,12 @@ class MainActivity : ComponentActivity() {
                                     onBack = { navController.popBackStack() }
                                 )
                             }
+                            composable("notification_settings") {
+                                NotificationSettingsScreen(
+                                    repository = repository,
+                                    onBack = { navController.popBackStack() }
+                                )
+                            }
                             composable("discovery_discussion/{discoveryId}") { backStackEntry ->
                                 DiscoveryDiscussionScreen(
                                     discoveryId = backStackEntry.arguments?.getString("discoveryId")?.toIntOrNull() ?: 0,
@@ -563,9 +569,11 @@ class MainActivity : ComponentActivity() {
     
     private fun handleDeepLink(intent: Intent?) {
         val chatId = intent?.getIntExtra("chat_id", -1) ?: -1
+        val notifType = intent?.getStringExtra("notif_type")
         if (chatId != -1) {
             pendingChatId.value = chatId
-            intent?.removeExtra("chat_id")  // чтобы recreate() не повторил навигацию
+            intent?.removeExtra("chat_id")
+            intent?.removeExtra("notif_type")
         }
 
         val postId = intent?.getIntExtra("post_id", -1) ?: -1

@@ -91,7 +91,9 @@ data class ChatResponse(
     val other_user_name: String,
     val other_user_badges: List<BadgeResponse>? = null,
     val unread_count: Int = 0,
-    val other_user_avatar: String? = null
+    val other_user_avatar: String? = null,
+    val discovery_id: Int? = null,
+    val discovery_title: String? = null
 )
 
 data class CreateChatRequest(
@@ -248,4 +250,20 @@ data class CommentNotification(
 data class ReportRequest(val reason: String)
 
 data class PostImagesResponse(val images: List<String>)
+
+data class NotificationSettingsResponse(
+    val notify_post_comments: Boolean,
+    val notify_friend_posts: Boolean,
+    val notify_chats: Boolean,
+    val notify_discovery_chats: Boolean,
+    val muted_chats: List<Int>,
+    val muted_friends: List<Int>
+)
+
+data class UpdateNotificationSettingsRequest(
+    val notify_post_comments: Boolean,
+    val notify_friend_posts: Boolean,
+    val notify_chats: Boolean,
+    val notify_discovery_chats: Boolean
+)
 data class DeleteNotificationsRequest(val ids: List<Int>, val types: List<String>)

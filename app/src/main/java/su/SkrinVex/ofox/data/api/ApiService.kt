@@ -79,6 +79,9 @@ interface ApiService {
     
     @GET("chats")
     suspend fun getChats(): List<ChatResponse>
+
+    @GET("chats/{chatId}")
+    suspend fun getChatById(@Path("chatId") chatId: Int): ChatResponse
     
     @POST("chats")
     suspend fun createChat(@Body request: CreateChatRequest): ChatResponse
@@ -222,6 +225,31 @@ interface ApiService {
 
     @GET("discoveries/{discoveryId}/chat")
     suspend fun getOrCreateDiscoveryChat(@Path("discoveryId") discoveryId: Int): ChatResponse
+
+    @GET("discoveries/chat/{chatId}/messages")
+    suspend fun getDiscoveryChatMessages(
+        @Path("chatId") chatId: Int,
+        @Query("limit") limit: Int = 30,
+        @Query("before") before: Int? = null
+    ): List<MessageResponse>
+
+    @POST("discoveries/chat/{chatId}/messages")
+    suspend fun sendDiscoveryChatMessage(
+        @Path("chatId") chatId: Int,
+        @Body request: SendMessageRequest
+    ): MessageResponse
+
+    @GET("notification-settings")
+    suspend fun getNotificationSettings(): NotificationSettingsResponse
+
+    @PUT("notification-settings")
+    suspend fun updateNotificationSettings(@Body request: UpdateNotificationSettingsRequest): SimpleMessageResponse
+
+    @POST("notification-settings/mute/chat/{chatId}")
+    suspend fun toggleChatMute(@Path("chatId") chatId: Int): Map<String, Boolean>
+
+    @POST("notification-settings/mute/friend/{friendId}")
+    suspend fun toggleFriendMute(@Path("friendId") friendId: Int): Map<String, Boolean>
     
     @POST("discoveries/{discoveryId}/achievements")
     suspend fun createAchievement(@Path("discoveryId") discoveryId: Int, @Body request: CreateAchievementRequest): AchievementResponse

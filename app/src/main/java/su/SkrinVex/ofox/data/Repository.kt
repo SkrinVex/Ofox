@@ -492,16 +492,21 @@ class Repository(private val context: Context) {
     suspend fun getAllChats(): List<Chat> = withContext(Dispatchers.IO) {
         try {
             val chats = apiClient.api.getChats().map { it.toChat() }
-            android.util.Log.d("Repository", "Loaded ${chats.size} chats from API")
             db.chatDao().deleteAllChats()
-            chats.forEach { chat ->
-                android.util.Log.d("Repository", "Inserting chat: ${chat.name}, lastMessage: ${chat.lastMessage}")
-                db.chatDao().insertChat(chat)
-            }
+            chats.forEach { db.chatDao().insertChat(it) }
             chats
         } catch (e: Exception) {
             android.util.Log.e("Repository", "Failed to load chats from API", e)
             db.chatDao().getAllChats()
+        }
+    }
+
+    suspend fun getChatById(chatId: Int): Chat? = withContext(Dispatchers.IO) {
+        try {
+            apiClient.api.getChatById(chatId).toChat()
+        } catch (e: Exception) {
+            android.util.Log.e("Repository", "Failed to get chat $chatId", e)
+            db.chatDao().getChatById(chatId)
         }
     }
 
@@ -863,25 +868,24 @@ class Repository(private val context: Context) {
     }
 
     private fun ChatResponse.toChat(): Chat {
-        android.util.Log.d("Repository", "Converting ChatResponse: id=$id, name=$name, other_user_name=$other_user_name, badges=${other_user_badges?.size ?: 0}")
         return Chat(
             id = id,
-            name = other_user_name,
+            name = if (discovery_id != null) (discovery_title ?: name) else other_user_name,
             lastMessage = last_message,
             timestamp = parseTimestamp(updated_at),
             userId = other_user_id,
             userBadges = other_user_badges?.let { badges ->
-                val json = org.json.JSONArray(badges.map { badge ->
+                org.json.JSONArray(badges.map { badge ->
                     org.json.JSONObject().apply {
                         put("badge_type", badge.badge_type)
                         put("description", badge.description)
                     }
                 }).toString()
-                android.util.Log.d("Repository", "Badges JSON: $json")
-                json
             } ?: "",
             unreadCount = unread_count,
-            userAvatarUrl = other_user_avatar ?: ""
+            userAvatarUrl = other_user_avatar ?: "",
+            discoveryId = discovery_id ?: 0,
+            discoveryTitle = discovery_title ?: ""
         )
     }
 
@@ -1067,6 +1071,70 @@ class Repository(private val context: Context) {
         } catch (e: Exception) {
             android.util.Log.e("Repository", "Failed to get user achievements", e)
             emptyList()
+        }
+    }
+
+    // Discovery chat messages
+    suspend fun getDiscoveryChatMessages(chatId: Int, before: Int? = null): List<Message> = withContext(Dispatchers.IO) {
+        try {
+            apiClient.api.getDiscoveryChatMessages(chatId, before = before).map { it.toMessage(getCurrentUserId()) }
+        } catch (e: Exception) {
+            android.util.Log.e("Repository", "Failed to get discovery chat messages", e)
+            emptyList()
+        }
+    }
+
+    suspend fun sendDiscoveryChatMessage(chatId: Int, text: String): Message? = withContext(Dispatchers.IO) {
+        try {
+            apiClient.api.sendDiscoveryChatMessage(chatId, SendMessageRequest(text)).toMessage(getCurrentUserId())
+        } catch (e: Exception) {
+            android.util.Log.e("Repository", "Failed to send discovery chat message", e)
+            null
+        }
+    }
+
+    // Notification settings
+    suspend fun getNotificationSettings(): NotificationSettingsResponse? = withContext(Dispatchers.IO) {
+        try {
+            apiClient.api.getNotificationSettings()
+        } catch (e: Exception) {
+            android.util.Log.e("Repository", "Failed to get notification settings", e)
+            null
+        }
+    }
+
+    suspend fun updateNotificationSettings(
+        notifyPostComments: Boolean,
+        notifyFriendPosts: Boolean,
+        notifyChats: Boolean,
+        notifyDiscoveryChats: Boolean
+    ) = withContext(Dispatchers.IO) {
+        try {
+            apiClient.api.updateNotificationSettings(
+                UpdateNotificationSettingsRequest(notifyPostComments, notifyFriendPosts, notifyChats, notifyDiscoveryChats)
+            )
+        } catch (e: Exception) {
+            android.util.Log.e("Repository", "Failed to update notification settings", e)
+        }
+    }
+
+    suspend fun toggleChatMute(chatId: Int): Boolean = withContext(Dispatchers.IO) {
+        try {
+            val result = apiClient.api.toggleChatMute(chatId)
+            result["muted"] ?: false
+        } catch (e: Exception) {
+            android.util.Log.e("Repository", "Failed to toggle chat mute", e)
+            false
+        }
+    }
+
+    suspend fun toggleFriendMute(friendId: Int): Boolean = withContext(Dispatchers.IO) {
+        try {
+            val result = apiClient.api.toggleFriendMute(friendId)
+            result["muted"] ?: false
+        } catch (e: Exception) {
+            android.util.Log.e("Repository", "Failed to toggle friend mute", e)
+            false
         }
     }
 }

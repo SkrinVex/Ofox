@@ -57,6 +57,29 @@ class OfoxFirebaseMessagingService : FirebaseMessagingService() {
                     }
                 }
             }
+            "discovery_message" -> {
+                val chatId = data["chatId"]?.toIntOrNull() ?: return
+                val discoveryId = data["discoveryId"]?.toIntOrNull() ?: return
+                if (ActiveChatTracker.activeChatId == chatId) return
+                val senderName = data["senderName"] ?: "Участник"
+                val discoveryTitle = data["discoveryTitle"]?.takeIf { it.isNotBlank() } ?: "Открытие"
+                val body = "$senderName: ${data["message"] ?: ""}"
+                val avatarUrl = data["senderAvatarUrl"]
+                CoroutineScope(Dispatchers.IO).launch {
+                    val bitmap = avatarUrl?.let { loadCircleBitmap(it) }
+                    withContext(Dispatchers.Main) {
+                        showNotification(
+                            chatId + 400000,
+                            discoveryTitle,
+                            body,
+                            bitmap,
+                            CHANNEL_DISCOVERY,
+                            chatId = chatId,
+                            notifType = "discovery_message"
+                        )
+                    }
+                }
+            }
             "system_notification" -> {
                 val title = data["title"] ?: "OFOX"
                 val body = data["message"] ?: ""
@@ -160,11 +183,13 @@ class OfoxFirebaseMessagingService : FirebaseMessagingService() {
             val nm = getSystemService(NotificationManager::class.java)
             nm.createNotificationChannel(NotificationChannel(CHANNEL_CHATS, "Чаты", NotificationManager.IMPORTANCE_HIGH))
             nm.createNotificationChannel(NotificationChannel(CHANNEL_COMMENTS, "Комментарии", NotificationManager.IMPORTANCE_HIGH))
+            nm.createNotificationChannel(NotificationChannel(CHANNEL_DISCOVERY, "Чаты открытий", NotificationManager.IMPORTANCE_HIGH))
         }
     }
 
     companion object {
         const val CHANNEL_CHATS = "chats"
         const val CHANNEL_COMMENTS = "comments"
+        const val CHANNEL_DISCOVERY = "discovery_chats"
     }
 }

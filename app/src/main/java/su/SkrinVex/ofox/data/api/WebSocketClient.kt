@@ -117,6 +117,13 @@ class WebSocketClient(private val context: Context) {
                             val userName = json.getString("userName")
                             _events.value = WSEvent.Typing(chatId, userId, userName)
                         }
+                        "discovery_message" -> {
+                            val chatId = json.getInt("chatId")
+                            val message = json.getString("message")
+                            val timestamp = json.getLong("timestamp")
+                            _events.value = WSEvent.DiscoveryMessage(chatId, message, timestamp)
+                            Log.d("WebSocket", "Discovery message event: chatId=$chatId")
+                        }
                         "comment_reply" -> {
                             val postId = json.getInt("postId")
                             _events.value = WSEvent.CommentReply(postId)
@@ -208,6 +215,7 @@ sealed class WSEvent {
     data class CommentReply(val postId: Int) : WSEvent()
     data class PostComment(val postId: Int) : WSEvent()
     data class Typing(val chatId: Int, val userId: Int, val userName: String) : WSEvent()
+    data class DiscoveryMessage(val chatId: Int, val message: String, val timestamp: Long) : WSEvent()
 }
 
 data class Badge(

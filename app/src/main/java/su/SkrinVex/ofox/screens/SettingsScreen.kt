@@ -33,7 +33,7 @@ fun SettingsScreen(
     
     val settings = listOf(
         SettingItem("Профиль", "Управление аккаунтом", Icons.Default.Person, "my_profile"),
-        SettingItem("Уведомления", "Настройка оповещений", Icons.Default.Notifications, null),
+        SettingItem("Уведомления", "Настройка оповещений", Icons.Default.Notifications, "notification_settings"),
         SettingItem("Приватность", "Безопасность и конфиденциальность", Icons.Default.Security, null),
         SettingItem("Кастомизация", "Настройка внешнего вида", Icons.Default.Palette, "customization"),
         SettingItem("О приложении", "Версия и информация", Icons.Default.Info, "about")
