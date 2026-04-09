@@ -42,7 +42,7 @@ fun NotificationSettingsScreen(repository: Repository, onBack: () -> Unit) {
             mutedChatIds = settings.muted_chats.toSet()
             mutedFriendIds = settings.muted_friends.toSet()
         }
-        chats = repository.getAllChats()
+        chats = repository.getAllChats().filter { it.discoveryId == 0 }
         friends = repository.getMutualFriends()
         isLoading = false
     }
