@@ -26,7 +26,7 @@ import java.io.File
 import java.net.HttpURLConnection
 import java.net.URL
 
-private const val APK_URL = "https://files.skrinvex.su/projects/ofox/app-release.apk"
+private const val APK_URL = "https://storage.yandexcloud.kz/skriteam-ofox/builds/app-release.apk"
 private const val APK_FILENAME = "ofox-update.apk"
 
 private val funnyHints = listOf(
