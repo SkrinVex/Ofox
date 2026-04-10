@@ -3,6 +3,7 @@ package su.SkrinVex.ofox
 import android.app.Application
 import coil.ImageLoader
 import coil.ImageLoaderFactory
+import coil.decode.ImageDecoderDecoder
 import coil.disk.DiskCache
 import coil.memory.MemoryCache
 import coil.request.CachePolicy
@@ -40,6 +41,9 @@ class OfoxApp : Application(), ImageLoaderFactory {
             .networkCachePolicy(CachePolicy.ENABLED)
             .crossfade(150) // быстрый crossfade
             .allowHardware(true) // GPU рендеринг
+            .components {
+                add(ImageDecoderDecoder.Factory()) // GIF и анимированный WebP
+            }
             .build()
     }
 }

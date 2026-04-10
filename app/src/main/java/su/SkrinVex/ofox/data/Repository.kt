@@ -383,24 +383,32 @@ class Repository(private val context: Context) {
         return prefs.getStringSet("hidden_authors", emptySet())?.mapNotNull { it.toIntOrNull() }?.toSet() ?: emptySet()
     }
 
-    suspend fun uploadPostImages(postId: Int, uris: List<android.net.Uri>, context: android.content.Context): Result<List<String>> = withContext(Dispatchers.IO) {
+    suspend fun uploadPostImages(postId: Int, images: List<Pair<ByteArray, String>>): Result<List<String>> = withContext(Dispatchers.IO) {
         try {
-            val parts = uris.mapIndexed { i, uri ->
-                val stream = context.contentResolver.openInputStream(uri) ?: return@mapIndexed null
-                val bytes = stream.readBytes()
-                stream.close()
-                val mimeType = context.contentResolver.getType(uri) ?: "image/jpeg"
-                val body = okhttp3.RequestBody.create(mimeType.toMediaTypeOrNull(), bytes)
-                okhttp3.MultipartBody.Part.createFormData("images", "image_$i.jpg", body)
-            }.filterNotNull()
-            if (parts.isEmpty()) return@withContext Result.failure(Exception("Не удалось прочитать файлы"))
+            android.util.Log.d("Repository", "uploadPostImages: postId=$postId count=${images.size}")
+            val parts = images.mapIndexed { i, (bytes, mimeType) ->
+                val ext = when (mimeType) {
+                    "image/png" -> "png"
+                    "image/webp" -> "webp"
+                    "image/gif" -> "gif"
+                    else -> "jpg"
+                }
+                android.util.Log.d("Repository", "  part[$i]: mimeType=$mimeType size=${bytes.size} filename=image_$i.$ext")
+                val body = bytes.toRequestBody(mimeType.toMediaTypeOrNull())
+                okhttp3.MultipartBody.Part.createFormData("images", "image_$i.$ext", body)
+            }
+            if (parts.isEmpty()) {
+                android.util.Log.e("Repository", "uploadPostImages: parts is empty!")
+                return@withContext Result.failure(Exception("Не удалось прочитать файлы"))
+            }
+            android.util.Log.d("Repository", "uploadPostImages: sending ${parts.size} parts to server...")
             val response = apiClient.api.uploadPostImages(postId, parts)
-            android.util.Log.d("Repository", "Uploaded ${parts.size} images for post $postId")
+            android.util.Log.d("Repository", "uploadPostImages: success, urls=${response.images}")
             Result.success(response.images)
         } catch (e: retrofit2.HttpException) {
             val errorBody = e.response()?.errorBody()?.string()
+            android.util.Log.e("Repository", "uploadPostImages HTTP ${e.code()}: $errorBody", e)
             val msg = try { org.json.JSONObject(errorBody ?: "{}").getString("error") } catch (_: Exception) { "Ошибка загрузки фото (${e.code()})" }
-            android.util.Log.e("Repository", "uploadPostImages error", e)
             Result.failure(Exception(msg))
         } catch (e: Exception) {
             android.util.Log.e("Repository", "uploadPostImages error", e)

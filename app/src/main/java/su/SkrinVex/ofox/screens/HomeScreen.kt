@@ -706,7 +706,7 @@ fun HomeScreen(
                 postDraftDiscovery = discovery
             },
             repository = repository,
-            onCreate = { content, type, pollOptions, discovery, imageUris ->
+            onCreate = { content, type, pollOptions, discovery, imageData ->
                 showCreatePost = false
                 postDraftContent = ""
                 postDraftType = "TEXT"
@@ -721,12 +721,10 @@ fun HomeScreen(
                         }
                         newPost?.let { post ->
                             posts.add(0, post)
-                            // Загружаем изображения если есть
-                            if (imageUris.isNotEmpty()) {
-                                val uploadResult = repository.uploadPostImages(post.id, imageUris, context)
+                            if (imageData.isNotEmpty()) {
+                                val uploadResult = repository.uploadPostImages(post.id, imageData)
                                 uploadResult.fold(
                                     onSuccess = {
-                                        // Перезагружаем пост чтобы получить URLs изображений
                                         repository.getPostById(post.id)?.let { updated ->
                                             val idx = posts.indexOfFirst { it.id == post.id }
                                             if (idx != -1) posts[idx] = updated
@@ -851,7 +849,7 @@ fun CreatePostDialog(
     initialDiscovery: su.SkrinVex.ofox.data.Discovery? = null,
     onDismiss: () -> Unit,
     onDraftChange: (String, String, List<String>, su.SkrinVex.ofox.data.Discovery?) -> Unit = { _, _, _, _ -> },
-    onCreate: (String, String, List<String>, su.SkrinVex.ofox.data.Discovery?, List<android.net.Uri>) -> Unit,
+    onCreate: (String, String, List<String>, su.SkrinVex.ofox.data.Discovery?, List<Pair<ByteArray, String>>) -> Unit,
     repository: Repository
 ) {
     var content by remember { mutableStateOf(initialContent) }
@@ -859,14 +857,27 @@ fun CreatePostDialog(
     var pollOptions by remember { mutableStateOf(initialPollOptions) }
     var selectedDiscovery by remember { mutableStateOf(initialDiscovery) }
     var discoveries by remember { mutableStateOf(listOf<su.SkrinVex.ofox.data.Discovery>()) }
-    var selectedImages by remember { mutableStateOf(listOf<android.net.Uri>()) }
+    // Храним (байты, mimeType, previewUri) — байты читаем сразу при выборе
+    var selectedImages by remember { mutableStateOf(listOf<Triple<ByteArray, String, android.net.Uri>>()) }
+    val context = androidx.compose.ui.platform.LocalContext.current
     val scope = rememberCoroutineScope()
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
     val imagePicker = androidx.activity.compose.rememberLauncherForActivityResult(
-        androidx.activity.result.contract.ActivityResultContracts.GetMultipleContents()
+        androidx.activity.result.contract.ActivityResultContracts.OpenMultipleDocuments()
     ) { uris ->
-        selectedImages = (selectedImages + uris).take(5)
+        android.util.Log.d("ImagePicker", "Got ${uris.size} uris: $uris")
+        val newImages = uris.mapNotNull { uri -> readImageUri(context, uri) }
+        android.util.Log.d("ImagePicker", "Successfully prepared ${newImages.size}/${uris.size} images")
+        selectedImages = (selectedImages + newImages).take(5)
+    }
+
+    val gifPicker = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.OpenMultipleDocuments()
+    ) { uris ->
+        android.util.Log.d("ImagePicker", "GIF picker got ${uris.size} uris")
+        val newImages = uris.mapNotNull { uri -> readImageUri(context, uri) }
+        selectedImages = (selectedImages + newImages).take(5)
     }
 
     LaunchedEffect(Unit) {
@@ -1105,7 +1116,7 @@ fun CreatePostDialog(
                     items(selectedImages.size) { i ->
                         Box {
                             coil.compose.AsyncImage(
-                                model = selectedImages[i],
+                                model = selectedImages[i].third,
                                 contentDescription = null,
                                 contentScale = androidx.compose.ui.layout.ContentScale.Crop,
                                 modifier = Modifier
@@ -1134,7 +1145,7 @@ fun CreatePostDialog(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 IconButton(
-                    onClick = { if (selectedImages.size < 5) imagePicker.launch("image/*") },
+                    onClick = { if (selectedImages.size < 5) imagePicker.launch(arrayOf("image/jpeg", "image/png", "image/webp", "image/heic", "image/heif")) },
                     enabled = selectedImages.size < 5
                 ) {
                     Icon(
@@ -1142,6 +1153,18 @@ fun CreatePostDialog(
                         contentDescription = "Добавить фото",
                         tint = if (selectedImages.size < 5) MaterialTheme.colorScheme.primary
                                else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.3f)
+                    )
+                }
+                IconButton(
+                    onClick = { if (selectedImages.size < 5) gifPicker.launch(arrayOf("image/gif")) },
+                    enabled = selectedImages.size < 5
+                ) {
+                    Text(
+                        "GIF",
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = if (selectedImages.size < 5) MaterialTheme.colorScheme.primary
+                                else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.3f)
                     )
                 }
                 Text(
@@ -1169,11 +1192,12 @@ fun CreatePostDialog(
                 Button(
                     onClick = {
                         if (content.isNotBlank()) {
+                            val imageData = selectedImages.map { it.first to it.second }
                             if (selectedType == "POLL") {
                                 val validOptions = pollOptions.filter { it.isNotBlank() }
-                                onCreate(content, selectedType, validOptions, selectedDiscovery, selectedImages)
+                                onCreate(content, selectedType, validOptions, selectedDiscovery, imageData)
                             } else {
-                                onCreate(content, selectedType, emptyList(), selectedDiscovery, selectedImages)
+                                onCreate(content, selectedType, emptyList(), selectedDiscovery, imageData)
                             }
                         }
                     },
@@ -1185,6 +1209,48 @@ fun CreatePostDialog(
                 }
             }
         }
+    }
+}
+
+private fun detectMimeType(bytes: ByteArray): String {
+    if (bytes.size < 12) return "image/jpeg"
+    return when {
+        bytes[0] == 0xFF.toByte() && bytes[1] == 0xD8.toByte() -> "image/jpeg"
+        bytes[0] == 0x89.toByte() && bytes[1] == 0x50.toByte() && bytes[2] == 0x4E.toByte() && bytes[3] == 0x47.toByte() -> "image/png"
+        bytes[0] == 0x47.toByte() && bytes[1] == 0x49.toByte() && bytes[2] == 0x46.toByte() -> "image/gif"
+        bytes[0] == 0x52.toByte() && bytes[1] == 0x49.toByte() && bytes[2] == 0x46.toByte() && bytes[3] == 0x46.toByte() -> "image/webp"
+        // HEIC/HEIF: ftyp box на байтах 4-11
+        bytes[4] == 0x66.toByte() && bytes[5] == 0x74.toByte() && bytes[6] == 0x79.toByte() && bytes[7] == 0x70.toByte() -> "image/heic"
+        else -> "image/jpeg"
+    }
+}
+
+private fun readImageUri(context: android.content.Context, uri: android.net.Uri): Triple<ByteArray, String, android.net.Uri>? {
+    return try {
+        val rawBytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() } ?: run {
+            android.util.Log.e("ImagePicker", "openInputStream returned null for $uri")
+            return null
+        }
+        val realMime = detectMimeType(rawBytes)
+        android.util.Log.d("ImagePicker", "Read ${rawBytes.size} bytes, detected=$realMime for $uri")
+        val webSafe = setOf("image/jpeg", "image/png", "image/webp", "image/gif")
+        val (finalBytes, finalMime) = if (realMime !in webSafe) {
+            val bitmap = android.graphics.BitmapFactory.decodeByteArray(rawBytes, 0, rawBytes.size) ?: run {
+                android.util.Log.e("ImagePicker", "BitmapFactory returned null for $uri")
+                return null
+            }
+            val out = java.io.ByteArrayOutputStream()
+            bitmap.compress(android.graphics.Bitmap.CompressFormat.JPEG, 90, out)
+            bitmap.recycle()
+            out.toByteArray() to "image/jpeg"
+        } else {
+            rawBytes to realMime
+        }
+        android.util.Log.d("ImagePicker", "Final: $finalMime ${finalBytes.size} bytes")
+        Triple(finalBytes, finalMime, uri)
+    } catch (e: Exception) {
+        android.util.Log.e("ImagePicker", "Failed to read image: $uri", e)
+        null
     }
 }
 
