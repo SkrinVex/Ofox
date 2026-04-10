@@ -46,7 +46,8 @@ android {
 
     buildTypes {
         debug {
-            applicationIdSuffix = ".debug"
+            applicationIdSuffix = ".dev"
+            resValue("string", "app_name", "Ofox DEV")
             isMinifyEnabled = false
             isShrinkResources = false
             proguardFiles(

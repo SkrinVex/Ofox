@@ -42,3 +42,4 @@ api.skrinvex.su (копия).zip
 app/src/main/res/xml/network_security_config.xml
 .bkps/api.skrinvex.su.tar.gz
 app/google-services.json
+app/src/debug/google-services.json

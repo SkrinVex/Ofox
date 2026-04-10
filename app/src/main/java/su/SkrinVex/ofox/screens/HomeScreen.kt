@@ -111,7 +111,7 @@ fun HomeScreen(
         animationSpec = androidx.compose.animation.core.tween(200)
     )
     // FAB скрывается при скролле всегда
-    val fabVisible by remember { derivedStateOf { listState.firstVisibleItemIndex == 0 && listState.firstVisibleItemScrollOffset < 50 } }
+    val fabVisible by remember { derivedStateOf { posts.isEmpty() || (listState.firstVisibleItemIndex == 0 && listState.firstVisibleItemScrollOffset < 50) } }
     val fabScale by androidx.compose.animation.core.animateFloatAsState(
         targetValue = if (fabVisible) 1f else 0f,
         animationSpec = androidx.compose.animation.core.tween(200)
@@ -349,14 +349,14 @@ fun HomeScreen(
         )
         if (isLoading && posts.isEmpty()) {
             Box(
-                modifier = Modifier.fillMaxSize(),
+                modifier = Modifier.fillMaxSize().zIndex(0f),
                 contentAlignment = Alignment.Center
             ) {
                 CircularProgressIndicator()
             }
         } else if (!isLoading && posts.isEmpty()) {
             Box(
-                modifier = Modifier.fillMaxSize(),
+                modifier = Modifier.fillMaxSize().zIndex(0f),
                 contentAlignment = Alignment.Center
             ) {
                 Column(
@@ -386,6 +386,7 @@ fun HomeScreen(
         Box(
             modifier = Modifier
                 .fillMaxSize()
+                .zIndex(0f)
                 .background(MaterialTheme.colorScheme.background)
         ) {
             val uniquePosts by remember {
@@ -517,6 +518,7 @@ fun HomeScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .align(Alignment.TopStart)
+                    .zIndex(5f)
                     .graphicsLayer { alpha = topBarAlpha; translationY = -size.height * (1f - topBarAlpha) }
                     .background(MaterialTheme.colorScheme.background)
                     .padding(horizontal = 16.dp, vertical = 8.dp),
@@ -543,7 +545,8 @@ fun HomeScreen(
                 .align(Alignment.BottomEnd)
                 .navigationBarsPadding()
                 .padding(end = 16.dp, bottom = 96.dp)
-                .graphicsLayer { alpha = fabScale; scaleX = fabScale; scaleY = fabScale },
+                .graphicsLayer { alpha = fabScale; scaleX = fabScale; scaleY = fabScale }
+                .zIndex(5f),
             containerColor = MaterialTheme.colorScheme.primary
         ) {
             Icon(Icons.Default.Add, contentDescription = "Создать пост")
