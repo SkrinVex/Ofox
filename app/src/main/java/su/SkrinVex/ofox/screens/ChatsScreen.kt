@@ -37,6 +37,7 @@ fun ChatsScreen(repository: Repository, navController: NavController, bottomPadd
     var chats by remember { mutableStateOf(listOf<su.SkrinVex.ofox.data.Chat>()) }
     var showAddChatDialog by remember { mutableStateOf(false) }
     var notifUnread by remember { mutableStateOf(0) }
+    var onlineUserIds by remember { mutableStateOf(emptySet<Int>()) }
     val scope = rememberCoroutineScope()
     val context = androidx.compose.ui.platform.LocalContext.current
     val wsClient = remember { su.SkrinVex.ofox.data.api.WebSocketClient.getInstance(context) }
@@ -49,6 +50,7 @@ fun ChatsScreen(repository: Repository, navController: NavController, bottomPadd
         scope.launch {
             chats = repository.getAllChats()
             notifUnread = repository.getNotificationsUnreadCount()
+            onlineUserIds = repository.getOnlineUserIds()
         }
     }
 
@@ -59,9 +61,9 @@ fun ChatsScreen(repository: Repository, navController: NavController, bottomPadd
             when (event) {
                 is su.SkrinVex.ofox.data.api.WSEvent.ChatUpdate,
                 is su.SkrinVex.ofox.data.api.WSEvent.NewMessage -> loadChats()
-                is su.SkrinVex.ofox.data.api.WSEvent.CommentReply -> {
-                    notifUnread++
-                }
+                is su.SkrinVex.ofox.data.api.WSEvent.CommentReply -> { notifUnread++ }
+                is su.SkrinVex.ofox.data.api.WSEvent.UserOnline -> onlineUserIds = onlineUserIds + event.userId
+                is su.SkrinVex.ofox.data.api.WSEvent.UserOffline -> onlineUserIds = onlineUserIds - event.userId
                 else -> {}
             }
         }
@@ -239,7 +241,7 @@ fun ChatsScreen(repository: Repository, navController: NavController, bottomPadd
                         }
                     } else {
                         items(personalChats) { chat ->
-                            PersonalChatItem(chat = chat, onClick = { navController.navigate("chat/${chat.id}") })
+                            PersonalChatItem(chat = chat, isOnline = chat.userId in onlineUserIds, onClick = { navController.navigate("chat/${chat.id}") })
                         }
                     }
                 }
@@ -440,7 +442,7 @@ fun AddChatDialog(
 
 
 @Composable
-fun PersonalChatItem(chat: su.SkrinVex.ofox.data.Chat, onClick: () -> Unit) {
+fun PersonalChatItem(chat: su.SkrinVex.ofox.data.Chat, isOnline: Boolean = false, onClick: () -> Unit) {
     val badges = try {
         if (chat.userBadges.isNotEmpty()) {
             val arr = org.json.JSONArray(chat.userBadges)
@@ -457,7 +459,21 @@ fun PersonalChatItem(chat: su.SkrinVex.ofox.data.Chat, onClick: () -> Unit) {
         shape = MaterialTheme.shapes.medium
     ) {
         Row(modifier = Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-            UserAvatar(name = chat.name, avatarUrl = chat.userAvatarUrl.takeIf { it.isNotBlank() }, size = 48.dp)
+            Box {
+                UserAvatar(name = chat.name, avatarUrl = chat.userAvatarUrl.takeIf { it.isNotBlank() }, size = 48.dp)
+                if (isOnline) {
+                    Box(
+                        modifier = Modifier
+                            .size(13.dp)
+                            .align(Alignment.BottomEnd)
+                            .clip(CircleShape)
+                            .background(MaterialTheme.colorScheme.surface)
+                            .padding(2.dp)
+                    ) {
+                        Box(modifier = Modifier.fillMaxSize().clip(CircleShape).background(androidx.compose.ui.graphics.Color(0xFF4CAF50)))
+                    }
+                }
+            }
             Spacer(modifier = Modifier.width(12.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {

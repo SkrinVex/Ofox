@@ -556,8 +556,13 @@ class Repository(private val context: Context) {
         try {
             val currentUserId = getCurrentUserId()
             val messages = apiClient.api.getMessages(chatId, before = before).map { it.toMessage(currentUserId) }
+            // Заполняем кэш пользователей из сообщений
+            messages.forEach { msg ->
+                if (msg.senderId != 0 && msg.senderName.isNotBlank()) {
+                    su.SkrinVex.ofox.data.UserCache.put(msg.senderId, msg.senderName, msg.senderAvatarUrl.takeIf { it.isNotBlank() })
+                }
+            }
             if (before == null) {
-                // Первая загрузка — кэшируем
                 db.messageDao().deleteMessagesByChat(chatId)
                 messages.forEach { db.messageDao().insertMessage(it) }
                 apiClient.api.markChatAsRead(chatId)
@@ -567,6 +572,12 @@ class Repository(private val context: Context) {
         } catch (e: Exception) {
             if (before == null) db.messageDao().getMessages(chatId) else emptyList()
         }
+    }
+
+    suspend fun getOnlineUserIds(): Set<Int> = withContext(Dispatchers.IO) {
+        try {
+            apiClient.api.getOnlineUsers()["onlineUserIds"]?.toSet() ?: emptySet()
+        } catch (_: Exception) { emptySet() }
     }
 
     suspend fun sendMessage(chatId: Int, text: String, replyToId: Int? = null): Message? = withContext(Dispatchers.IO) {

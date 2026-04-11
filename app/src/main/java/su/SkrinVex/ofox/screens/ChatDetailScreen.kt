@@ -178,6 +178,18 @@ fun ChatDetailScreen(repository: Repository, chatId: Int, onBack: () -> Unit, on
     }
     
     var isTyping by remember { mutableStateOf(false) }
+    // Для групповых: userId -> userName
+    val typingUsers = remember { androidx.compose.runtime.snapshots.SnapshotStateMap<Int, String>() }
+    var isOtherUserOnline by remember { mutableStateOf(false) }
+
+    // Загружаем онлайн статус при открытии чата
+    LaunchedEffect(chatId) {
+        try {
+            val onlineIds = repository.getOnlineUserIds()
+            val otherUserId = chat?.userId ?: 0
+            isOtherUserOnline = otherUserId != 0 && otherUserId in onlineIds
+        } catch (_: Exception) {}
+    }
 
     LaunchedEffect(wsClient.events) {
         wsClient.events.collect { event ->
@@ -185,17 +197,32 @@ fun ChatDetailScreen(repository: Repository, chatId: Int, onBack: () -> Unit, on
                 is su.SkrinVex.ofox.data.api.WSEvent.Typing -> {
                     if (event.chatId == chatId) {
                         isTyping = true
+                        typingUsers[event.userId] = event.userName
                         kotlinx.coroutines.delay(3000)
                         isTyping = false
+                        typingUsers.remove(event.userId)
                     }
+                }
+                is su.SkrinVex.ofox.data.api.WSEvent.UserOnline -> {
+                    if (event.userId == (chat?.userId ?: 0)) isOtherUserOnline = true
+                }
+                is su.SkrinVex.ofox.data.api.WSEvent.UserOffline -> {
+                    if (event.userId == (chat?.userId ?: 0)) isOtherUserOnline = false
                 }
                 is su.SkrinVex.ofox.data.api.WSEvent.NewMessage -> {
                     if (event.chatId == chatId) {
+                        // Обновляем кэш пользователей
+                        if (event.senderId != 0 && event.senderName.isNotBlank()) {
+                            su.SkrinVex.ofox.data.UserCache.put(event.senderId, event.senderName, event.senderAvatarUrl)
+                        }
+                        // Берём имя из кэша если WS не прислал
+                        val cachedName = if (event.senderName.isBlank()) su.SkrinVex.ofox.data.UserCache.getName(event.senderId) ?: "" else event.senderName
+                        val cachedAvatar = event.senderAvatarUrl ?: su.SkrinVex.ofox.data.UserCache.getAvatar(event.senderId)
                         val newMessage = su.SkrinVex.ofox.data.Message(
                             id = 0, chatId = chatId, text = event.message,
                             timestamp = event.timestamp, isFromMe = false,
-                            senderId = event.senderId, senderName = event.senderName,
-                            senderAvatarUrl = event.senderAvatarUrl ?: "",
+                            senderId = event.senderId, senderName = cachedName,
+                            senderAvatarUrl = cachedAvatar ?: "",
                             messageType = event.messageType,
                             replyToId = event.replyToId, replyToText = event.replyToText,
                             replyToSenderName = event.replyToSenderName
@@ -207,11 +234,16 @@ fun ChatDetailScreen(repository: Repository, chatId: Int, onBack: () -> Unit, on
                 }
                 is su.SkrinVex.ofox.data.api.WSEvent.DiscoveryMessage -> {
                     if (event.chatId == chatId) {
+                        if (event.senderId != 0 && event.senderName.isNotBlank()) {
+                            su.SkrinVex.ofox.data.UserCache.put(event.senderId, event.senderName, event.senderAvatarUrl)
+                        }
+                        val cachedName = if (event.senderName.isBlank()) su.SkrinVex.ofox.data.UserCache.getName(event.senderId) ?: "" else event.senderName
+                        val cachedAvatar = event.senderAvatarUrl ?: su.SkrinVex.ofox.data.UserCache.getAvatar(event.senderId)
                         val newMessage = su.SkrinVex.ofox.data.Message(
                             id = 0, chatId = chatId, text = event.message,
                             timestamp = event.timestamp, isFromMe = false,
-                            senderId = event.senderId, senderName = event.senderName,
-                            senderAvatarUrl = event.senderAvatarUrl ?: "",
+                            senderId = event.senderId, senderName = cachedName,
+                            senderAvatarUrl = cachedAvatar ?: "",
                             messageType = event.messageType,
                             replyToId = event.replyToId, replyToText = event.replyToText,
                             replyToSenderName = event.replyToSenderName
@@ -283,11 +315,14 @@ fun ChatDetailScreen(repository: Repository, chatId: Int, onBack: () -> Unit, on
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.SemiBold
                     )
-                    Text(
-                        "Чат открытия",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
-                    )
+                    if (typingUsers.isNotEmpty()) {
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            TypingIndicator()
+                            Text(typingUsers.values.joinToString(", ") + " печатает...", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f))
+                        }
+                    } else {
+                        Text("Чат открытия", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f))
+                    }
                 }
             } else {
                 val profileClickModifier = Modifier.clickable {
@@ -300,28 +335,26 @@ fun ChatDetailScreen(repository: Repository, chatId: Int, onBack: () -> Unit, on
                     modifier = profileClickModifier
                 )
                 Spacer(modifier = Modifier.width(12.dp))
-                Column(modifier = profileClickModifier) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        Text(
-                            chat?.name ?: "Чат",
-                            style = MaterialTheme.typography.titleLarge,
-                            fontWeight = FontWeight.SemiBold
-                        )
-                        if (badges.isNotEmpty()) {
-                            UserBadges(badges)
-                        }
+                Column(modifier = profileClickModifier.weight(1f)) {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Text(chat?.name ?: "Чат", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
+                        if (badges.isNotEmpty()) UserBadges(badges)
                     }
                     if (isTyping) {
-                        TypingIndicator()
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            TypingIndicator()
+                            Text("печатает...", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+                        }
+                    } else if (isOtherUserOnline) {
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Box(modifier = Modifier.size(6.dp).clip(CircleShape).background(androidx.compose.ui.graphics.Color(0xFF4CAF50)))
+                            Text("в сети", style = MaterialTheme.typography.labelSmall, color = androidx.compose.ui.graphics.Color(0xFF4CAF50))
+                        }
                     }
                 }
             }
         }
-        
-        // Подгрузка старых сообщений при скролле вверх
+
         val firstVisibleIndex by remember { derivedStateOf { listState.firstVisibleItemIndex } }
         LaunchedEffect(firstVisibleIndex) {
             if (firstVisibleIndex == 0 && hasMore && !isLoadingMore && messages.isNotEmpty()) {
@@ -658,12 +691,16 @@ fun ChatDetailScreen(repository: Repository, chatId: Int, onBack: () -> Unit, on
 @Composable
 fun TypingIndicator() {
     val infiniteTransition = androidx.compose.animation.core.rememberInfiniteTransition()
-    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(3.dp),
+        modifier = Modifier.height(14.dp)
+    ) {
         repeat(3) { i ->
             val offsetY by infiniteTransition.animateFloat(
-                initialValue = 0f, targetValue = -4f,
+                initialValue = 0f, targetValue = 4f,
                 animationSpec = androidx.compose.animation.core.infiniteRepeatable(
-                    animation = androidx.compose.animation.core.tween(400, delayMillis = i * 120),
+                    animation = androidx.compose.animation.core.tween(350, delayMillis = i * 100),
                     repeatMode = androidx.compose.animation.core.RepeatMode.Reverse
                 )
             )

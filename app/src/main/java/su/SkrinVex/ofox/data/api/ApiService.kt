@@ -104,6 +104,9 @@ interface ApiService {
 
     @POST("chats/{chatId}/typing")
     suspend fun sendTyping(@Path("chatId") chatId: Int)
+
+    @GET("chats/online/users")
+    suspend fun getOnlineUsers(): Map<String, List<Int>>
     
     @GET("subscriptions/mutual")
     suspend fun getMutualFriends(): List<UserResponse>
