@@ -864,22 +864,11 @@ fun CreatePostDialog(
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
     val imagePicker = androidx.activity.compose.rememberLauncherForActivityResult(
-        androidx.activity.result.contract.ActivityResultContracts.OpenMultipleDocuments()
+        androidx.activity.result.contract.ActivityResultContracts.PickMultipleVisualMedia(5)
     ) { uris ->
-        android.util.Log.d("ImagePicker", "Got ${uris.size} uris: $uris")
-        val newImages = uris.mapNotNull { uri -> readImageUri(context, uri) }
-        android.util.Log.d("ImagePicker", "Successfully prepared ${newImages.size}/${uris.size} images")
-        selectedImages = (selectedImages + newImages).take(5)
-    }
-
-    val gifPicker = androidx.activity.compose.rememberLauncherForActivityResult(
-        androidx.activity.result.contract.ActivityResultContracts.OpenMultipleDocuments()
-    ) { uris ->
-        android.util.Log.d("ImagePicker", "GIF picker got ${uris.size} uris")
         val newImages = uris.mapNotNull { uri -> readImageUri(context, uri) }
         selectedImages = (selectedImages + newImages).take(5)
     }
-
     LaunchedEffect(Unit) {
         try {
             discoveries = repository.getAllDiscoveries().filter { it.isJoined }
@@ -1145,7 +1134,7 @@ fun CreatePostDialog(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 IconButton(
-                    onClick = { if (selectedImages.size < 5) imagePicker.launch(arrayOf("image/jpeg", "image/png", "image/webp", "image/heic", "image/heif")) },
+                    onClick = { if (selectedImages.size < 5) imagePicker.launch(androidx.activity.result.PickVisualMediaRequest(androidx.activity.result.contract.ActivityResultContracts.PickVisualMedia.ImageOnly)) },
                     enabled = selectedImages.size < 5
                 ) {
                     Icon(
@@ -1153,18 +1142,6 @@ fun CreatePostDialog(
                         contentDescription = "Добавить фото",
                         tint = if (selectedImages.size < 5) MaterialTheme.colorScheme.primary
                                else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.3f)
-                    )
-                }
-                IconButton(
-                    onClick = { if (selectedImages.size < 5) gifPicker.launch(arrayOf("image/gif")) },
-                    enabled = selectedImages.size < 5
-                ) {
-                    Text(
-                        "GIF",
-                        style = MaterialTheme.typography.labelMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = if (selectedImages.size < 5) MaterialTheme.colorScheme.primary
-                                else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.3f)
                     )
                 }
                 Text(

@@ -88,8 +88,17 @@ fun StickerPicker(
         }
     }
 
-    val imagePicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
-        if (uri != null) editorLauncher.launch(StickerEditorActivity.createIntent(context, uri))
+    val imagePicker = rememberLauncherForActivityResult(
+        ActivityResultContracts.PickVisualMedia()
+    ) { uri ->
+        if (uri != null) {
+            val mime = context.contentResolver.getType(uri) ?: ""
+            if (mime == "image/gif") {
+                uploadError = "GIF не поддерживается для стикеров. Выберите PNG, JPEG или WebP."
+            } else {
+                editorLauncher.launch(StickerEditorActivity.createIntent(context, uri))
+            }
+        }
     }
 
     LaunchedEffect(Unit) { reload(initialPackId) }
@@ -159,7 +168,7 @@ fun StickerPicker(
                             color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
                         )
                         if (selectedPackId != null) {
-                            TextButton(onClick = { imagePicker.launch("image/*") }) { Text("Добавить стикер") }
+                            TextButton(onClick = { imagePicker.launch(androidx.activity.result.PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }) { Text("Добавить стикер") }
                         }
                     }
                     else -> {
@@ -311,7 +320,7 @@ fun StickerPicker(
                             .size(44.dp)
                             .clip(RoundedCornerShape(12.dp))
                             .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.1f))
-                            .clickable { imagePicker.launch("image/*") },
+                            .clickable { imagePicker.launch(androidx.activity.result.PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(Icons.Default.Add, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(22.dp))
