@@ -51,11 +51,15 @@ class Repository(private val context: Context) {
             su.SkrinVex.ofox.account.addOfoxAccount(context, user.name, response.token)
             Result.success(user)
         } catch (e: retrofit2.HttpException) {
+            val body = e.response()?.errorBody()?.string()
+            android.util.Log.e("Repository", "login HTTP ${e.code()}: $body")
             when (e.code()) {
                 401 -> Result.failure(Exception("Неверный email или пароль"))
-                else -> Result.failure(Exception("Ошибка сервера"))
+                403 -> Result.failure(Exception("Email не подтверждён"))
+                else -> Result.failure(Exception("Ошибка сервера (${e.code()})"))
             }
         } catch (e: Exception) {
+            android.util.Log.e("Repository", "login error", e)
             Result.failure(Exception("Ошибка подключения к серверу"))
         }
     }
@@ -92,11 +96,14 @@ class Repository(private val context: Context) {
             su.SkrinVex.ofox.account.addOfoxAccount(context, user.name, response.token)
             Result.success(user)
         } catch (e: retrofit2.HttpException) {
+            val body = e.response()?.errorBody()?.string()
+            android.util.Log.e("Repository", "verifyCode HTTP ${e.code()}: $body")
             when (e.code()) {
                 400 -> Result.failure(Exception("Неверный или истёкший код"))
-                else -> Result.failure(Exception("Ошибка сервера"))
+                else -> Result.failure(Exception("Ошибка сервера (${e.code()})"))
             }
         } catch (e: Exception) {
+            android.util.Log.e("Repository", "verifyCode error", e)
             Result.failure(Exception("Ошибка подключения к серверу"))
         }
     }
@@ -365,6 +372,14 @@ class Repository(private val context: Context) {
         }
     }
 
+    suspend fun reportComment(commentId: Int, reason: String) = withContext(Dispatchers.IO) {
+        try {
+            apiClient.api.reportComment(commentId, su.SkrinVex.ofox.data.api.models.ReportRequest(reason))
+        } catch (e: Exception) {
+            android.util.Log.e("Repository", "reportComment error", e)
+        }
+    }
+
     fun hideAuthor(authorId: Int) {
         val hidden = getHiddenAuthorIds().toMutableSet()
         hidden.add(authorId)
@@ -421,6 +436,14 @@ class Repository(private val context: Context) {
             apiClient.api.deleteComment(commentId)
         } catch (e: Exception) {
             android.util.Log.e("Repository", "deleteComment error", e)
+        }
+    }
+
+    suspend fun pinComment(postId: Int, commentId: Int) = withContext(Dispatchers.IO) {
+        try {
+            apiClient.api.pinComment(postId, commentId)
+        } catch (e: Exception) {
+            android.util.Log.e("Repository", "pinComment error", e)
         }
     }
 
@@ -677,14 +700,8 @@ class Repository(private val context: Context) {
         try {
             val userId = getCurrentUserId() ?: return@withContext null
             val response = apiClient.api.getBan(userId)
-            response
-        } catch (e: retrofit2.HttpException) {
-            if (e.code() == 404) null else {
-                android.util.Log.e("Repository", "Failed to load ban", e)
-                null
-            }
+            if (response.isSuccessful) response.body() else null
         } catch (e: Exception) {
-            android.util.Log.e("Repository", "Failed to load ban", e)
             null
         }
     }
@@ -890,7 +907,7 @@ class Repository(private val context: Context) {
         return Chat(
             id = id,
             name = if (discovery_id != null) (discovery_title ?: name) else other_user_name,
-            lastMessage = last_message,
+            lastMessage = last_message ?: "",
             timestamp = parseTimestamp(updated_at),
             userId = other_user_id,
             userBadges = other_user_badges?.let { badges ->

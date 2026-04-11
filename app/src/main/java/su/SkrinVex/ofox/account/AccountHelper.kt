@@ -8,12 +8,15 @@ const val ACCOUNT_TYPE = "su.SkrinVex.ofox"
 const val AUTH_TOKEN_TYPE = "jwt"
 
 fun addOfoxAccount(context: Context, username: String, token: String) {
-    val am = AccountManager.get(context)
-    val account = Account(username, ACCOUNT_TYPE)
-    // Удаляем старый если есть (смена аккаунта)
-    am.getAccountsByType(ACCOUNT_TYPE).forEach { am.removeAccountExplicitly(it) }
-    am.addAccountExplicitly(account, null, null)
-    am.setAuthToken(account, AUTH_TOKEN_TYPE, token)
+    try {
+        val am = AccountManager.get(context)
+        val account = Account(username, ACCOUNT_TYPE)
+        am.getAccountsByType(ACCOUNT_TYPE).forEach { am.removeAccountExplicitly(it) }
+        am.addAccountExplicitly(account, null, null)
+        am.setAuthToken(account, AUTH_TOKEN_TYPE, token)
+    } catch (_: Exception) {
+        // Некритично — аккаунт в системе не обязателен для работы приложения
+    }
 }
 
 fun removeOfoxAccount(context: Context) {

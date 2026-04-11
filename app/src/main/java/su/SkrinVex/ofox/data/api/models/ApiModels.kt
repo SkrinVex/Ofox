@@ -164,7 +164,8 @@ data class CommentResponse(
     val content: String,
     val created_at: String,
     val reply_to_id: Int? = null,
-    val reply_to_author_name: String? = null
+    val reply_to_author_name: String? = null,
+    val is_pinned: Boolean = false
 )
 
 data class CreateCommentRequest(

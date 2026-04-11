@@ -51,10 +51,13 @@ fun CommentItem(
     Row(
         modifier = Modifier
             .fillMaxWidth()
+            .then(
+                if (comment.is_pinned) Modifier.background(MaterialTheme.colorScheme.primary.copy(alpha = 0.06f))
+                else Modifier
+            )
             .background(MaterialTheme.colorScheme.primary.copy(alpha = highlightAlpha))
             .combinedClickable(onClick = {}, onLongClick = onLongPress)
-            .padding(vertical = 8.dp)
-            .then(if (comment.reply_to_id != null) Modifier.padding(start = 24.dp) else Modifier),
+            .padding(vertical = 8.dp),
         horizontalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         UserAvatar(
@@ -79,9 +82,16 @@ fun CommentItem(
                 if (!comment.author_badges.isNullOrEmpty()) {
                     UserBadges(badges = comment.author_badges)
                 }
+                if (comment.is_pinned) {
+                    Icon(
+                        Icons.Default.PushPin,
+                        contentDescription = "Закреплено",
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(12.dp)
+                    )
+                }
             }
 
-            // Плашка "ответ на @имя"
             if (comment.reply_to_author_name != null) {
                 Text(
                     text = "↩ ${comment.reply_to_author_name}",
@@ -93,10 +103,9 @@ fun CommentItem(
 
             Spacer(modifier = Modifier.height(4.dp))
 
-            Text(
+            LinkedText(
                 text = comment.content,
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurface
+                style = MaterialTheme.typography.bodyMedium.copy(color = MaterialTheme.colorScheme.onSurface)
             )
 
             Spacer(modifier = Modifier.height(4.dp))
@@ -120,15 +129,13 @@ fun CommentItem(
             }
         }
 
-        if (comment.author_id == currentUserId) {
-            IconButton(onClick = onMenuClick) {
-                Icon(
-                    Icons.Default.MoreVert,
-                    contentDescription = "Опции",
-                    tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
-                    modifier = Modifier.size(20.dp)
-                )
-            }
+        IconButton(onClick = onMenuClick, modifier = Modifier.size(32.dp)) {
+            Icon(
+                Icons.Default.MoreVert,
+                contentDescription = "Опции",
+                tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+                modifier = Modifier.size(20.dp)
+            )
         }
     }
 }
@@ -149,6 +156,7 @@ fun CommentsBottomSheet(
     postId: Int,
     comments: List<CommentResponse>,
     currentUserId: Int?,
+    postAuthorId: Int? = null,
     commentDrafts: MutableMap<Int, String>,
     repository: su.SkrinVex.ofox.data.Repository,
     onDismiss: () -> Unit,
@@ -159,17 +167,42 @@ fun CommentsBottomSheet(
     var commentText by remember { mutableStateOf(commentDrafts[postId] ?: "") }
     var selectedCommentId by remember { mutableStateOf<Int?>(null) }
     var commentIdToDelete by remember { mutableStateOf<Int?>(null) }
+    var commentIdToReport by remember { mutableStateOf<Int?>(null) }
     var showDeleteDialog by remember { mutableStateOf(false) }
+    var showReportDialog by remember { mutableStateOf(false) }
+    var reportReason by remember { mutableStateOf("") }
     var showRules by remember { mutableStateOf(false) }
     var replyTo by remember { mutableStateOf<CommentResponse?>(null) }
+    var localPinnedId by remember { mutableStateOf(comments.find { it.is_pinned }?.id) }
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val listState = rememberLazyListState()
     val scope = rememberCoroutineScope()
+    val context = androidx.compose.ui.platform.LocalContext.current
     var highlightedCommentId by remember { mutableStateOf<Int?>(null) }
+    val expandedReplies = remember { mutableStateOf(setOf<Int>()) }
 
     LaunchedEffect(commentText) {
         commentDrafts[postId] = commentText
     }
+
+    // Строим дерево: топ-уровень + ответы
+    // Все ответы в треде показываем под корневым (плоский список как в TikTok)
+    val topLevel = remember(comments) { comments.filter { it.reply_to_id == null } }
+    // Для каждого ответа находим корневой комментарий (может быть ответ на ответ)
+    val commentById = remember(comments) { comments.associateBy { it.id } }
+    fun rootOf(c: CommentResponse): Int {
+        var cur = c
+        while (cur.reply_to_id != null) {
+            cur = commentById[cur.reply_to_id] ?: break
+        }
+        return cur.id
+    }
+    val repliesMap = remember(comments) {
+        comments.filter { it.reply_to_id != null }.groupBy { rootOf(it) }
+    }
+
+    // Применяем локальный pin
+    fun effectiveComment(c: CommentResponse) = c.copy(is_pinned = c.id == localPinnedId)
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -194,30 +227,22 @@ fun CommentsBottomSheet(
                     fontWeight = FontWeight.Bold
                 )
                 IconButton(onClick = { showRules = true }) {
-                    Icon(
-                        Icons.Default.Info,
-                        contentDescription = "Правила",
-                        tint = MaterialTheme.colorScheme.primary
-                    )
+                    Icon(Icons.Default.Info, contentDescription = "Правила", tint = MaterialTheme.colorScheme.primary)
                 }
             }
 
             Divider()
 
             LazyColumn(
-                modifier = Modifier
-                    .weight(1f)
-                    .padding(horizontal = 16.dp),
+                modifier = Modifier.weight(1f).padding(horizontal = 16.dp),
                 state = listState,
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-                contentPadding = PaddingValues(vertical = 16.dp)
+                verticalArrangement = Arrangement.spacedBy(0.dp),
+                contentPadding = PaddingValues(vertical = 8.dp)
             ) {
                 if (comments.isEmpty()) {
                     item {
                         Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(vertical = 32.dp),
+                            modifier = Modifier.fillMaxWidth().padding(vertical = 32.dp),
                             contentAlignment = Alignment.Center
                         ) {
                             Text(
@@ -228,37 +253,104 @@ fun CommentsBottomSheet(
                         }
                     }
                 } else {
-                    items(comments.size) { index ->
+                    // Закреплённый первым
+                    val pinnedComment = comments.find { it.id == localPinnedId }
+                    if (pinnedComment != null) {
+                        item(key = "pinned_${pinnedComment.id}") {
+                            CommentItem(
+                                comment = effectiveComment(pinnedComment),
+                                currentUserId = currentUserId,
+                                isHighlighted = highlightedCommentId == pinnedComment.id,
+                                onLongPress = { selectedCommentId = pinnedComment.id },
+                                onMenuClick = { selectedCommentId = pinnedComment.id },
+                                onAuthorClick = { if (pinnedComment.author_id != currentUserId) onAuthorClick(pinnedComment.author_id) },
+                                onReply = { replyTo = pinnedComment; commentText = "" }
+                            )
+                            Divider(color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f), modifier = Modifier.padding(bottom = 4.dp))
+                        }
+                    }
+
+                    // Топ-уровень (не ответы), пропускаем закреплённый — он уже вверху
+                    val displayTop = topLevel.filter { it.id != localPinnedId }
+                    items(displayTop.size) { idx ->
+                        val comment = effectiveComment(displayTop[idx])
                         CommentItem(
-                            comment = comments[index],
+                            comment = comment,
                             currentUserId = currentUserId,
-                            isHighlighted = highlightedCommentId == comments[index].id,
-                            onLongPress = { selectedCommentId = comments[index].id },
-                            onMenuClick = { selectedCommentId = comments[index].id },
-                            onAuthorClick = {
-                                if (comments[index].author_id != currentUserId) {
-                                    onAuthorClick(comments[index].author_id)
-                                }
-                            },
-                            onReply = {
-                                replyTo = comments[index]
-                                commentText = ""
-                            }
+                            isHighlighted = highlightedCommentId == comment.id,
+                            onLongPress = { selectedCommentId = comment.id },
+                            onMenuClick = { selectedCommentId = comment.id },
+                            onAuthorClick = { if (comment.author_id != currentUserId) onAuthorClick(comment.author_id) },
+                            onReply = { replyTo = comment; commentText = "" }
                         )
+
+                        // Ответы на этот комментарий (все в треде, плоско)
+                        val replies = repliesMap[comment.id] ?: emptyList()
+                        if (replies.isNotEmpty()) {
+                            val expanded = comment.id in expandedReplies.value
+                            // Кнопка показать/скрыть
+                            Row(
+                                modifier = Modifier
+                                    .padding(start = 44.dp, bottom = 4.dp)
+                                    .clickable {
+                                        expandedReplies.value = if (expanded)
+                                            expandedReplies.value - comment.id
+                                        else
+                                            expandedReplies.value + comment.id
+                                    },
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                Box(modifier = Modifier.width(20.dp).height(1.dp).background(MaterialTheme.colorScheme.primary.copy(alpha = 0.4f)))
+                                Text(
+                                    text = if (expanded) "Скрыть ответы" else "Показать ответы (${replies.size})",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = MaterialTheme.colorScheme.primary,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                            }
+                            if (expanded) {
+                                // Вертикальная линия иерархии (Reddit-стиль)
+                                Row(modifier = Modifier.fillMaxWidth()) {
+                                    Box(
+                                        modifier = Modifier
+                                            .padding(start = 28.dp, end = 8.dp)
+                                            .width(2.dp)
+                                            .fillMaxHeight()
+                                            .background(
+                                                MaterialTheme.colorScheme.primary.copy(alpha = 0.25f),
+                                                RoundedCornerShape(1.dp)
+                                            )
+                                    )
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        replies.forEach { reply ->
+                                            val r = effectiveComment(reply)
+                                            CommentItem(
+                                                comment = r,
+                                                currentUserId = currentUserId,
+                                                isHighlighted = highlightedCommentId == r.id,
+                                                onLongPress = { selectedCommentId = r.id },
+                                                onMenuClick = { selectedCommentId = r.id },
+                                                onAuthorClick = { if (r.author_id != currentUserId) onAuthorClick(r.author_id) },
+                                                onReply = { replyTo = r; commentText = "" }
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
             }
 
             Divider()
 
-            // Плашка "ответ на @имя"
             if (replyTo != null) {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
                         .background(MaterialTheme.colorScheme.surfaceVariant)
                         .clickable {
-                            // Прокрутка к оригинальному комментарию
                             val idx = comments.indexOfFirst { it.id == replyTo!!.id }
                             if (idx != -1) {
                                 scope.launch {
@@ -274,46 +366,28 @@ fun CommentsBottomSheet(
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Box(
-                            modifier = Modifier
-                                .width(3.dp)
-                                .height(32.dp)
-                                .background(MaterialTheme.colorScheme.primary, RoundedCornerShape(2.dp))
-                        )
+                        Box(modifier = Modifier.width(3.dp).height(32.dp).background(MaterialTheme.colorScheme.primary, RoundedCornerShape(2.dp)))
                         Spacer(Modifier.width(10.dp))
                         Column {
+                            Text(replyTo!!.author_name, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.SemiBold)
                             Text(
-                                text = replyTo!!.author_name,
-                                style = MaterialTheme.typography.labelMedium,
-                                color = MaterialTheme.colorScheme.primary,
-                                fontWeight = FontWeight.SemiBold
-                            )
-                            Text(
-                                text = replyTo!!.content.take(60) + if (replyTo!!.content.length > 60) "…" else "",
+                                replyTo!!.content.take(60) + if (replyTo!!.content.length > 60) "…" else "",
                                 style = MaterialTheme.typography.labelSmall,
                                 color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
                             )
                         }
                     }
                     IconButton(onClick = { replyTo = null }, modifier = Modifier.size(24.dp)) {
-                        Icon(Icons.Default.Close, contentDescription = "Отмена", modifier = Modifier.size(16.dp),
-                            tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f))
+                        Icon(Icons.Default.Close, contentDescription = "Отмена", modifier = Modifier.size(16.dp), tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f))
                     }
                 }
             }
 
             Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .imePadding()
-                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                modifier = Modifier.fillMaxWidth().imePadding().padding(horizontal = 16.dp, vertical = 8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Surface(
-                    modifier = Modifier.weight(1f),
-                    shape = MaterialTheme.shapes.medium,
-                    color = MaterialTheme.colorScheme.surfaceVariant
-                ) {
+                Surface(modifier = Modifier.weight(1f), shape = MaterialTheme.shapes.medium, color = MaterialTheme.colorScheme.surfaceVariant) {
                     TextField(
                         value = commentText,
                         onValueChange = { if (it.length <= 450) commentText = it },
@@ -334,14 +408,15 @@ fun CommentsBottomSheet(
                         maxLines = 5
                     )
                 }
-
                 Spacer(modifier = Modifier.width(8.dp))
-
                 IconButton(
                     onClick = {
                         if (commentText.isNotBlank()) {
-                            android.util.Log.d("Comments", "send: text=$commentText replyTo=${replyTo?.id} replyToName=${replyTo?.author_name}")
                             onSendComment(commentText, replyTo?.id)
+                            // Авто-раскрываем ответы если отвечаем
+                            replyTo?.id?.let { parentId ->
+                                expandedReplies.value = expandedReplies.value + parentId
+                            }
                             commentText = ""
                             replyTo = null
                             commentDrafts.remove(postId)
@@ -353,10 +428,7 @@ fun CommentsBottomSheet(
                     Icon(
                         Icons.Default.Send,
                         contentDescription = "Отправить",
-                        tint = if (commentText.isNotBlank())
-                            MaterialTheme.colorScheme.primary
-                        else
-                            MaterialTheme.colorScheme.onSurface.copy(alpha = 0.3f)
+                        tint = if (commentText.isNotBlank()) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.3f)
                     )
                 }
             }
@@ -365,17 +437,14 @@ fun CommentsBottomSheet(
                 Text(
                     text = "${commentText.length}/450",
                     style = MaterialTheme.typography.bodySmall,
-                    color = if (commentText.length > 400)
-                        MaterialTheme.colorScheme.error
-                    else
-                        MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+                    color = if (commentText.length > 400) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
                     modifier = Modifier.padding(start = 16.dp, bottom = 8.dp)
                 )
             }
         }
     }
 
-    if (selectedCommentId != null && !showDeleteDialog) {
+    if (selectedCommentId != null && !showDeleteDialog && !showReportDialog) {
         val selectedComment = comments.find { it.id == selectedCommentId }
         CommentOptionsBottomSheet(
             onDismiss = { selectedCommentId = null },
@@ -384,76 +453,55 @@ fun CommentsBottomSheet(
                 selectedCommentId = null
                 showDeleteDialog = true
             },
+            onPin = if (postAuthorId == currentUserId) {
+                {
+                    val cid = selectedCommentId!!
+                    scope.launch {
+                        repository.pinComment(postId, cid)
+                        localPinnedId = if (localPinnedId == cid) null else cid
+                    }
+                    selectedCommentId = null
+                }
+            } else null,
+            onReport = if (selectedComment?.author_id != currentUserId) {
+                {
+                    commentIdToReport = selectedCommentId
+                    selectedCommentId = null
+                    reportReason = ""
+                    showReportDialog = true
+                }
+            } else null,
+            isPinned = selectedComment?.id == localPinnedId,
             content = selectedComment?.content ?: "",
-            canDelete = selectedComment?.author_id == currentUserId
+            canDelete = selectedComment?.author_id == currentUserId || postAuthorId == currentUserId
         )
     }
 
     if (showDeleteDialog) {
-        Dialog(onDismissRequest = { 
-            showDeleteDialog = false
-            commentIdToDelete = null
-        }) {
+        Dialog(onDismissRequest = { showDeleteDialog = false; commentIdToDelete = null }) {
             Card(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(16.dp),
+                modifier = Modifier.fillMaxWidth().padding(16.dp),
                 shape = MaterialTheme.shapes.medium,
-                colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.surface
-                )
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
             ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(24.dp)
-                ) {
-                    Text(
-                        text = "Удалить комментарий?",
-                        style = MaterialTheme.typography.headlineSmall,
-                        fontWeight = FontWeight.Bold
-                    )
-                    
+                Column(modifier = Modifier.fillMaxWidth().padding(24.dp)) {
+                    Text("Удалить комментарий?", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
                     Spacer(modifier = Modifier.height(16.dp))
-                    
-                    Text(
-                        text = "Это действие нельзя отменить",
-                        style = MaterialTheme.typography.bodyLarge,
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f)
-                    )
-                    
+                    Text("Это действие нельзя отменить", style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f))
                     Spacer(modifier = Modifier.height(24.dp))
-                    
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(12.dp)
-                    ) {
-                        OutlinedButton(
-                            onClick = { showDeleteDialog = false },
-                            modifier = Modifier.weight(1f),
-                            shape = MaterialTheme.shapes.medium
-                        ) {
-                            Text("Отмена")
-                        }
-                        
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        OutlinedButton(onClick = { showDeleteDialog = false }, modifier = Modifier.weight(1f), shape = MaterialTheme.shapes.medium) { Text("Отмена") }
                         Button(
                             onClick = {
-                                android.util.Log.d("CommentDelete", "Delete button clicked, commentId: $commentIdToDelete")
-                                commentIdToDelete?.let { 
-                                    android.util.Log.d("CommentDelete", "Calling onDeleteComment with id: $it")
-                                    onDeleteComment(it) 
-                                }
+                                commentIdToDelete?.let { onDeleteComment(it) }
+                                if (commentIdToDelete == localPinnedId) localPinnedId = null
                                 showDeleteDialog = false
                                 commentIdToDelete = null
                             },
                             modifier = Modifier.weight(1f),
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = MaterialTheme.colorScheme.primary
-                            ),
+                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
                             shape = MaterialTheme.shapes.medium
-                        ) {
-                            Text("Удалить")
-                        }
+                        ) { Text("Удалить") }
                     }
                 }
             }
@@ -461,10 +509,57 @@ fun CommentsBottomSheet(
     }
 
     if (showRules) {
-        CommentRulesBottomSheet(
-            repository = repository,
-            onDismiss = { showRules = false }
-        )
+        CommentRulesBottomSheet(repository = repository, onDismiss = { showRules = false })
+    }
+
+    if (showReportDialog) {
+        val reportReasons = listOf("Спам", "Оскорбление", "Угрозы", "Нарушение правил", "Другое")
+        Dialog(onDismissRequest = { showReportDialog = false; commentIdToReport = null }) {
+            Card(shape = MaterialTheme.shapes.extraLarge, colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
+                Column(modifier = Modifier.padding(24.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Box(modifier = Modifier.size(44.dp).clip(CircleShape).background(MaterialTheme.colorScheme.error.copy(alpha = 0.12f)), contentAlignment = Alignment.Center) {
+                            Icon(Icons.Default.Report, null, tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(24.dp))
+                        }
+                        Spacer(Modifier.width(12.dp))
+                        Text("Пожаловаться", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                    }
+                    Spacer(Modifier.height(16.dp))
+                    reportReasons.forEach { reason ->
+                        Row(
+                            modifier = Modifier.fillMaxWidth().clip(MaterialTheme.shapes.medium)
+                                .background(if (reportReason == reason) MaterialTheme.colorScheme.primary.copy(alpha = 0.1f) else Color.Transparent)
+                                .clickable { reportReason = reason }
+                                .padding(vertical = 10.dp, horizontal = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            RadioButton(selected = reportReason == reason, onClick = { reportReason = reason },
+                                colors = RadioButtonDefaults.colors(selectedColor = MaterialTheme.colorScheme.primary))
+                            Spacer(Modifier.width(8.dp))
+                            Text(reason, style = MaterialTheme.typography.bodyLarge)
+                        }
+                    }
+                    Spacer(Modifier.height(20.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedButton(onClick = { showReportDialog = false; commentIdToReport = null }, modifier = Modifier.weight(1f), shape = MaterialTheme.shapes.medium) { Text("Отмена") }
+                        Button(
+                            onClick = {
+                                commentIdToReport?.let { cid ->
+                                    scope.launch {
+                                        repository.reportComment(cid, reportReason)
+                                        android.widget.Toast.makeText(context, "Жалоба отправлена. Спасибо!", android.widget.Toast.LENGTH_SHORT).show()
+                                    }
+                                }
+                                showReportDialog = false
+                                commentIdToReport = null
+                            },
+                            enabled = reportReason.isNotBlank(), modifier = Modifier.weight(1f), shape = MaterialTheme.shapes.medium,
+                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                        ) { Text("Отправить") }
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -473,32 +568,24 @@ fun CommentsBottomSheet(
 fun CommentOptionsBottomSheet(
     onDismiss: () -> Unit,
     onDelete: () -> Unit,
+    onPin: (() -> Unit)? = null,
+    onReport: (() -> Unit)? = null,
+    isPinned: Boolean = false,
     content: String = "",
     canDelete: Boolean = true
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
-    ModalBottomSheet(
-        onDismissRequest = onDismiss,
-        containerColor = MaterialTheme.colorScheme.surface
-    ) {
+    ModalBottomSheet(onDismissRequest = onDismiss, containerColor = MaterialTheme.colorScheme.surface) {
         Column(modifier = Modifier.padding(16.dp)) {
-            Text(
-                text = "Действия с комментарием",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold,
-                modifier = Modifier.padding(bottom = 16.dp)
-            )
+            Text("Действия с комментарием", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, modifier = Modifier.padding(bottom = 16.dp))
 
             Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable {
-                        val cm = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
-                        cm.setPrimaryClip(android.content.ClipData.newPlainText("comment", content))
-                        android.widget.Toast.makeText(context, "Текст скопирован", android.widget.Toast.LENGTH_SHORT).show()
-                        onDismiss()
-                    }
-                    .padding(vertical = 12.dp),
+                modifier = Modifier.fillMaxWidth().clickable {
+                    val cm = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                    cm.setPrimaryClip(android.content.ClipData.newPlainText("comment", content))
+                    android.widget.Toast.makeText(context, "Текст скопирован", android.widget.Toast.LENGTH_SHORT).show()
+                    onDismiss()
+                }.padding(vertical = 12.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Icon(Icons.Default.ContentCopy, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
@@ -506,12 +593,31 @@ fun CommentOptionsBottomSheet(
                 Text("Копировать текст", style = MaterialTheme.typography.bodyMedium)
             }
 
+            if (onPin != null) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().clickable { onPin(); onDismiss() }.padding(vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(Icons.Default.PushPin, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                    Spacer(modifier = Modifier.width(16.dp))
+                    Text(if (isPinned) "Открепить" else "Закрепить", style = MaterialTheme.typography.bodyMedium)
+                }
+            }
+
+            if (onReport != null) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().clickable { onReport(); onDismiss() }.padding(vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(Icons.Default.Report, contentDescription = null, tint = MaterialTheme.colorScheme.error)
+                    Spacer(modifier = Modifier.width(16.dp))
+                    Text("Пожаловаться", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.error)
+                }
+            }
+
             if (canDelete) {
                 Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable { onDelete(); onDismiss() }
-                        .padding(vertical = 12.dp),
+                    modifier = Modifier.fillMaxWidth().clickable { onDelete(); onDismiss() }.padding(vertical = 12.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Icon(Icons.Default.Delete, contentDescription = null, tint = MaterialTheme.colorScheme.error)
@@ -533,33 +639,16 @@ fun CommentRulesBottomSheet(
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     var rulesContent by remember { mutableStateOf("") }
-    val scope = rememberCoroutineScope()
 
-    LaunchedEffect(Unit) {
-        rulesContent = repository.getCommentRules()
-    }
+    LaunchedEffect(Unit) { rulesContent = repository.getCommentRules() }
 
-    ModalBottomSheet(
-        onDismissRequest = onDismiss,
-        sheetState = sheetState,
-        containerColor = MaterialTheme.colorScheme.surface
-    ) {
+    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState, containerColor = MaterialTheme.colorScheme.surface) {
         Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = 24.dp)
-                .padding(bottom = 32.dp)
+            modifier = Modifier.fillMaxWidth().verticalScroll(rememberScrollState())
+                .padding(horizontal = 24.dp).padding(bottom = 32.dp)
         ) {
             if (rulesContent.isEmpty()) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(32.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    CircularProgressIndicator()
-                }
+                Box(Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
             } else {
                 MarkdownText(rulesContent)
             }
@@ -569,167 +658,42 @@ fun CommentRulesBottomSheet(
 
 @Composable
 fun MarkdownText(markdown: String) {
-    val lines = markdown.split("\n")
-    var i = 0
-    
-    while (i < lines.size) {
-        val line = lines[i]
-        val trimmed = line.trim()
-        
+    markdown.split("\n").forEach { line ->
+        val t = line.trim()
         when {
-            // Заголовки - проверяем от большего к меньшему
-            trimmed.startsWith("### ") -> {
-                Text(
-                    text = trimmed.removePrefix("### "),
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.padding(top = 16.dp, bottom = 6.dp)
-                )
+            t.startsWith("### ") -> Text(t.removePrefix("### "), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(top = 16.dp, bottom = 6.dp))
+            t.startsWith("## ")  -> Text(t.removePrefix("## "),  style = MaterialTheme.typography.titleLarge,  fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(top = 20.dp, bottom = 8.dp))
+            t.startsWith("# ")   -> Text(t.removePrefix("# "),   style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(top = 16.dp, bottom = 12.dp))
+            t.matches(Regex("^-{3,}$")) || t.matches(Regex("^\\*{3,}$")) -> Divider(modifier = Modifier.padding(vertical = 12.dp), color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.2f))
+            t.startsWith("- ") || t.startsWith("* ") -> Row(modifier = Modifier.padding(start = 8.dp, top = 4.dp, bottom = 4.dp)) {
+                Text("• ", style = MaterialTheme.typography.bodyLarge)
+                FormattedText(t.removePrefix("- ").removePrefix("* "), style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurface)
             }
-            trimmed.startsWith("## ") -> {
-                Text(
-                    text = trimmed.removePrefix("## "),
-                    style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.padding(top = 20.dp, bottom = 8.dp)
-                )
+            t.matches(Regex("^\\d+\\.\\s+.*")) -> Row(modifier = Modifier.padding(start = 8.dp, top = 4.dp, bottom = 4.dp)) {
+                Text("${t.substringBefore(".")}. ", style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Bold)
+                FormattedText(t.substringAfter(". ").trim(), style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurface)
             }
-            trimmed.startsWith("# ") -> {
-                Text(
-                    text = trimmed.removePrefix("# "),
-                    style = MaterialTheme.typography.headlineMedium,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.padding(top = 16.dp, bottom = 12.dp)
-                )
-            }
-            // Горизонтальная линия
-            trimmed.matches(Regex("^-{3,}$")) || trimmed.matches(Regex("^\\*{3,}$")) -> {
-                Divider(
-                    modifier = Modifier.padding(vertical = 12.dp),
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.2f)
-                )
-            }
-            // Списки
-            trimmed.startsWith("- ") || trimmed.startsWith("* ") -> {
-                Row(
-                    modifier = Modifier.padding(start = 8.dp, top = 4.dp, bottom = 4.dp)
-                ) {
-                    Text(
-                        text = "• ",
-                        style = MaterialTheme.typography.bodyLarge,
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
-                    FormattedText(
-                        text = trimmed.removePrefix("- ").removePrefix("* "),
-                        style = MaterialTheme.typography.bodyLarge,
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
-                }
-            }
-            // Нумерованные списки
-            trimmed.matches(Regex("^\\d+\\.\\s+.*")) -> {
-                val number = trimmed.substringBefore(".").trim()
-                val text = trimmed.substringAfter(". ").trim()
-                Row(
-                    modifier = Modifier.padding(start = 8.dp, top = 4.dp, bottom = 4.dp)
-                ) {
-                    Text(
-                        text = "$number. ",
-                        style = MaterialTheme.typography.bodyLarge,
-                        color = MaterialTheme.colorScheme.onSurface,
-                        fontWeight = FontWeight.Bold
-                    )
-                    FormattedText(
-                        text = text,
-                        style = MaterialTheme.typography.bodyLarge,
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
-                }
-            }
-            // Обычный текст
-            trimmed.isNotBlank() -> {
-                FormattedText(
-                    text = trimmed,
-                    style = MaterialTheme.typography.bodyLarge,
-                    color = MaterialTheme.colorScheme.onSurface,
-                    modifier = Modifier.padding(vertical = 4.dp)
-                )
-            }
-            // Пустая строка
-            else -> {
-                Spacer(modifier = Modifier.height(8.dp))
-            }
+            t.isNotBlank() -> FormattedText(t, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurface, modifier = Modifier.padding(vertical = 4.dp))
+            else -> Spacer(modifier = Modifier.height(8.dp))
         }
-        i++
     }
 }
 
 @Composable
-fun FormattedText(
-    text: String,
-    style: androidx.compose.ui.text.TextStyle,
-    color: androidx.compose.ui.graphics.Color,
-    modifier: Modifier = Modifier
-) {
-    val annotatedString = androidx.compose.ui.text.buildAnnotatedString {
-        var currentText = text
-        var currentIndex = 0
-        
-        // Паттерны для форматирования
-        val patterns = listOf(
-            Regex("""\*\*(.+?)\*\*""") to FontWeight.Bold,  // **жирный**
-            Regex("""__(.+?)__""") to FontWeight.Bold,      // __жирный__
-        )
-        
-        val allMatches = mutableListOf<Triple<Int, Int, FontWeight>>()
-        
-        // Находим все совпадения
-        patterns.forEach { (regex, weight) ->
-            regex.findAll(text).forEach { match ->
-                allMatches.add(Triple(match.range.first, match.range.last + 1, weight))
-            }
-        }
-        
-        // Сортируем по позиции
-        allMatches.sortBy { it.first }
-        
-        if (allMatches.isEmpty()) {
-            append(text)
-        } else {
-            var lastIndex = 0
-            allMatches.forEach { (start, end, weight) ->
-                // Добавляем текст до форматирования
-                if (start > lastIndex) {
-                    append(text.substring(lastIndex, start))
-                }
-                
-                // Извлекаем текст внутри маркеров
-                val markerLength = if (text.substring(start, minOf(start + 2, text.length)) == "**" || 
-                                       text.substring(start, minOf(start + 2, text.length)) == "__") 2 else 1
-                val innerText = text.substring(start + markerLength, end - markerLength)
-                
-                // Добавляем форматированный текст
-                pushStyle(androidx.compose.ui.text.SpanStyle(fontWeight = weight))
-                append(innerText)
+fun FormattedText(text: String, style: androidx.compose.ui.text.TextStyle, color: androidx.compose.ui.graphics.Color, modifier: Modifier = Modifier) {
+    val annotated = remember(text) {
+        androidx.compose.ui.text.buildAnnotatedString {
+            val regex = Regex("""\*\*(.+?)\*\*|__(.+?)__""")
+            var last = 0
+            regex.findAll(text).forEach { m ->
+                if (m.range.first > last) append(text.substring(last, m.range.first))
+                pushStyle(androidx.compose.ui.text.SpanStyle(fontWeight = FontWeight.Bold))
+                append(m.groupValues[1].ifEmpty { m.groupValues[2] })
                 pop()
-                
-                lastIndex = end
+                last = m.range.last + 1
             }
-            
-            // Добавляем оставшийся текст
-            if (lastIndex < text.length) {
-                append(text.substring(lastIndex))
-            }
+            if (last < text.length) append(text.substring(last))
         }
     }
-    
-    Text(
-        text = annotatedString,
-        style = style,
-        color = color,
-        modifier = modifier
-    )
+    Text(text = annotated, style = style, color = color, modifier = modifier)
 }

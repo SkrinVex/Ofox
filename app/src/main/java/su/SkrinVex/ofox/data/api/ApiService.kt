@@ -129,8 +129,14 @@ interface ApiService {
     @DELETE("posts/comments/{commentId}")
     suspend fun deleteComment(@Path("commentId") commentId: Int)
 
+    @POST("posts/{postId}/comments/{commentId}/pin")
+    suspend fun pinComment(@Path("postId") postId: Int, @Path("commentId") commentId: Int): SimpleMessageResponse
+
     @POST("posts/{postId}/report")
     suspend fun reportPost(@Path("postId") postId: Int, @Body request: ReportRequest): SimpleMessageResponse
+
+    @POST("posts/comments/{commentId}/report")
+    suspend fun reportComment(@Path("commentId") commentId: Int, @Body request: ReportRequest): SimpleMessageResponse
 
     @Multipart
     @POST("posts/{postId}/images")
@@ -158,7 +164,7 @@ interface ApiService {
     suspend fun markWarningDelivered(@Path("id") warningId: Int): SimpleMessageResponse
     
     @GET("moderation/bans/{userId}")
-    suspend fun getBan(@Path("userId") userId: Int): BanResponse?
+    suspend fun getBan(@Path("userId") userId: Int): retrofit2.Response<BanResponse?>
     
     @GET("moderation/deleted-content")
     suspend fun getDeletedContent(): List<DeletedContentResponse>

@@ -800,6 +800,7 @@ fun HomeScreen(
             postId = selectedPostId,
             comments = comments,
             currentUserId = currentUser?.id,
+            postAuthorId = posts.find { it.id == selectedPostId }?.authorId,
             commentDrafts = commentDrafts,
             repository = repository,
             onDismiss = {
