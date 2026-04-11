@@ -1,7 +1,10 @@
 package su.SkrinVex.ofox.screens
 
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -13,6 +16,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.EmojiEmotions
 import androidx.compose.material.icons.filled.Explore
 import androidx.compose.material3.*
@@ -22,10 +27,11 @@ import su.SkrinVex.ofox.utils.ActiveChatTracker
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import su.SkrinVex.ofox.components.StickerPicker
 import su.SkrinVex.ofox.data.Repository
@@ -67,6 +73,8 @@ fun ChatDetailScreen(repository: Repository, chatId: Int, onBack: () -> Unit, on
     var lastTypingSent by remember { mutableStateOf(0L) }
     var isLoadingMore by remember { mutableStateOf(false) }
     var hasMore by remember { mutableStateOf(true) }
+    var replyTo by remember { mutableStateOf<su.SkrinVex.ofox.data.Message?>(null) }
+    var selectedMessage by remember { mutableStateOf<su.SkrinVex.ofox.data.Message?>(null) }
 
     fun loadMessages(before: Int? = null) {
         scope.launch {
@@ -118,12 +126,24 @@ fun ChatDetailScreen(repository: Repository, chatId: Int, onBack: () -> Unit, on
         }
     }
 
-    // Скролл вниз при новом сообщении (только если уже внизу)
+    // Скролл вниз при новом сообщении — только если пользователь уже внизу
+    val isAtBottom by remember { derivedStateOf {
+        val last = listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
+        last >= messages.size - 2
+    }}
+
     LaunchedEffect(messages.size) {
-        val lastVisible = listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index
-        val total = messages.size
-        if (total > 0 && (lastVisible == null || lastVisible >= total - 3)) {
-            listState.animateScrollToItem(total - 1)
+        if (isAtBottom && messages.isNotEmpty()) {
+            listState.animateScrollToItem(messages.size - 1)
+        }
+    }
+
+    // Скролл вниз при открытии клавиатуры если был внизу
+    val imeVisible = androidx.compose.foundation.layout.WindowInsets.ime.getBottom(LocalDensity.current) > 0
+    LaunchedEffect(imeVisible) {
+        if (imeVisible && isAtBottom && messages.isNotEmpty()) {
+            kotlinx.coroutines.delay(50)
+            listState.animateScrollToItem(messages.size - 1)
         }
     }
     
@@ -142,11 +162,13 @@ fun ChatDetailScreen(repository: Repository, chatId: Int, onBack: () -> Unit, on
                 is su.SkrinVex.ofox.data.api.WSEvent.NewMessage -> {
                     if (event.chatId == chatId) {
                         val newMessage = su.SkrinVex.ofox.data.Message(
-                            id = 0,
-                            chatId = chatId,
-                            text = event.message,
-                            timestamp = event.timestamp,
-                            isFromMe = false
+                            id = 0, chatId = chatId, text = event.message,
+                            timestamp = event.timestamp, isFromMe = false,
+                            senderId = event.senderId, senderName = event.senderName,
+                            senderAvatarUrl = event.senderAvatarUrl ?: "",
+                            messageType = event.messageType,
+                            replyToId = event.replyToId, replyToText = event.replyToText,
+                            replyToSenderName = event.replyToSenderName
                         )
                         if (!messages.any { it.text == event.message && it.timestamp == event.timestamp }) {
                             messages.add(newMessage)
@@ -156,11 +178,13 @@ fun ChatDetailScreen(repository: Repository, chatId: Int, onBack: () -> Unit, on
                 is su.SkrinVex.ofox.data.api.WSEvent.DiscoveryMessage -> {
                     if (event.chatId == chatId) {
                         val newMessage = su.SkrinVex.ofox.data.Message(
-                            id = 0,
-                            chatId = chatId,
-                            text = event.message,
-                            timestamp = event.timestamp,
-                            isFromMe = false
+                            id = 0, chatId = chatId, text = event.message,
+                            timestamp = event.timestamp, isFromMe = false,
+                            senderId = event.senderId, senderName = event.senderName,
+                            senderAvatarUrl = event.senderAvatarUrl ?: "",
+                            messageType = event.messageType,
+                            replyToId = event.replyToId, replyToText = event.replyToText,
+                            replyToSenderName = event.replyToSenderName
                         )
                         if (!messages.any { it.text == event.message && it.timestamp == event.timestamp }) {
                             messages.add(newMessage)
@@ -295,31 +319,80 @@ fun ChatDetailScreen(repository: Repository, chatId: Int, onBack: () -> Unit, on
                 }}
             }
             items(messages, key = { it.id.takeIf { id -> id != 0 } ?: it.timestamp }) { message ->
-                MessageBubble(
-                    message = message,
-                    chatName = chat?.name ?: "",
-                    stickerPackMap = stickerPackMap,
-                    onStickerClick = { stickerUrl ->
-                        val known = stickerPackMap[stickerUrl]
-                        if (known != null) {
-                            stickerInfoPackId = known.first
-                            stickerInfoPackName = known.second
-                        } else {
-                            scope.launch {
-                                val pack = repository.getPackByStickerUrl(stickerUrl)
-                                if (pack != null) {
-                                    stickerInfoPackId = pack.id
-                                    stickerInfoPackName = pack.name
-                                    stickerPackMap = stickerPackMap + (stickerUrl to Pair(pack.id, pack.name))
+                SwipeToReply(
+                    isFromMe = message.isFromMe,
+                    onReply = { replyTo = message },
+                    onLongPress = { selectedMessage = message }
+                ) {
+                    MessageBubble(
+                        message = message,
+                        chatName = chat?.name ?: "",
+                        stickerPackMap = stickerPackMap,
+                        onStickerClick = { stickerUrl ->
+                            val known = stickerPackMap[stickerUrl]
+                            if (known != null) {
+                                stickerInfoPackId = known.first
+                                stickerInfoPackName = known.second
+                            } else {
+                                scope.launch {
+                                    val pack = repository.getPackByStickerUrl(stickerUrl)
+                                    if (pack != null) {
+                                        stickerInfoPackId = pack.id
+                                        stickerInfoPackName = pack.name
+                                        stickerPackMap = stickerPackMap + (stickerUrl to Pair(pack.id, pack.name))
+                                    }
                                 }
                             }
+                        },
+                        onSenderClick = if ((chat?.discoveryId ?: 0) != 0) onNavigateToProfile else null,
+                        onReplyClick = { replyToId ->
+                            val idx = messages.indexOfFirst { it.id == replyToId }
+                            if (idx != -1) scope.launch { listState.animateScrollToItem(idx) }
                         }
-                    },
-                    onSenderClick = if ((chat?.discoveryId ?: 0) != 0) onNavigateToProfile else null
-                )
+                    )
+                }
             }
         }
         
+        // Плашка ответа
+        androidx.compose.animation.AnimatedVisibility(
+            visible = replyTo != null,
+            enter = androidx.compose.animation.slideInVertically { it } + androidx.compose.animation.fadeIn(),
+            exit = androidx.compose.animation.slideOutVertically { it } + androidx.compose.animation.fadeOut()
+        ) {
+            replyTo?.let { reply ->
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(MaterialTheme.colorScheme.surface)
+                        .padding(start = 16.dp, end = 8.dp, top = 8.dp, bottom = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Box(modifier = Modifier.width(3.dp).height(40.dp)
+                        .clip(RoundedCornerShape(2.dp))
+                        .background(MaterialTheme.colorScheme.primary))
+                    Spacer(Modifier.width(10.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            reply.senderName.ifBlank { "Вы" },
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.primary,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Text(
+                            if (reply.messageType == "sticker") "🎭 Стикер" else reply.text.take(80),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.55f),
+                            maxLines = 1
+                        )
+                    }
+                    IconButton(onClick = { replyTo = null }) {
+                        Icon(Icons.Default.Close, null, tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f), modifier = Modifier.size(18.dp))
+                    }
+                }
+            }
+        }
+
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -327,7 +400,6 @@ fun ChatDetailScreen(repository: Repository, chatId: Int, onBack: () -> Unit, on
                 .padding(horizontal = 16.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // Кнопка стикеров
             IconButton(onClick = { showStickerPicker = true }) {
                 Icon(
                     Icons.Default.EmojiEmotions,
@@ -382,18 +454,20 @@ fun ChatDetailScreen(repository: Repository, chatId: Int, onBack: () -> Unit, on
                     onClick = {
                         if (messageText.isNotBlank()) {
                             val text = messageText
+                            val replyId = replyTo?.id?.takeIf { it != 0 }
+                            val replyText = replyTo?.text
+                            val replySenderName = replyTo?.senderName
                             messageText = ""
+                            replyTo = null
                             val tempMessage = su.SkrinVex.ofox.data.Message(
-                                id = 0,
-                                chatId = chatId,
-                                text = text,
-                                timestamp = System.currentTimeMillis(),
-                                isFromMe = true
+                                id = 0, chatId = chatId, text = text,
+                                timestamp = System.currentTimeMillis(), isFromMe = true,
+                                replyToId = replyId, replyToText = replyText, replyToSenderName = replySenderName
                             )
                             messages.add(tempMessage)
                             scope.launch {
                                 listState.scrollToItem(messages.size - 1)
-                                repository.sendMessage(chatId, text)
+                                repository.sendMessage(chatId, text, replyId)
                             }
                         }
                     },
@@ -475,8 +549,48 @@ fun ChatDetailScreen(repository: Repository, chatId: Int, onBack: () -> Unit, on
         }
     }
 
-    if (showStickerPicker) {
-        StickerPicker(
+    // Меню сообщения (долгое нажатие)
+    if (selectedMessage != null) {
+        val msg = selectedMessage!!
+        val ctx = androidx.compose.ui.platform.LocalContext.current
+        androidx.compose.material3.ModalBottomSheet(
+            onDismissRequest = { selectedMessage = null },
+            containerColor = MaterialTheme.colorScheme.surface
+        ) {
+            Column(modifier = Modifier.padding(16.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth()
+                        .clip(MaterialTheme.shapes.medium)
+                        .clickable { replyTo = msg; selectedMessage = null }
+                        .padding(vertical = 14.dp, horizontal = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    Icon(Icons.AutoMirrored.Filled.ArrowBack, null, tint = MaterialTheme.colorScheme.primary)
+                    Text("Ответить", style = MaterialTheme.typography.bodyLarge)
+                }
+                Row(
+                    modifier = Modifier.fillMaxWidth()
+                        .clip(MaterialTheme.shapes.medium)
+                        .clickable {
+                            val cm = ctx.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                            cm.setPrimaryClip(android.content.ClipData.newPlainText("msg", msg.text))
+                            android.widget.Toast.makeText(ctx, "Скопировано", android.widget.Toast.LENGTH_SHORT).show()
+                            selectedMessage = null
+                        }
+                        .padding(vertical = 14.dp, horizontal = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    Icon(Icons.Default.ContentCopy, null, tint = MaterialTheme.colorScheme.onSurface)
+                    Text("Копировать", style = MaterialTheme.typography.bodyLarge)
+                }
+                Spacer(Modifier.height(8.dp))
+            }
+        }
+    }
+
+    if (showStickerPicker) {        StickerPicker(
             repository = repository,
             initialPackId = stickerPickerInitialPackId,
             onStickerSelected = { sticker ->
@@ -498,13 +612,82 @@ fun ChatDetailScreen(repository: Repository, chatId: Int, onBack: () -> Unit, on
     }
 }
 
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
+@Composable
+fun SwipeToReply(
+    isFromMe: Boolean,
+    onReply: () -> Unit,
+    onLongPress: () -> Unit,
+    content: @Composable () -> Unit
+) {
+    val offsetX = remember { androidx.compose.animation.core.Animatable(0f) }
+    val scope = rememberCoroutineScope()
+    var triggered by remember { mutableStateOf(false) }
+    val threshold = 72f
+
+    Box(modifier = Modifier.fillMaxWidth()) {
+        val progress = (kotlin.math.abs(offsetX.value) / threshold).coerceIn(0f, 1f)
+        if (progress > 0.1f) {
+            Box(
+                modifier = Modifier
+                    .align(if (isFromMe) Alignment.CenterEnd else Alignment.CenterStart)
+                    .padding(horizontal = 12.dp)
+                    .size((28 * progress).dp)
+                    .clip(CircleShape)
+                    .background(MaterialTheme.colorScheme.primary.copy(alpha = progress * 0.2f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    Icons.AutoMirrored.Filled.ArrowBack,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary.copy(alpha = progress),
+                    modifier = Modifier.size((16 * progress).dp)
+                )
+            }
+        }
+        Box(
+            modifier = Modifier
+                .offset(x = offsetX.value.dp)
+                .pointerInput(Unit) {
+                    detectHorizontalDragGestures(
+                        onDragEnd = {
+                            val shouldTrigger = if (isFromMe) offsetX.value < -threshold else offsetX.value > threshold
+                            if (shouldTrigger && !triggered) {
+                                triggered = true
+                                onReply()
+                            }
+                            scope.launch {
+                                offsetX.animateTo(0f, androidx.compose.animation.core.spring(stiffness = androidx.compose.animation.core.Spring.StiffnessMedium))
+                                triggered = false
+                            }
+                        },
+                        onHorizontalDrag = { change: androidx.compose.ui.input.pointer.PointerInputChange, delta: Float ->
+                            change.consume()
+                            scope.launch {
+                                val newVal = if (isFromMe)
+                                    (offsetX.value + delta).coerceIn(-threshold * 1.2f, 0f)
+                                else
+                                    (offsetX.value + delta).coerceIn(0f, threshold * 1.2f)
+                                offsetX.snapTo(newVal)
+                            }
+                        }
+                    )
+                }
+                .combinedClickable(onClick = {}, onLongClick = onLongPress)
+        ) {
+            content()
+        }
+    }
+}
+
 @Composable
 fun MessageBubble(
     message: su.SkrinVex.ofox.data.Message,
     chatName: String = "",
     stickerPackMap: Map<String, Pair<Int?, String>> = emptyMap(),
     onStickerClick: (stickerUrl: String) -> Unit = {},
-    onSenderClick: ((Int) -> Unit)? = null
+    onSenderClick: ((Int) -> Unit)? = null,
+    onReplyClick: ((Int) -> Unit)? = null
 ) {
     Column(
         modifier = Modifier.fillMaxWidth(),
@@ -532,9 +715,8 @@ fun MessageBubble(
                 )
             }
         }
-        
+
         if (message.messageType == "sticker") {
-            val packInfo = stickerPackMap[message.text]
             Column(
                 modifier = Modifier
                     .padding(start = if (message.isFromMe) 0.dp else 40.dp)
@@ -583,8 +765,49 @@ fun MessageBubble(
                 .padding(start = if (message.isFromMe) 0.dp else 40.dp)
         ) {
             Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
+                // Цитата
+                if (message.replyToText != null || message.replyToSenderName != null) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(
+                                if (message.isFromMe) MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.15f)
+                                else MaterialTheme.colorScheme.primary.copy(alpha = 0.08f)
+                            )
+                            .then(if (onReplyClick != null && message.replyToId != null)
+                                Modifier.clickable { onReplyClick(message.replyToId) }
+                            else Modifier)
+                            .padding(horizontal = 8.dp, vertical = 6.dp),
+                    ) {
+                        Box(modifier = Modifier
+                            .width(3.dp)
+                            .fillMaxHeight()
+                            .clip(RoundedCornerShape(2.dp))
+                            .background(if (message.isFromMe) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.primary)
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Column {
+                            Text(
+                                message.replyToSenderName ?: "",
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = if (message.isFromMe) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.primary
+                            )
+                            Text(
+                                if (message.replyToText?.startsWith("http") == true && message.replyToText.contains("sticker")) "🎭 Стикер"
+                                else (message.replyToText ?: "").take(80),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = if (message.isFromMe) MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.75f)
+                                        else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+                                maxLines = 2
+                            )
+                        }
+                    }
+                    Spacer(Modifier.height(6.dp))
+                }
+
                 val textColor = if (message.isFromMe) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface
-                // Для своих: белый полупрозрачный с подчёркиванием хорошо виден на цветном фоне
                 val linkColor = if (message.isFromMe) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.primary
                 su.SkrinVex.ofox.components.LinkedText(
                     text = message.text,
@@ -598,9 +821,9 @@ fun MessageBubble(
                     Text(
                         text = formatTime(message.timestamp),
                         style = MaterialTheme.typography.labelSmall,
-                        color = if (message.isFromMe) 
+                        color = if (message.isFromMe)
                             MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.7f)
-                        else 
+                        else
                             MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
                     )
                 }

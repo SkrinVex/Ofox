@@ -110,7 +110,10 @@ data class MessageResponse(
     val sender_avatar_url: String? = null,
     val text: String,
     val message_type: String = "text",
-    val created_at: String
+    val created_at: String,
+    val reply_to_id: Int? = null,
+    val reply_to_text: String? = null,
+    val reply_to_sender_name: String? = null
 )
 
 data class StickerItem(
@@ -152,7 +155,7 @@ data class StickerUploadResponse(
     val url: String
 )
 
-data class SendMessageRequest(val text: String, val messageType: String = "text")
+data class SendMessageRequest(val text: String, val messageType: String = "text", val replyToId: Int? = null)
 
 data class CommentResponse(
     val id: Int,

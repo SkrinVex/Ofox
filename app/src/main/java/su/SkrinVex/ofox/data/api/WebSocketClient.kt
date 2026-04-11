@@ -66,8 +66,16 @@ class WebSocketClient(private val context: Context) {
                             val chatId = json.getInt("chatId")
                             val message = json.getString("message")
                             val timestamp = json.getLong("timestamp")
-                            _events.value = WSEvent.NewMessage(chatId, message, timestamp)
-                            Log.d("WebSocket", "New message event: chatId=$chatId")
+                            _events.value = WSEvent.NewMessage(
+                                chatId, message, timestamp,
+                                senderId = json.optInt("senderId", 0),
+                                senderName = json.optString("senderName", ""),
+                                senderAvatarUrl = json.optString("senderAvatarUrl").takeIf { it.isNotBlank() },
+                                messageType = json.optString("messageType", "text"),
+                                replyToId = json.optInt("replyToId", -1).takeIf { it != -1 },
+                                replyToText = json.optString("replyToText").takeIf { it.isNotBlank() },
+                                replyToSenderName = json.optString("replyToSenderName").takeIf { it.isNotBlank() }
+                            )
                         }
                         "chat_update" -> {
                             val chatId = json.getInt("chatId")
@@ -121,8 +129,16 @@ class WebSocketClient(private val context: Context) {
                             val chatId = json.getInt("chatId")
                             val message = json.getString("message")
                             val timestamp = json.getLong("timestamp")
-                            _events.value = WSEvent.DiscoveryMessage(chatId, message, timestamp)
-                            Log.d("WebSocket", "Discovery message event: chatId=$chatId")
+                            _events.value = WSEvent.DiscoveryMessage(
+                                chatId, message, timestamp,
+                                senderId = json.optInt("senderId", 0),
+                                senderName = json.optString("senderName", ""),
+                                senderAvatarUrl = json.optString("senderAvatarUrl").takeIf { it.isNotBlank() },
+                                messageType = json.optString("messageType", "text"),
+                                replyToId = json.optInt("replyToId", -1).takeIf { it != -1 },
+                                replyToText = json.optString("replyToText").takeIf { it.isNotBlank() },
+                                replyToSenderName = json.optString("replyToSenderName").takeIf { it.isNotBlank() }
+                            )
                         }
                         "comment_reply" -> {
                             val postId = json.getInt("postId")
@@ -205,7 +221,7 @@ sealed class WSEvent {
     data class BadgeUpdate(val userId: Int, val badges: List<Badge>) : WSEvent()
     data class PostUpdate(val postId: Int, val likes: Int, val shares: Int) : WSEvent()
     data class NewPost(val postId: Int) : WSEvent()
-    data class NewMessage(val chatId: Int, val message: String, val timestamp: Long) : WSEvent()
+    data class NewMessage(val chatId: Int, val message: String, val timestamp: Long, val senderId: Int = 0, val senderName: String = "", val senderAvatarUrl: String? = null, val messageType: String = "text", val replyToId: Int? = null, val replyToText: String? = null, val replyToSenderName: String? = null) : WSEvent()
     data class ChatUpdate(val chatId: Int, val lastMessage: String, val timestamp: Long) : WSEvent()
     data class NewComment(val postId: Int, val comment: su.SkrinVex.ofox.data.api.models.CommentResponse) : WSEvent()
     data class DeleteComment(val postId: Int, val commentId: Int) : WSEvent()
@@ -215,7 +231,7 @@ sealed class WSEvent {
     data class CommentReply(val postId: Int) : WSEvent()
     data class PostComment(val postId: Int) : WSEvent()
     data class Typing(val chatId: Int, val userId: Int, val userName: String) : WSEvent()
-    data class DiscoveryMessage(val chatId: Int, val message: String, val timestamp: Long) : WSEvent()
+    data class DiscoveryMessage(val chatId: Int, val message: String, val timestamp: Long, val senderId: Int = 0, val senderName: String = "", val senderAvatarUrl: String? = null, val messageType: String = "text", val replyToId: Int? = null, val replyToText: String? = null, val replyToSenderName: String? = null) : WSEvent()
 }
 
 data class Badge(

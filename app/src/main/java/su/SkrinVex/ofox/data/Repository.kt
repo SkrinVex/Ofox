@@ -569,10 +569,10 @@ class Repository(private val context: Context) {
         }
     }
 
-    suspend fun sendMessage(chatId: Int, text: String): Message? = withContext(Dispatchers.IO) {
+    suspend fun sendMessage(chatId: Int, text: String, replyToId: Int? = null): Message? = withContext(Dispatchers.IO) {
         try {
             val currentUserId = getCurrentUserId()
-            val response = apiClient.api.sendMessage(chatId, SendMessageRequest(text))
+            val response = apiClient.api.sendMessage(chatId, SendMessageRequest(text, replyToId = replyToId))
             val message = response.toMessage(currentUserId)
             db.messageDao().insertMessage(message)
             db.chatDao().updateChat(chatId, text, message.timestamp)
@@ -934,7 +934,10 @@ class Repository(private val context: Context) {
         senderId = sender_id,
         senderName = sender_name,
         senderAvatarUrl = sender_avatar_url ?: "",
-        messageType = message_type
+        messageType = message_type,
+        replyToId = reply_to_id,
+        replyToText = reply_to_text,
+        replyToSenderName = reply_to_sender_name
     )
 
     private fun parseTimestamp(dateStr: String): Long {
