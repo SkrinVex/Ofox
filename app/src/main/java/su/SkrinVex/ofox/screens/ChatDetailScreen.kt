@@ -1,5 +1,7 @@
 package su.SkrinVex.ofox.screens
 
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -52,6 +54,7 @@ fun ChatDetailScreen(repository: Repository, chatId: Int, onBack: () -> Unit, on
     // Bottomsheet инфо о наборе при нажатии на стикер
     var stickerInfoPackId by remember { mutableStateOf<Int?>(null) }
     var stickerInfoPackName by remember { mutableStateOf<String?>(null) }
+    var myPackIds by remember { mutableStateOf(emptySet<Int>()) }
     val scope = rememberCoroutineScope()
     val listState = rememberLazyListState()
     val context = androidx.compose.ui.platform.LocalContext.current
@@ -101,9 +104,9 @@ fun ChatDetailScreen(repository: Repository, chatId: Int, onBack: () -> Unit, on
             try {
                 val loaded = repository.getMessages(chatId)
                 if (loaded.isEmpty()) return@launch
-                val lastKnownId = messages.lastOrNull()?.id ?: 0
-                val newOnes = loaded.filter { it.id > lastKnownId && it.id != 0 }
-                newOnes.forEach { msg ->
+                // Максимальный реальный id (положительный)
+                val lastKnownId = messages.filter { it.id > 0 }.maxOfOrNull { it.id } ?: 0
+                loaded.filter { it.id > lastKnownId }.forEach { msg ->
                     if (messages.none { it.id == msg.id }) messages.add(msg)
                 }
             } catch (_: Exception) {}
@@ -116,6 +119,7 @@ fun ChatDetailScreen(repository: Repository, chatId: Int, onBack: () -> Unit, on
         loadMessages()
         val data = repository.getStickers()
         val packById = data.packs.associateBy { it.id }
+        myPackIds = data.packs.map { it.id }.toSet()
         val map = mutableMapOf<String, Pair<Int?, String>>()
         data.packs.forEach { pack ->
             pack.stickers?.forEach { s -> map[s.url] = Pair(pack.id, pack.name) }
@@ -311,11 +315,7 @@ fun ChatDetailScreen(repository: Repository, chatId: Int, onBack: () -> Unit, on
                         }
                     }
                     if (isTyping) {
-                        Text(
-                            "печатает...",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.primary
-                        )
+                        TypingIndicator()
                     }
                 }
             }
@@ -496,15 +496,23 @@ fun ChatDetailScreen(repository: Repository, chatId: Int, onBack: () -> Unit, on
                             val replySenderName = replyTo?.senderName
                             messageText = ""
                             replyTo = null
+                            // Уникальный отрицательный id для временного сообщения
+                            val localId = -(System.currentTimeMillis().toInt())
                             val tempMessage = su.SkrinVex.ofox.data.Message(
-                                id = 0, chatId = chatId, text = text,
+                                id = localId, chatId = chatId, text = text,
                                 timestamp = System.currentTimeMillis(), isFromMe = true,
                                 replyToId = replyId, replyToText = replyText, replyToSenderName = replySenderName
                             )
                             messages.add(tempMessage)
                             scope.launch {
                                 listState.scrollToItem(messages.size - 1)
-                                repository.sendMessage(chatId, text, replyId)
+                                val sent = repository.sendMessage(chatId, text, replyId)
+                                // Заменяем временное сообщение реальным по localId
+                                val idx = messages.indexOfFirst { it.id == localId }
+                                if (idx != -1) {
+                                    if (sent != null) messages[idx] = sent
+                                    else messages.removeAt(idx) // ошибка отправки
+                                }
                             }
                         }
                     },
@@ -526,12 +534,8 @@ fun ChatDetailScreen(repository: Repository, chatId: Int, onBack: () -> Unit, on
     // Bottomsheet инфо о наборе стикеров
     if (stickerInfoPackId != null) {
         val packId = stickerInfoPackId!!
-        var installedPackIds by remember { mutableStateOf(emptySet<Int>()) }
         var isInstalling by remember { mutableStateOf(false) }
-
-        LaunchedEffect(packId) {
-            installedPackIds = repository.getMyPacks().map { it.id }.toSet()
-        }
+        val isMyPack = packId in myPackIds
 
         androidx.compose.material3.ModalBottomSheet(
             onDismissRequest = { stickerInfoPackId = null; stickerInfoPackName = null },
@@ -546,12 +550,9 @@ fun ChatDetailScreen(repository: Repository, chatId: Int, onBack: () -> Unit, on
                     style = MaterialTheme.typography.titleLarge,
                     fontWeight = FontWeight.Bold
                 )
-                val isInstalled = packId in installedPackIds
-                if (isInstalled) {
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Icon(Icons.Default.CheckCircle, null, tint = MaterialTheme.colorScheme.primary)
-                        Text("Набор уже добавлен", color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f))
-                    }
+                val isInstalled = packId in myPackIds
+                val isMyPack = packId in myPackIds
+                if (isInstalled || isMyPack) {
                     Button(
                         onClick = {
                             stickerPickerInitialPackId = packId
@@ -633,19 +634,47 @@ fun ChatDetailScreen(repository: Repository, chatId: Int, onBack: () -> Unit, on
             onStickerSelected = { sticker ->
                 showStickerPicker = false
                 stickerPickerInitialPackId = null
+                val localId = -(System.currentTimeMillis().toInt())
                 val tempMessage = su.SkrinVex.ofox.data.Message(
-                    id = 0, chatId = chatId, text = sticker.url,
+                    id = localId, chatId = chatId, text = sticker.url,
                     timestamp = System.currentTimeMillis(), isFromMe = true, messageType = "sticker"
                 )
                 messages.add(tempMessage)
                 scope.launch {
                     listState.scrollToItem(messages.size - 1)
-                    repository.sendSticker(chatId, sticker.url)
+                    val sent = repository.sendSticker(chatId, sticker.url)
+                    val idx = messages.indexOfFirst { it.id == localId }
+                    if (idx != -1) {
+                        if (sent != null) messages[idx] = sent else messages.removeAt(idx)
+                    }
                     repository.markStickerUsed(sticker.id)
                 }
             },
             onDismiss = { showStickerPicker = false; stickerPickerInitialPackId = null }
         )
+    }
+}
+
+@Composable
+fun TypingIndicator() {
+    val infiniteTransition = androidx.compose.animation.core.rememberInfiniteTransition()
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+        repeat(3) { i ->
+            val offsetY by infiniteTransition.animateFloat(
+                initialValue = 0f, targetValue = -4f,
+                animationSpec = androidx.compose.animation.core.infiniteRepeatable(
+                    animation = androidx.compose.animation.core.tween(400, delayMillis = i * 120),
+                    repeatMode = androidx.compose.animation.core.RepeatMode.Reverse
+                )
+            )
+            Box(
+                modifier = Modifier
+                    .size(5.dp)
+                    .offset(y = offsetY.dp)
+                    .clip(CircleShape)
+                    .background(MaterialTheme.colorScheme.primary)
+            )
+        }
     }
 }
 
@@ -784,19 +813,41 @@ fun MessageBubble(
                 horizontalAlignment = if (message.isFromMe) Alignment.End else Alignment.Start
             ) {
                 val stickerContext = androidx.compose.ui.platform.LocalContext.current
-                AsyncImage(
-                    model = remember(message.text) {
-                        coil.request.ImageRequest.Builder(stickerContext)
-                            .data(message.text)
-                            .memoryCacheKey(message.text)
-                            .diskCacheKey(message.text.substringBefore("?"))
-                            .crossfade(false)
-                            .allowHardware(true)
-                            .build()
-                    },
-                    contentDescription = "Стикер",
-                    modifier = Modifier.size(120.dp)
-                )
+                var isLoading by remember { mutableStateOf(true) }
+                Box(modifier = Modifier.size(120.dp)) {
+                    AsyncImage(
+                        model = remember(message.text) {
+                            coil.request.ImageRequest.Builder(stickerContext)
+                                .data(message.text)
+                                .memoryCacheKey(message.text)
+                                .diskCacheKey(message.text.substringBefore("?"))
+                                .crossfade(false)
+                                .allowHardware(true)
+                                .build()
+                        },
+                        contentDescription = "Стикер",
+                        onSuccess = { isLoading = false },
+                        onError = { isLoading = false },
+                        modifier = Modifier.fillMaxSize()
+                    )
+                    if (isLoading) {
+                        val infiniteTransition = androidx.compose.animation.core.rememberInfiniteTransition()
+                        val alpha by infiniteTransition.animateFloat(
+                            initialValue = 0.2f, targetValue = 0.6f,
+                            animationSpec = androidx.compose.animation.core.infiniteRepeatable(
+                                animation = androidx.compose.animation.core.tween(700),
+                                repeatMode = androidx.compose.animation.core.RepeatMode.Reverse
+                            )
+                        )
+                        Box(modifier = Modifier.fillMaxSize()
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = alpha)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text("🎭", style = MaterialTheme.typography.headlineMedium)
+                        }
+                    }
+                }
                 Text(
                     text = formatTime(message.timestamp),
                     style = MaterialTheme.typography.labelSmall,

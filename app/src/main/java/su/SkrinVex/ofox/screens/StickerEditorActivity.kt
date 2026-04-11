@@ -137,7 +137,7 @@ class StickerEditorActivity : androidx.appcompat.app.AppCompatActivity() {
             )
         }
 
-        fun toolBtn(icon: String, label: String, action: () -> Unit): android.widget.LinearLayout {
+        fun toolBtn(iconRes: Int, label: String, action: () -> Unit): android.widget.LinearLayout {
             val cornerPx = dpToPx(14).toFloat()
             return android.widget.LinearLayout(this).apply {
                 orientation = android.widget.LinearLayout.VERTICAL
@@ -151,12 +151,10 @@ class StickerEditorActivity : androidx.appcompat.app.AppCompatActivity() {
                     setColor(surfaceHigh)
                 }
                 setOnClickListener { action() }
-                addView(android.widget.TextView(this@StickerEditorActivity).apply {
-                    text = icon; textSize = 22f; gravity = Gravity.CENTER
-                    layoutParams = android.widget.LinearLayout.LayoutParams(
-                        android.widget.LinearLayout.LayoutParams.WRAP_CONTENT,
-                        android.widget.LinearLayout.LayoutParams.WRAP_CONTENT
-                    )
+                addView(android.widget.ImageView(this@StickerEditorActivity).apply {
+                    setImageResource(iconRes)
+                    imageTintList = android.content.res.ColorStateList.valueOf(white)
+                    layoutParams = android.widget.LinearLayout.LayoutParams(dpToPx(24), dpToPx(24))
                 })
                 addView(android.widget.TextView(this@StickerEditorActivity).apply {
                     text = label; textSize = 9f; gravity = Gravity.CENTER
@@ -169,16 +167,16 @@ class StickerEditorActivity : androidx.appcompat.app.AppCompatActivity() {
             }
         }
 
-        toolsRow.addView(toolBtn("↩️", "Отмена") { photoEditor.undo() })
-        toolsRow.addView(toolBtn("↪️", "Повтор") { photoEditor.redo() })
-        toolsRow.addView(toolBtn("✏️", "Рисовать") {
+        toolsRow.addView(toolBtn(android.R.drawable.ic_menu_revert, "Отмена") { photoEditor.undo() })
+        toolsRow.addView(toolBtn(android.R.drawable.ic_menu_rotate, "Повтор") { photoEditor.redo() })
+        toolsRow.addView(toolBtn(android.R.drawable.ic_menu_edit, "Рисовать") {
             val mode = photoEditor.brushDrawableMode != true
             photoEditor.setBrushDrawingMode(mode)
             if (mode) { photoEditor.brushColor = white; photoEditor.brushSize = 14f }
         })
-        toolsRow.addView(toolBtn("T", "Текст") { showTextDialog(accent) })
-        toolsRow.addView(toolBtn("😊", "Эмодзи") { showEmojiDialog() })
-        toolsRow.addView(toolBtn("🗑️", "Очистить") { photoEditor.clearAllViews() })
+        toolsRow.addView(toolBtn(android.R.drawable.ic_menu_add, "Текст") { showTextDialog(accent) })
+        toolsRow.addView(toolBtn(android.R.drawable.ic_dialog_info, "Эмодзи") { showEmojiDialog() })
+        toolsRow.addView(toolBtn(android.R.drawable.ic_menu_delete, "Очистить") { photoEditor.clearAllViews() })
 
         scrollToolbar.addView(toolsRow)
         toolbar.addView(scrollToolbar)

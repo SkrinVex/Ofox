@@ -17,6 +17,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.AccessTime
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Explore
@@ -271,7 +272,12 @@ fun StickerPicker(
                             .clickable { selectedPackId = null },
                         contentAlignment = Alignment.Center
                     ) {
-                        Text("🕐", fontSize = 22.sp)
+                        Icon(
+                            androidx.compose.material.icons.Icons.Default.AccessTime,
+                            contentDescription = "Недавние",
+                            tint = if (sel) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
+                            modifier = Modifier.size(22.dp)
+                        )
                     }
                 }
                 // Наборы
