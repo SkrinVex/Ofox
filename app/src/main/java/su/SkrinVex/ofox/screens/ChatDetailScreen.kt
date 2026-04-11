@@ -75,6 +75,7 @@ fun ChatDetailScreen(repository: Repository, chatId: Int, onBack: () -> Unit, on
     var hasMore by remember { mutableStateOf(true) }
     var replyTo by remember { mutableStateOf<su.SkrinVex.ofox.data.Message?>(null) }
     var selectedMessage by remember { mutableStateOf<su.SkrinVex.ofox.data.Message?>(null) }
+    var highlightedMessageTimestamp by remember { mutableStateOf<Long?>(null) }
 
     fun loadMessages(before: Int? = null) {
         scope.launch {
@@ -83,7 +84,6 @@ fun ChatDetailScreen(repository: Repository, chatId: Int, onBack: () -> Unit, on
                 messages.clear()
                 messages.addAll(loaded)
                 hasMore = loaded.size >= 30
-                // Скролл вниз сразу после загрузки
                 if (loaded.isNotEmpty()) listState.scrollToItem(loaded.size - 1)
             } else {
                 isLoadingMore = true
@@ -92,6 +92,21 @@ fun ChatDetailScreen(repository: Repository, chatId: Int, onBack: () -> Unit, on
                 hasMore = loaded.size >= 30
                 isLoadingMore = false
             }
+        }
+    }
+
+    // Polling — только добавляем новые сообщения, не трогаем весь список
+    fun pollNewMessages() {
+        scope.launch {
+            try {
+                val loaded = repository.getMessages(chatId)
+                if (loaded.isEmpty()) return@launch
+                val lastKnownId = messages.lastOrNull()?.id ?: 0
+                val newOnes = loaded.filter { it.id > lastKnownId && it.id != 0 }
+                newOnes.forEach { msg ->
+                    if (messages.none { it.id == msg.id }) messages.add(msg)
+                }
+            } catch (_: Exception) {}
         }
     }
 
@@ -127,21 +142,32 @@ fun ChatDetailScreen(repository: Repository, chatId: Int, onBack: () -> Unit, on
     }
 
     // Скролл вниз при новом сообщении — только если пользователь уже внизу
+    // Отслеживаем ID последнего сообщения, а не size (size меняется при polling)
+    val lastMessageId = remember { derivedStateOf { messages.lastOrNull()?.let { it.id * 1000L + it.timestamp } ?: 0L } }
     val isAtBottom by remember { derivedStateOf {
         val last = listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
         last >= messages.size - 2
     }}
 
-    LaunchedEffect(messages.size) {
+    LaunchedEffect(lastMessageId.value) {
         if (isAtBottom && messages.isNotEmpty()) {
             listState.animateScrollToItem(messages.size - 1)
         }
     }
 
-    // Скролл вниз при открытии клавиатуры если был внизу
-    val imeVisible = androidx.compose.foundation.layout.WindowInsets.ime.getBottom(LocalDensity.current) > 0
-    LaunchedEffect(imeVisible) {
-        if (imeVisible && isAtBottom && messages.isNotEmpty()) {
+    // Скролл при открытии/закрытии клавиатуры — всегда если был внизу
+    val imeBottom = androidx.compose.foundation.layout.WindowInsets.ime.getBottom(LocalDensity.current)
+    LaunchedEffect(imeBottom) {
+        if (imeBottom > 0 && messages.isNotEmpty()) {
+            // Небольшая задержка чтобы layout успел пересчитаться
+            kotlinx.coroutines.delay(80)
+            listState.scrollToItem(messages.size - 1)
+        }
+    }
+
+    // Скролл при появлении плашки ответа
+    LaunchedEffect(replyTo) {
+        if (replyTo != null && messages.isNotEmpty()) {
             kotlinx.coroutines.delay(50)
             listState.animateScrollToItem(messages.size - 1)
         }
@@ -199,7 +225,7 @@ fun ChatDetailScreen(repository: Repository, chatId: Int, onBack: () -> Unit, on
     LaunchedEffect(Unit) {
         while (true) {
             kotlinx.coroutines.delay(10000)
-            loadMessages()
+            pollNewMessages()
         }
     }
     
@@ -347,8 +373,15 @@ fun ChatDetailScreen(repository: Repository, chatId: Int, onBack: () -> Unit, on
                         onSenderClick = if ((chat?.discoveryId ?: 0) != 0) onNavigateToProfile else null,
                         onReplyClick = { replyToId ->
                             val idx = messages.indexOfFirst { it.id == replyToId }
-                            if (idx != -1) scope.launch { listState.animateScrollToItem(idx) }
-                        }
+                            if (idx != -1) scope.launch {
+                                listState.animateScrollToItem(idx)
+                                highlightedMessageTimestamp = messages[idx].timestamp
+                                kotlinx.coroutines.delay(1500)
+                                highlightedMessageTimestamp = null
+                            }
+                        },
+                        isHighlighted = message.timestamp == highlightedMessageTimestamp,
+                        isDiscoveryChat = (chat?.discoveryId ?: 0) != 0
                     )
                 }
             }
@@ -364,13 +397,17 @@ fun ChatDetailScreen(repository: Repository, chatId: Int, onBack: () -> Unit, on
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .background(MaterialTheme.colorScheme.surface)
-                        .padding(start = 16.dp, end = 8.dp, top = 8.dp, bottom = 8.dp),
+                        .padding(horizontal = 12.dp, vertical = 6.dp)
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(MaterialTheme.colorScheme.surfaceVariant)
+                        .padding(start = 12.dp, end = 4.dp, top = 8.dp, bottom = 8.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Box(modifier = Modifier.width(3.dp).height(40.dp)
+                    Box(modifier = Modifier
+                        .width(3.dp).height(36.dp)
                         .clip(RoundedCornerShape(2.dp))
-                        .background(MaterialTheme.colorScheme.primary))
+                        .background(MaterialTheme.colorScheme.primary)
+                    )
                     Spacer(Modifier.width(10.dp))
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
@@ -386,8 +423,8 @@ fun ChatDetailScreen(repository: Repository, chatId: Int, onBack: () -> Unit, on
                             maxLines = 1
                         )
                     }
-                    IconButton(onClick = { replyTo = null }) {
-                        Icon(Icons.Default.Close, null, tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f), modifier = Modifier.size(18.dp))
+                    IconButton(onClick = { replyTo = null }, modifier = Modifier.size(36.dp)) {
+                        Icon(Icons.Default.Close, null, tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f), modifier = Modifier.size(16.dp))
                     }
                 }
             }
@@ -623,25 +660,32 @@ fun SwipeToReply(
     val offsetX = remember { androidx.compose.animation.core.Animatable(0f) }
     val scope = rememberCoroutineScope()
     var triggered by remember { mutableStateOf(false) }
-    val threshold = 72f
+    val threshold = 56f
+    // Коэффициент сопротивления — как в Telegram, движение в 2.5 раза медленнее пальца
+    val resistance = 0.38f
 
     Box(modifier = Modifier.fillMaxWidth()) {
         val progress = (kotlin.math.abs(offsetX.value) / threshold).coerceIn(0f, 1f)
-        if (progress > 0.1f) {
+        // Иконка ответа
+        val iconSize = androidx.compose.animation.core.animateFloatAsState(
+            targetValue = if (progress > 0.5f) 22f else 18f * progress,
+            animationSpec = androidx.compose.animation.core.spring(stiffness = androidx.compose.animation.core.Spring.StiffnessLow)
+        ).value
+        if (progress > 0.05f) {
             Box(
                 modifier = Modifier
                     .align(if (isFromMe) Alignment.CenterEnd else Alignment.CenterStart)
-                    .padding(horizontal = 12.dp)
-                    .size((28 * progress).dp)
+                    .padding(horizontal = 14.dp)
+                    .size(36.dp)
                     .clip(CircleShape)
-                    .background(MaterialTheme.colorScheme.primary.copy(alpha = progress * 0.2f)),
+                    .background(MaterialTheme.colorScheme.primary.copy(alpha = (progress * 0.18f).coerceAtMost(0.18f))),
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
                     Icons.AutoMirrored.Filled.ArrowBack,
                     contentDescription = null,
-                    tint = MaterialTheme.colorScheme.primary.copy(alpha = progress),
-                    modifier = Modifier.size((16 * progress).dp)
+                    tint = MaterialTheme.colorScheme.primary.copy(alpha = progress.coerceAtMost(1f)),
+                    modifier = Modifier.size(iconSize.dp)
                 )
             }
         }
@@ -657,7 +701,13 @@ fun SwipeToReply(
                                 onReply()
                             }
                             scope.launch {
-                                offsetX.animateTo(0f, androidx.compose.animation.core.spring(stiffness = androidx.compose.animation.core.Spring.StiffnessMedium))
+                                offsetX.animateTo(
+                                    0f,
+                                    androidx.compose.animation.core.spring(
+                                        dampingRatio = androidx.compose.animation.core.Spring.DampingRatioMediumBouncy,
+                                        stiffness = androidx.compose.animation.core.Spring.StiffnessMedium
+                                    )
+                                )
                                 triggered = false
                             }
                         },
@@ -665,9 +715,9 @@ fun SwipeToReply(
                             change.consume()
                             scope.launch {
                                 val newVal = if (isFromMe)
-                                    (offsetX.value + delta).coerceIn(-threshold * 1.2f, 0f)
+                                    (offsetX.value + delta * resistance).coerceIn(-threshold * 1.3f, 0f)
                                 else
-                                    (offsetX.value + delta).coerceIn(0f, threshold * 1.2f)
+                                    (offsetX.value + delta * resistance).coerceIn(0f, threshold * 1.3f)
                                 offsetX.snapTo(newVal)
                             }
                         }
@@ -687,29 +737,39 @@ fun MessageBubble(
     stickerPackMap: Map<String, Pair<Int?, String>> = emptyMap(),
     onStickerClick: (stickerUrl: String) -> Unit = {},
     onSenderClick: ((Int) -> Unit)? = null,
-    onReplyClick: ((Int) -> Unit)? = null
+    onReplyClick: ((Int) -> Unit)? = null,
+    isHighlighted: Boolean = false,
+    isDiscoveryChat: Boolean = false
 ) {
+    val highlightAlpha by androidx.compose.animation.core.animateFloatAsState(
+        targetValue = if (isHighlighted) 0.12f else 0f,
+        animationSpec = androidx.compose.animation.core.tween(400)
+    )
+
     Column(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(MaterialTheme.colorScheme.primary.copy(alpha = highlightAlpha)),
         horizontalAlignment = if (message.isFromMe) Alignment.End else Alignment.Start
     ) {
-        if (!message.isFromMe) {
+        // Никнейм и аватар — только в групповых чатах (открытиях) и только для чужих
+        if (!message.isFromMe && isDiscoveryChat) {
             val senderClickMod = if (onSenderClick != null && message.senderId != 0)
                 Modifier.clickable { onSenderClick(message.senderId) }
             else Modifier
             Row(
-                modifier = Modifier.padding(start = 4.dp, bottom = 4.dp).then(senderClickMod),
+                modifier = Modifier.padding(start = 4.dp, bottom = 2.dp).then(senderClickMod),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 su.SkrinVex.ofox.components.UserAvatar(
                     name = message.senderName,
                     avatarUrl = message.senderAvatarUrl.takeIf { it.isNotBlank() },
-                    size = 32.dp
+                    size = 28.dp
                 )
-                Spacer(Modifier.width(8.dp))
+                Spacer(Modifier.width(6.dp))
                 Text(
                     text = message.senderName,
-                    style = MaterialTheme.typography.labelLarge,
+                    style = MaterialTheme.typography.labelMedium,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.primary
                 )
@@ -719,7 +779,7 @@ fun MessageBubble(
         if (message.messageType == "sticker") {
             Column(
                 modifier = Modifier
-                    .padding(start = if (message.isFromMe) 0.dp else 40.dp)
+                    .padding(start = if (message.isFromMe) 0.dp else if (isDiscoveryChat) 36.dp else 0.dp)
                     .clickable { onStickerClick(message.text) },
                 horizontalAlignment = if (message.isFromMe) Alignment.End else Alignment.Start
             ) {
@@ -762,7 +822,7 @@ fun MessageBubble(
             ),
             modifier = Modifier
                 .widthIn(max = 280.dp)
-                .padding(start = if (message.isFromMe) 0.dp else 40.dp)
+                .padding(start = if (message.isFromMe) 0.dp else if (isDiscoveryChat) 36.dp else 0.dp)
         ) {
             Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
                 // Цитата
