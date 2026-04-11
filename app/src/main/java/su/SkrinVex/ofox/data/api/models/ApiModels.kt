@@ -113,7 +113,8 @@ data class MessageResponse(
     val created_at: String,
     val reply_to_id: Int? = null,
     val reply_to_text: String? = null,
-    val reply_to_sender_name: String? = null
+    val reply_to_sender_name: String? = null,
+    val is_read: Boolean = false
 )
 
 data class StickerItem(

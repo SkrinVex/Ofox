@@ -2,6 +2,8 @@ package su.SkrinVex.ofox.screens
 
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.material.icons.filled.Done
+import androidx.compose.material.icons.filled.DoneAll
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -43,7 +45,7 @@ import su.SkrinVex.ofox.data.api.models.BadgeResponse
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ChatDetailScreen(repository: Repository, chatId: Int, onBack: () -> Unit, onNavigateToProfile: (Int) -> Unit = {}) {
+fun ChatDetailScreen(repository: Repository, chatId: Int, initialName: String? = null, onBack: () -> Unit, onNavigateToProfile: (Int) -> Unit = {}) {
     val messages = remember { androidx.compose.runtime.snapshots.SnapshotStateList<su.SkrinVex.ofox.data.Message>() }
     var messageText by remember { mutableStateOf("") }
     var chat by remember { mutableStateOf<su.SkrinVex.ofox.data.Chat?>(null) }
@@ -320,7 +322,7 @@ fun ChatDetailScreen(repository: Repository, chatId: Int, onBack: () -> Unit, on
                 Spacer(modifier = Modifier.width(12.dp))
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        chat?.name ?: "Открытие",
+                        chat?.name ?: initialName ?: "Открытие",
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.SemiBold
                     )
@@ -712,8 +714,8 @@ fun MessageStatusIcon(status: String, isFromMe: Boolean) {
 
     when (status) {
         "sending" -> CircularProgressIndicator(modifier = Modifier.size(10.dp), strokeWidth = 1.5.dp, color = readColor.copy(alpha = 0.6f))
-        "sent" -> Icon(Icons.Default.Done, null, tint = sentColor, modifier = Modifier.size(14.dp))
-        "read" -> Icon(Icons.Default.DoneAll, null, tint = readColor, modifier = Modifier.size(14.dp))
+        "sent" -> Icon(Icons.Filled.Done, null, tint = sentColor, modifier = Modifier.size(14.dp))
+        "read" -> Icon(Icons.Filled.DoneAll, null, tint = readColor, modifier = Modifier.size(14.dp))
     }
 }
 

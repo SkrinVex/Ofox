@@ -390,10 +390,11 @@ class MainActivity : ComponentActivity() {
                                     onBack = { navController.popBackStack() }
                                 )
                             }
-                            composable("chat/{chatId}") { backStackEntry ->
+                            composable("chat/{chatId}?name={name}") { backStackEntry ->
                                 ChatDetailScreen(
                                     repository = repository,
                                     chatId = backStackEntry.arguments?.getString("chatId")?.toIntOrNull() ?: 0,
+                                    initialName = backStackEntry.arguments?.getString("name"),
                                     onBack = { navController.popBackStack() },
                                     onNavigateToProfile = { userId -> navController.navigate("user_profile/$userId") }
                                 )
@@ -505,8 +506,9 @@ class MainActivity : ComponentActivity() {
                                     onNavigateToPost = { postId ->
                                         pendingDeepLink.value = DeepLinkData.Post(postId)
                                     },
-                                    onNavigateToChat = { chatId ->
-                                        navController.navigate("chat/$chatId")
+                                    onNavigateToChat = { chatId, chatName ->
+                                        val encodedName = chatName?.let { java.net.URLEncoder.encode(it, "UTF-8") }
+                                        navController.navigate("chat/$chatId${if (encodedName != null) "?name=$encodedName" else ""}")
                                     },
                                     onNavigateToAchievements = { }
                                 )

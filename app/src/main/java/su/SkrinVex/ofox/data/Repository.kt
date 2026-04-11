@@ -948,7 +948,8 @@ class Repository(private val context: Context) {
         messageType = message_type,
         replyToId = reply_to_id,
         replyToText = reply_to_text,
-        replyToSenderName = reply_to_sender_name
+        replyToSenderName = reply_to_sender_name,
+        status = if (sender_id == currentUserId) (if (is_read) "read" else "sent") else "sent"
     )
 
     private fun parseTimestamp(dateStr: String): Long {

@@ -33,7 +33,7 @@ fun DiscoveryDiscussionScreen(
     repository: Repository,
     onBack: () -> Unit,
     onNavigateToPost: (Int) -> Unit = {},
-    onNavigateToChat: (Int) -> Unit = {},
+    onNavigateToChat: (Int, String?) -> Unit = { _, _ -> },
     onNavigateToAchievements: (Int) -> Unit = {}
 ) {
     var discovery by remember { mutableStateOf<su.SkrinVex.ofox.data.Discovery?>(null) }
@@ -151,7 +151,7 @@ fun DiscoveryDiscussionScreen(
                         onClick = {
                             scope.launch {
                                 val chatId = repository.getOrCreateDiscoveryChat(discoveryId)
-                                chatId?.let { onNavigateToChat(it) }
+                                chatId?.let { onNavigateToChat(it, discovery?.title) }
                             }
                         },
                         modifier = Modifier.fillMaxWidth()
