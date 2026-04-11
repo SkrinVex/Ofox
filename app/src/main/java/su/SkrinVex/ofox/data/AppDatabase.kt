@@ -6,7 +6,7 @@ import kotlinx.coroutines.flow.Flow
 
 @Database(
     entities = [User::class, Post::class, Chat::class, Message::class, Discovery::class],
-    version = 21
+    version = 22
 )
 abstract class AppDatabase : RoomDatabase() {
     abstract fun userDao(): UserDao
@@ -26,8 +26,8 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "ofox_database"
                 )
-                .fallbackToDestructiveMigration()
-                .build()
+                    .fallbackToDestructiveMigration()
+                    .build()
                 INSTANCE = instance
                 instance
             }
@@ -99,7 +99,8 @@ data class Message(
     val messageType: String = "text",
     val replyToId: Int? = null,
     val replyToText: String? = null,
-    val replyToSenderName: String? = null
+    val replyToSenderName: String? = null,
+    val status: String = "sent" // "sending" | "sent" | "read"
 )
 
 @Entity(tableName = "discoveries")

@@ -131,6 +131,9 @@ class WebSocketClient(private val context: Context) {
                         "user_offline" -> {
                             _events.value = WSEvent.UserOffline(json.getInt("userId"))
                         }
+                        "chat_read" -> {
+                            _events.value = WSEvent.ChatRead(json.getInt("chatId"))
+                        }
                         "discovery_message" -> {
                             val chatId = json.getInt("chatId")
                             val message = json.getString("message")
@@ -239,6 +242,7 @@ sealed class WSEvent {
     data class Typing(val chatId: Int, val userId: Int, val userName: String) : WSEvent()
     data class UserOnline(val userId: Int) : WSEvent()
     data class UserOffline(val userId: Int) : WSEvent()
+    data class ChatRead(val chatId: Int) : WSEvent()
     data class DiscoveryMessage(val chatId: Int, val message: String, val timestamp: Long, val senderId: Int = 0, val senderName: String = "", val senderAvatarUrl: String? = null, val messageType: String = "text", val replyToId: Int? = null, val replyToText: String? = null, val replyToSenderName: String? = null) : WSEvent()
 }
 

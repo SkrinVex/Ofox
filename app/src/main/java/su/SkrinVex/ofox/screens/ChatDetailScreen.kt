@@ -209,6 +209,15 @@ fun ChatDetailScreen(repository: Repository, chatId: Int, onBack: () -> Unit, on
                 is su.SkrinVex.ofox.data.api.WSEvent.UserOffline -> {
                     if (event.userId == (chat?.userId ?: 0)) isOtherUserOnline = false
                 }
+                is su.SkrinVex.ofox.data.api.WSEvent.ChatRead -> {
+                    if (event.chatId == chatId) {
+                        messages.indices.forEach { i ->
+                            if (messages[i].isFromMe && messages[i].status == "sent") {
+                                messages[i] = messages[i].copy(status = "read")
+                            }
+                        }
+                    }
+                }
                 is su.SkrinVex.ofox.data.api.WSEvent.NewMessage -> {
                     if (event.chatId == chatId) {
                         // Обновляем кэш пользователей
@@ -485,11 +494,16 @@ fun ChatDetailScreen(repository: Repository, chatId: Int, onBack: () -> Unit, on
                 TextField(
                     value = messageText,
                     onValueChange = {
+                        val wasBlank = messageText.isBlank()
                         messageText = it
                         val now = System.currentTimeMillis()
-                        if (it.isNotBlank() && now - lastTypingSent > 2000) {
-                            lastTypingSent = now
-                            scope.launch { repository.sendTyping(chatId) }
+                        if (it.isNotBlank()) {
+                            // Сбрасываем таймер если только что начали печатать (поле было пустым)
+                            if (wasBlank) lastTypingSent = 0L
+                            if (now - lastTypingSent > 2000) {
+                                lastTypingSent = now
+                                scope.launch { repository.sendTyping(chatId) }
+                            }
                         }
                     },
                     modifier = Modifier.fillMaxWidth(),
@@ -534,7 +548,8 @@ fun ChatDetailScreen(repository: Repository, chatId: Int, onBack: () -> Unit, on
                             val tempMessage = su.SkrinVex.ofox.data.Message(
                                 id = localId, chatId = chatId, text = text,
                                 timestamp = System.currentTimeMillis(), isFromMe = true,
-                                replyToId = replyId, replyToText = replyText, replyToSenderName = replySenderName
+                                replyToId = replyId, replyToText = replyText, replyToSenderName = replySenderName,
+                                status = "sending"
                             )
                             messages.add(tempMessage)
                             scope.launch {
@@ -670,7 +685,8 @@ fun ChatDetailScreen(repository: Repository, chatId: Int, onBack: () -> Unit, on
                 val localId = -(System.currentTimeMillis().toInt())
                 val tempMessage = su.SkrinVex.ofox.data.Message(
                     id = localId, chatId = chatId, text = sticker.url,
-                    timestamp = System.currentTimeMillis(), isFromMe = true, messageType = "sticker"
+                    timestamp = System.currentTimeMillis(), isFromMe = true, messageType = "sticker",
+                    status = "sending"
                 )
                 messages.add(tempMessage)
                 scope.launch {
@@ -685,6 +701,19 @@ fun ChatDetailScreen(repository: Repository, chatId: Int, onBack: () -> Unit, on
             },
             onDismiss = { showStickerPicker = false; stickerPickerInitialPackId = null }
         )
+    }
+}
+
+@Composable
+fun MessageStatusIcon(status: String, isFromMe: Boolean) {
+    if (!isFromMe) return
+    val sentColor = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.7f)
+    val readColor = MaterialTheme.colorScheme.onPrimary
+
+    when (status) {
+        "sending" -> CircularProgressIndicator(modifier = Modifier.size(10.dp), strokeWidth = 1.5.dp, color = readColor.copy(alpha = 0.6f))
+        "sent" -> Icon(Icons.Default.Done, null, tint = sentColor, modifier = Modifier.size(14.dp))
+        "read" -> Icon(Icons.Default.DoneAll, null, tint = readColor, modifier = Modifier.size(14.dp))
     }
 }
 
@@ -964,7 +993,8 @@ fun MessageBubble(
                 )
                 Row(
                     modifier = Modifier.align(Alignment.End),
-                    verticalAlignment = Alignment.CenterVertically
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(3.dp)
                 ) {
                     Text(
                         text = formatTime(message.timestamp),
@@ -974,6 +1004,9 @@ fun MessageBubble(
                         else
                             MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
                     )
+                    if (message.isFromMe) {
+                        MessageStatusIcon(status = message.status, isFromMe = true)
+                    }
                 }
             }
         }

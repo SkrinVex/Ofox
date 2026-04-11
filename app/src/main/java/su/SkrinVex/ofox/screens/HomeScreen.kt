@@ -301,7 +301,8 @@ fun HomeScreen(
                 is su.SkrinVex.ofox.data.api.WSEvent.PostComment,
                 is su.SkrinVex.ofox.data.api.WSEvent.DiscoveryMessage,
                 is su.SkrinVex.ofox.data.api.WSEvent.UserOnline,
-                is su.SkrinVex.ofox.data.api.WSEvent.UserOffline -> {}
+                is su.SkrinVex.ofox.data.api.WSEvent.UserOffline,
+                is su.SkrinVex.ofox.data.api.WSEvent.ChatRead -> {}
                 is su.SkrinVex.ofox.data.api.WSEvent.ContentDeleted -> {
                     if (event.contentType == "post") {
                         posts.removeAll { it.id == event.contentId }
