@@ -405,6 +405,10 @@ fun CommentsBottomSheet(
                             focusedIndicatorColor = Color.Transparent,
                             unfocusedIndicatorColor = Color.Transparent
                         ),
+                        keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                            capitalization = androidx.compose.ui.text.input.KeyboardCapitalization.Sentences,
+                            keyboardType = androidx.compose.ui.text.input.KeyboardType.Text
+                        ),
                         maxLines = 5
                     )
                 }

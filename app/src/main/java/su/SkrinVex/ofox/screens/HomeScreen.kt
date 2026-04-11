@@ -1040,6 +1040,10 @@ fun CreatePostDialog(
                         modifier = Modifier.fillMaxWidth(),
                         minLines = 4,
                         shape = MaterialTheme.shapes.medium,
+                        keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                            capitalization = androidx.compose.ui.text.input.KeyboardCapitalization.Sentences,
+                            keyboardType = androidx.compose.ui.text.input.KeyboardType.Text
+                        ),
                         supportingText = { 
                             Text(
                                 "${content.length}/${su.SkrinVex.ofox.utils.ValidationConstants.MAX_POST_CONTENT_LENGTH}",

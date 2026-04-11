@@ -363,6 +363,10 @@ fun ChatDetailScreen(repository: Repository, chatId: Int, onBack: () -> Unit, on
                         focusedIndicatorColor = Color.Transparent,
                         unfocusedIndicatorColor = Color.Transparent
                     ),
+                    keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                        capitalization = androidx.compose.ui.text.input.KeyboardCapitalization.Sentences,
+                        keyboardType = androidx.compose.ui.text.input.KeyboardType.Text
+                    ),
                     shape = MaterialTheme.shapes.medium
                 )
             }

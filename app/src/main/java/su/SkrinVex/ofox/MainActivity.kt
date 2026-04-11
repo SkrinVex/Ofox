@@ -23,6 +23,8 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.google.firebase.messaging.FirebaseMessaging
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import su.SkrinVex.ofox.data.Repository
@@ -678,6 +680,15 @@ class MainActivity : ComponentActivity() {
         if (postId != -1) {
             pendingDeepLink.value = DeepLinkData.Post(postId)
             intent?.removeExtra("post_id")
+            // Отменяем системное уведомление
+            val nm = getSystemService(android.app.NotificationManager::class.java)
+            nm.cancel(postId + 100000) // comment_reply
+            nm.cancel(postId + 200000) // post_comment
+            nm.cancel(postId + 300000) // new_post
+            // Помечаем как прочитанное на сервере
+            kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
+                try { repository.markNotificationsReadByPost(postId) } catch (_: Exception) {}
+            }
             intent?.removeExtra("notif_type")
         }
 
