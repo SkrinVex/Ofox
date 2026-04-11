@@ -416,6 +416,10 @@ fun CreateDiscoveryDialog(
                     label = { Text("Название") },
                     modifier = Modifier.fillMaxWidth(),
                     shape = MaterialTheme.shapes.medium,
+                    keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                        capitalization = androidx.compose.ui.text.input.KeyboardCapitalization.Sentences,
+                        keyboardType = androidx.compose.ui.text.input.KeyboardType.Text
+                    ),
                     supportingText = { Text("${title.length}/500") }
                 )
                 
@@ -428,6 +432,10 @@ fun CreateDiscoveryDialog(
                     modifier = Modifier.fillMaxWidth(),
                     minLines = 3,
                     shape = MaterialTheme.shapes.medium,
+                    keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                        capitalization = androidx.compose.ui.text.input.KeyboardCapitalization.Sentences,
+                        keyboardType = androidx.compose.ui.text.input.KeyboardType.Text
+                    ),
                     supportingText = { Text("${description.length}/5000") }
                 )
                 
