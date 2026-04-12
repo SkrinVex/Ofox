@@ -52,6 +52,7 @@ fun UserProfileScreen(
     var userBadges by remember { mutableStateOf<List<BadgeResponse>>(emptyList()) }
     var isSubscribed by remember { mutableStateOf(false) }
     var isMutualSubscription by remember { mutableStateOf(false) }
+    var showUnsubscribeDialog by remember { mutableStateOf(false) }
     var userPosts by remember { mutableStateOf(listOf<su.SkrinVex.ofox.data.Post>()) }
     var subscribersCount by remember { mutableStateOf(0) }
     var isLoadingInitial by remember { mutableStateOf(true) }
@@ -399,11 +400,15 @@ fun UserProfileScreen(
                                 } else {
                                     Button(
                                         onClick = {
-                                            scope.launch {
-                                                val newSubscribed = repository.toggleSubscription(userId)
-                                                isSubscribed = newSubscribed
-                                                subscribersCount = repository.getSubscribersCount(userId)
-                                                isMutualSubscription = repository.isSubscribedToMe(userId)
+                                            if (isSubscribed) {
+                                                showUnsubscribeDialog = true
+                                            } else {
+                                                scope.launch {
+                                                    val newSubscribed = repository.toggleSubscription(userId)
+                                                    isSubscribed = newSubscribed
+                                                    subscribersCount = repository.getSubscribersCount(userId)
+                                                    isMutualSubscription = repository.isSubscribedToMe(userId)
+                                                }
                                             }
                                         },
                                         modifier = Modifier.fillMaxWidth(),
@@ -478,6 +483,42 @@ fun UserProfileScreen(
                         item {
                             LaunchedEffect(Unit) { loadMorePosts() }
                         }
+                    }
+                }
+            }
+        }
+    }
+    if (showUnsubscribeDialog) {
+        androidx.compose.ui.window.Dialog(onDismissRequest = { showUnsubscribeDialog = false }) {
+            Card(
+                shape = MaterialTheme.shapes.extraLarge,
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+            ) {
+                Column(modifier = Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text("Отписаться?", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                    Text(
+                        "Вы уверены, что хотите отписаться от ${user?.name ?: "этого пользователя"}?",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+                    )
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedButton(onClick = { showUnsubscribeDialog = false }, modifier = Modifier.weight(1f), shape = MaterialTheme.shapes.medium) {
+                            Text("Отмена")
+                        }
+                        Button(
+                            onClick = {
+                                showUnsubscribeDialog = false
+                                scope.launch {
+                                    val newSubscribed = repository.toggleSubscription(userId)
+                                    isSubscribed = newSubscribed
+                                    subscribersCount = repository.getSubscribersCount(userId)
+                                    isMutualSubscription = repository.isSubscribedToMe(userId)
+                                }
+                            },
+                            modifier = Modifier.weight(1f),
+                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
+                            shape = MaterialTheme.shapes.medium
+                        ) { Text("Отписаться") }
                     }
                 }
             }

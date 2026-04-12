@@ -136,6 +136,22 @@ class OfoxFirebaseMessagingService : FirebaseMessagingService() {
                     }
                 }
             }
+            "new_follower" -> {
+                val actorId = data["actorId"]?.toIntOrNull() ?: return
+                val actorName = data["actorName"] ?: "Кто-то"
+                val avatarUrl = data["actorAvatarUrl"]
+                CoroutineScope(Dispatchers.IO).launch {
+                    val bitmap = avatarUrl?.let { loadCircleBitmap(it) }
+                    withContext(Dispatchers.Main) {
+                        showNotification(
+                            actorId + 500000,
+                            "Новый подписчик",
+                            "$actorName подписался на вас",
+                            bitmap, CHANNEL_COMMENTS
+                        )
+                    }
+                }
+            }
         }
     }
 
