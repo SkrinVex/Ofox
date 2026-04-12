@@ -108,7 +108,8 @@ class WebSocketClient(private val context: Context) {
                                 content = commentObj.getString("content"),
                                 created_at = commentObj.getString("created_at"),
                                 reply_to_id = commentObj.optInt("reply_to_id", -1).takeIf { it != -1 },
-                                reply_to_author_name = commentObj.optString("reply_to_author_name").takeIf { it.isNotBlank() }
+                                reply_to_author_name = commentObj.optString("reply_to_author_name").takeIf { it.isNotBlank() && it != "null" },
+                                is_pinned = commentObj.optBoolean("is_pinned", false)
                             )
                             _events.value = WSEvent.NewComment(postId, comment)
                             Log.d("WebSocket", "New comment event: postId=$postId")

@@ -266,6 +266,32 @@ fun CommentsBottomSheet(
                                 onAuthorClick = { if (pinnedComment.author_id != currentUserId) onAuthorClick(pinnedComment.author_id) },
                                 onReply = { replyTo = pinnedComment; commentText = "" }
                             )
+                            // Ответы на закреплённый тоже показываем
+                            val pinnedReplies = repliesMap[pinnedComment.id] ?: emptyList()
+                            if (pinnedReplies.isNotEmpty()) {
+                                val expanded = pinnedComment.id in expandedReplies.value
+                                Row(
+                                    modifier = Modifier.padding(start = 44.dp, bottom = 4.dp).clickable {
+                                        expandedReplies.value = if (expanded) expandedReplies.value - pinnedComment.id else expandedReplies.value + pinnedComment.id
+                                    },
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    Box(modifier = Modifier.width(20.dp).height(1.dp).background(MaterialTheme.colorScheme.primary.copy(alpha = 0.4f)))
+                                    Text(if (expanded) "Скрыть ответы" else "Показать ответы (${pinnedReplies.size})", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.SemiBold)
+                                }
+                                if (expanded) {
+                                    Row(modifier = Modifier.fillMaxWidth()) {
+                                        Box(modifier = Modifier.padding(start = 28.dp, end = 8.dp).width(2.dp).fillMaxHeight().background(MaterialTheme.colorScheme.primary.copy(alpha = 0.25f), RoundedCornerShape(1.dp)))
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            pinnedReplies.forEach { reply ->
+                                                val r = effectiveComment(reply)
+                                                CommentItem(comment = r, currentUserId = currentUserId, isHighlighted = highlightedCommentId == r.id, onLongPress = { selectedCommentId = r.id }, onMenuClick = { selectedCommentId = r.id }, onAuthorClick = { if (r.author_id != currentUserId) onAuthorClick(r.author_id) }, onReply = { replyTo = r; commentText = "" })
+                                            }
+                                        }
+                                    }
+                                }
+                            }
                             Divider(color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f), modifier = Modifier.padding(bottom = 4.dp))
                         }
                     }

@@ -220,15 +220,23 @@ fun HomeScreen(
     LaunchedEffect(Unit) {
         while (true) {
             kotlinx.coroutines.delay(30000)
-            if (posts.isNotEmpty() && highlightPostId == null) {
+            if (highlightPostId == null) {
                 try {
-                    val freshPosts = repository.getAllPosts(limit = posts.size.coerceAtMost(20), offset = 0)
+                    val freshPosts = repository.getAllPosts(limit = 20, offset = 0)
                     freshPosts.forEach { fresh ->
                         val index = posts.indexOfFirst { it.id == fresh.id }
-                        if (index != -1 && (posts[index].likes != fresh.likes ||
-                            posts[index].shares != fresh.shares ||
-                            posts[index].authorBadges != fresh.authorBadges)) {
-                            posts[index] = fresh
+                        if (index != -1) {
+                            // Обновляем существующий если изменились данные
+                            if (posts[index].likes != fresh.likes ||
+                                posts[index].shares != fresh.shares ||
+                                posts[index].authorBadges != fresh.authorBadges ||
+                                posts[index].images != fresh.images ||
+                                posts[index].authorAvatarUrl != fresh.authorAvatarUrl) {
+                                posts[index] = fresh
+                            }
+                        } else {
+                            // Новый пост — добавляем в начало
+                            posts.add(0, fresh)
                         }
                     }
                 } catch (e: Exception) {
@@ -278,15 +286,9 @@ fun HomeScreen(
                 is su.SkrinVex.ofox.data.api.WSEvent.NewPost -> {
                     scope.launch {
                         try {
-                            // Проверяем, нет ли уже этого поста
-                            if (posts.any { it.id == event.postId }) {
-                                android.util.Log.d("HomeScreen", "Post ${event.postId} already exists")
-                                return@launch
-                            }
-                            val newPosts = repository.getAllPosts(limit = 1, offset = 0)
-                            if (newPosts.isNotEmpty() && newPosts[0].id == event.postId) {
-                                posts.add(0, newPosts[0])
-                            }
+                            if (posts.any { it.id == event.postId }) return@launch
+                            // Загружаем полный пост с изображениями и аватаром
+                            repository.getPostById(event.postId)?.let { posts.add(0, it) }
                         } catch (e: Exception) {
                             android.util.Log.e("HomeScreen", "Error loading new post", e)
                         }
@@ -709,7 +711,7 @@ fun HomeScreen(
                 postDraftDiscovery = discovery
             },
             repository = repository,
-            onCreate = { content, type, pollOptions, discovery, imageData ->
+            onCreate = { content, type, pollOptions, discovery, imageData, imageUris ->
                 showCreatePost = false
                 postDraftContent = ""
                 postDraftType = "TEXT"
@@ -723,7 +725,12 @@ fun HomeScreen(
                             repository.createPost(content, type, discovery?.id)
                         }
                         newPost?.let { post ->
-                            posts.add(0, post)
+                            val postWithAvatar = if (post.authorAvatarUrl.isBlank() && currentUser?.avatarUrl?.isNotBlank() == true) {
+                                post.copy(authorAvatarUrl = currentUser!!.avatarUrl)
+                            } else post
+                            // Показываем локальные URI сразу как placeholder
+                            val postWithLocalImages = if (imageUris.isNotEmpty()) postWithAvatar.copy(images = imageUris.joinToString("|||")) else postWithAvatar
+                            posts.add(0, postWithLocalImages)
                             if (imageData.isNotEmpty()) {
                                 val uploadResult = repository.uploadPostImages(post.id, imageData)
                                 uploadResult.fold(
@@ -853,7 +860,7 @@ fun CreatePostDialog(
     initialDiscovery: su.SkrinVex.ofox.data.Discovery? = null,
     onDismiss: () -> Unit,
     onDraftChange: (String, String, List<String>, su.SkrinVex.ofox.data.Discovery?) -> Unit = { _, _, _, _ -> },
-    onCreate: (String, String, List<String>, su.SkrinVex.ofox.data.Discovery?, List<Pair<ByteArray, String>>) -> Unit,
+    onCreate: (String, String, List<String>, su.SkrinVex.ofox.data.Discovery?, List<Pair<ByteArray, String>>, List<String>) -> Unit,
     repository: Repository
 ) {
     var content by remember { mutableStateOf(initialContent) }
@@ -1178,11 +1185,12 @@ fun CreatePostDialog(
                     onClick = {
                         if (content.isNotBlank()) {
                             val imageData = selectedImages.map { it.first to it.second }
+                            val imageUris = selectedImages.map { it.third.toString() }
                             if (selectedType == "POLL") {
                                 val validOptions = pollOptions.filter { it.isNotBlank() }
-                                onCreate(content, selectedType, validOptions, selectedDiscovery, imageData)
+                                onCreate(content, selectedType, validOptions, selectedDiscovery, imageData, imageUris)
                             } else {
-                                onCreate(content, selectedType, emptyList(), selectedDiscovery, imageData)
+                                onCreate(content, selectedType, emptyList(), selectedDiscovery, imageData, imageUris)
                             }
                         }
                     },
