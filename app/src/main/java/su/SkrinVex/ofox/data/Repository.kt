@@ -852,8 +852,8 @@ class Repository(private val context: Context) {
     private fun isValidEmail(email: String): Boolean = email.contains("@") && email.substringBefore("@").isNotEmpty() && email.substringAfter("@").contains(".")
 
     private fun UserResponse.toUser() = User(
-        id = id, 
-        email = email, 
+        id = id,
+        email = email ?: "",
         password = "", 
         name = name, 
         bio = bio,

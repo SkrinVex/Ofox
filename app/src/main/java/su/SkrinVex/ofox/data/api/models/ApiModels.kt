@@ -23,7 +23,7 @@ data class AuthResponse(val user: UserResponse, val token: String)
 
 data class UserResponse(
     val id: Int,
-    val email: String,
+    val email: String? = null,
     val name: String,
     val bio: String,
     val badges: List<BadgeResponse>? = null,
