@@ -189,29 +189,34 @@ fun HomeScreen(
         }
     }
 
+    // Если highlight пришёл до загрузки постов — инициируем загрузку
+    LaunchedEffect(highlightPostId) {
+        if (highlightPostId != null && !isInitialized) {
+            loadPosts(0, force = true)
+            isInitialized = true
+        }
+    }
+
     LaunchedEffect(localHighlightPostId) {
         localHighlightPostId?.let { postId ->
+            // Ждём завершения загрузки постов
+            while (isLoading) kotlinx.coroutines.delay(100)
+
             var index = posts.indexOfFirst { it.id == postId }
             if (index == -1) {
-                // Пост не найден, загружаем до него
-                var offset = posts.size
-                while (index == -1 && offset < 200) {
-                    try {
-                        val newPosts = repository.getAllPosts(limit = 10, offset = offset)
-                        if (newPosts.isEmpty()) break
-                        val existingIds = posts.map { it.id }.toSet()
-                        newPosts.filter { it.id !in existingIds }.forEach { posts.add(it) }
+                try {
+                    val targetPost = repository.getPostById(postId)
+                    if (targetPost != null && posts.none { it.id == targetPost.id }) {
+                        val insertAt = posts.indexOfFirst { it.timestamp < targetPost.timestamp }
+                        if (insertAt == -1) posts.add(targetPost) else posts.add(insertAt, targetPost)
                         index = posts.indexOfFirst { it.id == postId }
-                        offset += 10
-                        kotlinx.coroutines.delay(100)
-                    } catch (e: Exception) {
-                        android.util.Log.e("HomeScreen", "Error loading posts for highlight", e)
-                        break
                     }
+                } catch (e: Exception) {
+                    android.util.Log.e("HomeScreen", "Error loading post for highlight", e)
                 }
             }
             if (index != -1) {
-                kotlinx.coroutines.delay(500)
+                kotlinx.coroutines.delay(200)
                 listState.animateScrollToItem(index)
             }
         }
