@@ -32,6 +32,11 @@ class Repository(private val context: Context) {
             if (loggedIn) {
                 android.util.Log.d("Repository", "Init: connecting WebSocket")
                 wsClient.connect()
+                // Загружаем определения бейджей с сервера
+                try {
+                    val defs = apiClient.api.getBadgeDefinitions()
+                    su.SkrinVex.ofox.data.BadgeCache.update(defs)
+                } catch (_: Exception) {}
             }
         }
     }

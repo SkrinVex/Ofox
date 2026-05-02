@@ -80,6 +80,12 @@ interface ApiService {
     @DELETE("discoveries/{id}")
     suspend fun deleteDiscovery(@Path("id") discoveryId: Int): SimpleMessageResponse
     
+    @GET("badges/definitions")
+    suspend fun getBadgeDefinitions(): List<BadgeDefinition>
+
+    @GET("badges/user/{userId}")
+    suspend fun getUserBadges(@Path("userId") userId: Int): Map<String, List<BadgeResponse>>
+
     @GET("chats")
     suspend fun getChats(): List<ChatResponse>
 

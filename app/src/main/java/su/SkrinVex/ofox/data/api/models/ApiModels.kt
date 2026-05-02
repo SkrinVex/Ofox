@@ -35,7 +35,20 @@ data class UserResponse(
 
 data class BadgeResponse(
     val badge_type: String,
-    val description: String
+    val description: String,
+    val name: String? = null,
+    val icon_type: String? = null, // "emoji" | "image"
+    val icon: String? = null,      // emoji символ или URL
+    val color: String? = null      // hex цвет, напр. "#FF6B9D"
+)
+
+data class BadgeDefinition(
+    val badge_type: String,
+    val name: String,
+    val description: String,
+    val icon_type: String, // "emoji" | "image"
+    val icon: String,
+    val color: String
 )
 
 data class PostRequest(

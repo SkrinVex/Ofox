@@ -43,6 +43,21 @@ class WebSocketClient(private val context: Context) {
                     val type = json.getString("type")
                     
                     when (type) {
+                        "badge_definitions_update" -> {
+                            val arr = json.getJSONArray("definitions")
+                            val defs = (0 until arr.length()).map { i ->
+                                val o = arr.getJSONObject(i)
+                                su.SkrinVex.ofox.data.api.models.BadgeDefinition(
+                                    badge_type = o.getString("badge_type"),
+                                    name = o.getString("name"),
+                                    description = o.optString("description", ""),
+                                    icon_type = o.optString("icon_type", "emoji"),
+                                    icon = o.getString("icon"),
+                                    color = o.optString("color", "#FFD700")
+                                )
+                            }
+                            su.SkrinVex.ofox.data.BadgeCache.update(defs)
+                        }
                         "badge_update" -> {
                             val userId = json.getInt("userId")
                             val badgesArray = json.getJSONArray("badges")
