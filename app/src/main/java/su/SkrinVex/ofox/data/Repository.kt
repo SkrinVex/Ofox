@@ -970,7 +970,8 @@ class Repository(private val context: Context) {
         status = if (sender_id == currentUserId) (if (is_read) "read" else "sent") else "sent",
         reactions = if (reactions.isNullOrEmpty()) "" else reactionsToJson(reactions),
         voiceKey = voice_key,
-        voiceDuration = voice_duration ?: 0L
+        voiceDuration = voice_duration ?: 0L,
+        voiceDeletedByServer = voice_deleted_at != null
     )
 
     private fun parseTimestamp(dateStr: String): Long {
@@ -1093,6 +1094,13 @@ class Repository(private val context: Context) {
     suspend fun getVoicePlayUrl(key: String): String? = withContext(Dispatchers.IO) {
         try { apiClient.api.getVoicePlayUrl(key).playUrl } catch (_: Exception) { null }
     }
+
+    suspend fun getVoiceDownloadUrl(key: String, chatName: String, sentAt: Long): su.SkrinVex.ofox.data.api.models.VoiceDownloadUrlResponse? = withContext(Dispatchers.IO) {
+        try { apiClient.api.getVoiceDownloadUrl(key, chatName, sentAt) } catch (_: Exception) { null }
+    }
+
+    fun isVoiceWarningShown(): Boolean = prefs.getBoolean("voice_warning_shown", false)
+    fun setVoiceWarningShown() = prefs.edit().putBoolean("voice_warning_shown", true).apply()
 
     suspend fun sendVoiceMessage(chatId: Int, voiceKey: String, durationMs: Long, replyToId: Int? = null): Message? = withContext(Dispatchers.IO) {
         try {

@@ -22,7 +22,10 @@ import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.EmojiEmotions
+import androidx.compose.material.icons.filled.ErrorOutline
+import androidx.compose.material.icons.filled.Block
 import androidx.compose.material.icons.filled.Explore
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -84,6 +87,14 @@ fun ChatDetailScreen(repository: Repository, chatId: Int, initialName: String? =
     var selectedMessage by remember { mutableStateOf<su.SkrinVex.ofox.data.Message?>(null) }
     var highlightedMessageTimestamp by remember { mutableStateOf<Long?>(null) }
     var isVoiceRecording by remember { mutableStateOf(false) }
+    // Скачивание голосового
+    var showDownloadDialog by remember { mutableStateOf(false) }
+    var downloadProgress by remember { mutableStateOf<Float?>(null) }
+    var downloadError by remember { mutableStateOf<String?>(null) }
+    var downloadingVoiceKey by remember { mutableStateOf<String?>(null) }
+    var downloadingChatName by remember { mutableStateOf("") }
+    var downloadingSentAt by remember { mutableStateOf(0L) }
+    var downloadSavedPath by remember { mutableStateOf<String?>(null) }
 
     fun loadMessages(before: Int? = null) {
         scope.launch {
@@ -705,6 +716,98 @@ fun ChatDetailScreen(repository: Repository, chatId: Int, initialName: String? =
         }
     }
 
+    // Диалог прогресса скачивания (вне bottomsheet — живёт независимо от selectedMessage)
+    if (showDownloadDialog) {
+        val ctx = androidx.compose.ui.platform.LocalContext.current
+        LaunchedEffect(downloadingVoiceKey) {
+            val key = downloadingVoiceKey ?: return@LaunchedEffect
+            downloadVoiceMessage(
+                ctx = ctx,
+                repository = repository,
+                voiceKey = key,
+                chatName = downloadingChatName,
+                sentAt = downloadingSentAt,
+                onProgress = { downloadProgress = it },
+                onError = { downloadError = it },
+                onSavedPath = { downloadSavedPath = it }
+            )
+        }
+        androidx.compose.ui.window.Dialog(
+            onDismissRequest = { },
+            properties = androidx.compose.ui.window.DialogProperties(
+                dismissOnBackPress = false,
+                dismissOnClickOutside = false
+            )
+        ) {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = MaterialTheme.shapes.large,
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+            ) {
+                Column(
+                    modifier = Modifier.fillMaxWidth().padding(24.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(0.dp)
+                ) {
+                    when {
+                        downloadError != null -> {
+                            Icon(Icons.Default.ErrorOutline, null,
+                                tint = MaterialTheme.colorScheme.error,
+                                modifier = Modifier.size(48.dp))
+                            Spacer(Modifier.height(16.dp))
+                            Text("Ошибка загрузки", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                            Spacer(Modifier.height(12.dp))
+                            Text(downloadError!!, style = MaterialTheme.typography.bodyMedium,
+                                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f))
+                            Spacer(Modifier.height(24.dp))
+                            Button(onClick = {
+                                showDownloadDialog = false; downloadProgress = null
+                                downloadError = null; downloadingVoiceKey = null; downloadSavedPath = null
+                            }, modifier = Modifier.fillMaxWidth()) { Text("Закрыть") }
+                        }
+                        downloadProgress == 1f -> {
+                            Icon(Icons.Default.CheckCircle, null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(48.dp))
+                            Spacer(Modifier.height(16.dp))
+                            Text("Файл сохранён", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                            Spacer(Modifier.height(12.dp))
+                            if (downloadSavedPath != null) {
+                                Text(downloadSavedPath!!, style = MaterialTheme.typography.bodySmall,
+                                    textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f))
+                            }
+                            Spacer(Modifier.height(24.dp))
+                            Button(onClick = {
+                                showDownloadDialog = false; downloadProgress = null
+                                downloadError = null; downloadingVoiceKey = null; downloadSavedPath = null
+                            }, modifier = Modifier.fillMaxWidth()) { Text("Готово") }
+                        }
+                        else -> {
+                            CircularProgressIndicator(modifier = Modifier.size(48.dp), strokeWidth = 3.dp)
+                            Spacer(Modifier.height(16.dp))
+                            Text("Сохранение...", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                            Spacer(Modifier.height(12.dp))
+                            if (downloadProgress != null) {
+                                LinearProgressIndicator(
+                                    progress = { downloadProgress!! },
+                                    modifier = Modifier.fillMaxWidth()
+                                )
+                                Spacer(Modifier.height(6.dp))
+                                Text("${(downloadProgress!! * 100).toInt()}%",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f))
+                            } else {
+                                LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     // Меню сообщения (долгое нажатие)
     if (selectedMessage != null) {
         val msg = selectedMessage!!
@@ -714,7 +817,6 @@ fun ChatDetailScreen(repository: Repository, chatId: Int, initialName: String? =
             containerColor = MaterialTheme.colorScheme.surface
         ) {
             Column(modifier = Modifier.padding(16.dp)) {
-                // Быстрые реакции — для сохранённых сообщений (id>0) или если можно найти реальный id
                 val realMsgId = if (msg.id > 0) msg.id
                                 else messages.firstOrNull { it.timestamp == msg.timestamp && it.id > 0 }?.id ?: 0
                 if (realMsgId > 0) {
@@ -757,6 +859,27 @@ fun ChatDetailScreen(repository: Repository, chatId: Int, initialName: String? =
                 ) {
                     Icon(Icons.AutoMirrored.Filled.ArrowBack, null, tint = MaterialTheme.colorScheme.primary)
                     Text("Ответить", style = MaterialTheme.typography.bodyLarge)
+                }
+                if (msg.messageType == "voice" && msg.voiceKey != null) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth()
+                            .clip(MaterialTheme.shapes.medium)
+                            .clickable {
+                                downloadingVoiceKey = msg.voiceKey
+                                downloadingChatName = chat?.name ?: "chat"
+                                downloadingSentAt = msg.timestamp
+                                downloadProgress = null
+                                downloadError = null
+                                showDownloadDialog = true
+                                selectedMessage = null
+                            }
+                            .padding(vertical = 14.dp, horizontal = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(16.dp)
+                    ) {
+                        Icon(Icons.Default.Download, null, tint = MaterialTheme.colorScheme.primary)
+                        Text("Скачать", style = MaterialTheme.typography.bodyLarge)
+                    }
                 }
                 Row(
                     modifier = Modifier.fillMaxWidth()
@@ -1035,7 +1158,87 @@ fun MessageBubble(
 
         when (message.messageType) {
             "voice" -> {
-                if (message.voiceKey != null) {
+                var showDeletedDialog by remember { mutableStateOf(false) }
+                if (showDeletedDialog) {
+                    androidx.compose.ui.window.Dialog(onDismissRequest = { showDeletedDialog = false }) {
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = MaterialTheme.shapes.large,
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+                        ) {
+                            Column(
+                                modifier = Modifier.fillMaxWidth().padding(24.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally
+                            ) {
+                                Icon(Icons.Default.Block, null,
+                                    tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f),
+                                    modifier = Modifier.size(48.dp))
+                                Spacer(Modifier.height(16.dp))
+                                Text("Голосовое удалено", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                                Spacer(Modifier.height(12.dp))
+                                Text(
+                                    "Голосовые сообщения автоматически удаляются через 7 дней после отправки в целях экономии места на серверах Ofox.\n\nЧтобы сохранить важные сообщения, зажмите на них и выберите «Скачать» до истечения срока.",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f)
+                                )
+                                Spacer(Modifier.height(24.dp))
+                                Button(onClick = { showDeletedDialog = false }, modifier = Modifier.fillMaxWidth()) {
+                                    Text("Понятно")
+                                }
+                            }
+                        }
+                    }
+                }
+
+                if (message.voiceDeletedByServer) {
+                    // Затычка удалённого голосового
+                    Card(
+                        colors = CardDefaults.cardColors(
+                            containerColor = if (message.isFromMe)
+                                MaterialTheme.colorScheme.primary.copy(alpha = 0.4f)
+                            else
+                                MaterialTheme.colorScheme.surfaceVariant
+                        ),
+                        shape = RoundedCornerShape(16.dp),
+                        modifier = Modifier.widthIn(max = 260.dp).padding(start = startPadding)
+                            .combinedClickable(onClick = { showDeletedDialog = true }, onLongClick = { onLongPress?.invoke() })
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Icon(
+                                imageVector = androidx.compose.material.icons.Icons.Default.Block,
+                                contentDescription = null,
+                                modifier = Modifier.size(18.dp),
+                                tint = if (message.isFromMe)
+                                    MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.6f)
+                                else
+                                    MaterialTheme.colorScheme.onSurface.copy(alpha = 0.45f)
+                            )
+                            Column {
+                                Text(
+                                    "Голосовое сообщение удалено",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = if (message.isFromMe)
+                                        MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.7f)
+                                    else
+                                        MaterialTheme.colorScheme.onSurface.copy(alpha = 0.55f)
+                                )
+                                Text(
+                                    formatTime(message.timestamp),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = if (message.isFromMe)
+                                        MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.5f)
+                                    else
+                                        MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f)
+                                )
+                            }
+                        }
+                    }
+                } else if (message.voiceKey != null) {
                     Card(
                         colors = CardDefaults.cardColors(containerColor = if (message.isFromMe) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant),
                         shape = RoundedCornerShape(16.dp),
@@ -1147,5 +1350,93 @@ fun MessageBubble(
                 }
             }
         }
+    }
+}
+
+// Скачивание голосового сообщения в Ofox/voices
+private suspend fun downloadVoiceMessage(
+    ctx: android.content.Context,
+    repository: su.SkrinVex.ofox.data.Repository,
+    voiceKey: String,
+    chatName: String,
+    sentAt: Long,
+    onProgress: (Float) -> Unit,
+    onError: (String) -> Unit,
+    onSavedPath: (String) -> Unit
+) = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+    try {
+        val info = repository.getVoiceDownloadUrl(voiceKey, chatName, sentAt)
+        if (info == null) { onError("Не удалось получить ссылку для скачивания"); return@withContext }
+
+        val client = okhttp3.OkHttpClient.Builder()
+            .connectTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
+            .readTimeout(120, java.util.concurrent.TimeUnit.SECONDS)
+            .build()
+
+        val response = client.newCall(okhttp3.Request.Builder().url(info.downloadUrl).build()).execute()
+        if (!response.isSuccessful) { onError("Ошибка загрузки (${response.code})"); return@withContext }
+
+        val body = response.body ?: run { onError("Пустой ответ сервера"); return@withContext }
+        val total = body.contentLength().toFloat()
+        val filename = info.filename
+
+        val savedPath: String
+
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+            val values = android.content.ContentValues().apply {
+                put(android.provider.MediaStore.Downloads.DISPLAY_NAME, filename)
+                put(android.provider.MediaStore.Downloads.MIME_TYPE, "audio/mp4")
+                put(android.provider.MediaStore.Downloads.RELATIVE_PATH, "Music/Ofox/voices")
+                put(android.provider.MediaStore.Downloads.IS_PENDING, 1)
+            }
+            val collection = android.provider.MediaStore.Audio.Media.getContentUri(android.provider.MediaStore.VOLUME_EXTERNAL_PRIMARY)
+            val uri = ctx.contentResolver.insert(collection, values)
+                ?: run { onError("Не удалось создать файл"); return@withContext }
+            ctx.contentResolver.openOutputStream(uri)?.use { out ->
+                val buf = ByteArray(8192)
+                var downloaded = 0L
+                body.byteStream().use { input ->
+                    var n: Int
+                    while (input.read(buf).also { n = it } != -1) {
+                        out.write(buf, 0, n)
+                        downloaded += n
+                        if (total > 0) onProgress((downloaded / total).coerceIn(0f, 0.99f))
+                    }
+                }
+            }
+            val update = android.content.ContentValues().apply {
+                put(android.provider.MediaStore.Audio.Media.IS_PENDING, 0)
+            }
+            ctx.contentResolver.update(uri, update, null, null)
+            savedPath = "Music/Ofox/voices/$filename"
+        } else {
+            @Suppress("DEPRECATION")
+            val dir = java.io.File(
+                android.os.Environment.getExternalStorageDirectory(),
+                "Music/Ofox/voices"
+            )
+            dir.mkdirs()
+            val file = java.io.File(dir, filename)
+            val buf = ByteArray(8192)
+            var downloaded = 0L
+            body.byteStream().use { input ->
+                file.outputStream().use { out ->
+                    var n: Int
+                    while (input.read(buf).also { n = it } != -1) {
+                        out.write(buf, 0, n)
+                        downloaded += n
+                        if (total > 0) onProgress((downloaded / total).coerceIn(0f, 0.99f))
+                    }
+                }
+            }
+            android.media.MediaScannerConnection.scanFile(ctx, arrayOf(file.absolutePath), arrayOf("audio/mp4"), null)
+            savedPath = file.absolutePath
+        }
+
+        onProgress(1f)
+        onSavedPath(savedPath)
+    } catch (e: Exception) {
+        android.util.Log.e("VoiceDownload", "Error", e)
+        onError("Ошибка: ${e.message}")
     }
 }

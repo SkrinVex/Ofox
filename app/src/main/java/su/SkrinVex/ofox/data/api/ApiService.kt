@@ -123,6 +123,13 @@ interface ApiService {
     @GET("chats/voice/play")
     suspend fun getVoicePlayUrl(@Query("key") key: String): VoicePlayUrlResponse
 
+    @GET("chats/voice/download")
+    suspend fun getVoiceDownloadUrl(
+        @Query("key") key: String,
+        @Query("chatName") chatName: String,
+        @Query("sentAt") sentAt: Long
+    ): VoiceDownloadUrlResponse
+
     @GET("chats/online/users")
     suspend fun getOnlineUsers(): Map<String, List<Int>>
     

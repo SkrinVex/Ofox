@@ -24,6 +24,7 @@ import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.*
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.*
 import okhttp3.*
@@ -51,6 +52,7 @@ fun VoiceMessageButton(
     var recordStart by remember { mutableStateOf(0L) }
     var elapsed by remember { mutableStateOf(0L) }
     var lockProgress by remember { mutableStateOf(0f) }
+    var showWarningDialog by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
 
     val permissionLauncher = rememberLauncherForActivityResult(
@@ -102,6 +104,89 @@ fun VoiceMessageButton(
         try { recorder?.stop(); recorder?.release() } catch (_: Exception) {}
         recorder = null; recordFile?.delete(); recordFile = null
         lockProgress = 0f; state = RecordState.IDLE
+    }
+
+    fun tryStartRecording() {
+        val hasPerm = context.checkSelfPermission(Manifest.permission.RECORD_AUDIO) ==
+                android.content.pm.PackageManager.PERMISSION_GRANTED
+        if (!hasPerm) {
+            permissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+            return
+        }
+        if (!repository.isVoiceWarningShown()) {
+            showWarningDialog = true
+        } else {
+            doStartRecording(context) { rec, file ->
+                recorder = rec; recordFile = file
+                recordStart = System.currentTimeMillis()
+                state = RecordState.RECORDING
+                lockProgress = 0f
+            }
+        }
+    }
+
+    // Диалог-предупреждение об автоудалении голосовых (нельзя закрыть без подтверждения)
+    if (showWarningDialog) {
+        androidx.compose.ui.window.Dialog(
+            onDismissRequest = { },
+            properties = androidx.compose.ui.window.DialogProperties(
+                dismissOnBackPress = false,
+                dismissOnClickOutside = false
+            )
+        ) {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = MaterialTheme.shapes.large,
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+            ) {
+                Column(
+                    modifier = Modifier.fillMaxWidth().padding(24.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Icon(
+                        Icons.Default.Mic, null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(48.dp)
+                    )
+                    Spacer(Modifier.height(16.dp))
+                    Text(
+                        "Голосовые сообщения",
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Spacer(Modifier.height(12.dp))
+                    Text(
+                        "Голосовые сообщения автоматически удаляются через 7 дней после отправки в целях экономии места на серверах Ofox.\n\nЕсли сообщение важно — зажмите на него и выберите «Скачать», чтобы сохранить на устройство.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f)
+                    )
+                    Spacer(Modifier.height(24.dp))
+                    Button(
+                        onClick = {
+                            repository.setVoiceWarningShown()
+                            showWarningDialog = false
+                            doStartRecording(context) { rec, file ->
+                                recorder = rec; recordFile = file
+                                recordStart = System.currentTimeMillis()
+                                state = RecordState.RECORDING
+                                lockProgress = 0f
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("Понятно, записать")
+                    }
+                    Spacer(Modifier.height(8.dp))
+                    TextButton(
+                        onClick = { showWarningDialog = false },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("Отмена")
+                    }
+                }
+            }
+        }
     }
 
     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -183,7 +268,6 @@ fun VoiceMessageButton(
                             .pointerInput(Unit) {
                                 awaitPointerEventScope {
                                     while (true) {
-                                        // Ждём нажатия (DOWN event)
                                         val event = awaitPointerEvent(PointerEventPass.Main)
                                         val down = event.changes.firstOrNull() ?: continue
                                         if (!down.pressed) continue
@@ -196,6 +280,11 @@ fun VoiceMessageButton(
                                             continue
                                         }
 
+                                        if (!repository.isVoiceWarningShown()) {
+                                            showWarningDialog = true
+                                            continue
+                                        }
+
                                         doStartRecording(context) { rec, file ->
                                             recorder = rec; recordFile = file
                                             recordStart = System.currentTimeMillis()
@@ -204,7 +293,6 @@ fun VoiceMessageButton(
                                         }
 
                                         val startY = down.position.y
-                                        // Отслеживаем движение пока палец не поднят
                                         while (true) {
                                             val moveEvent = awaitPointerEvent(PointerEventPass.Main)
                                             val ptr = moveEvent.changes.firstOrNull() ?: break
