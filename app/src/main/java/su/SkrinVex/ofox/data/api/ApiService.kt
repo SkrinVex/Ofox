@@ -105,6 +105,9 @@ interface ApiService {
     @POST("chats/{chatId}/messages")
     suspend fun sendMessage(@Path("chatId") chatId: Int, @Body message: SendMessageRequest): MessageResponse
 
+    @DELETE("chats/{chatId}/messages/{messageId}")
+    suspend fun deleteMessage(@Path("chatId") chatId: Int, @Path("messageId") messageId: Int): SimpleMessageResponse
+
     @POST("chats/{chatId}/messages/{messageId}/reactions")
     suspend fun addReaction(@Path("chatId") chatId: Int, @Path("messageId") messageId: Int, @Body request: ReactionRequest): List<MessageReaction>
 

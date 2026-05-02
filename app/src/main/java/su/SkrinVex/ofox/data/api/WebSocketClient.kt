@@ -209,6 +209,12 @@ class WebSocketClient(private val context: Context) {
                             )
                             Log.d("WebSocket", "Content deleted event received")
                         }
+                        "message_deleted" -> {
+                            _events.value = WSEvent.MessageDeleted(
+                                chatId = json.getInt("chatId"),
+                                messageId = json.getInt("messageId")
+                            )
+                        }
                         "message_reaction" -> {
                             val chatId = json.getInt("chatId")
                             val messageId = json.getInt("messageId")
@@ -284,6 +290,7 @@ sealed class WSEvent {
     data class NewFollower(val actorId: Int, val actorName: String, val actorAvatarUrl: String?) : WSEvent()
     data class DiscoveryMessage(val chatId: Int, val message: String, val timestamp: Long, val senderId: Int = 0, val senderName: String = "", val senderAvatarUrl: String? = null, val messageType: String = "text", val replyToId: Int? = null, val replyToText: String? = null, val replyToSenderName: String? = null) : WSEvent()
     data class MessageReaction(val chatId: Int, val messageId: Int, val reactions: List<su.SkrinVex.ofox.data.api.models.MessageReaction>) : WSEvent()
+    data class MessageDeleted(val chatId: Int, val messageId: Int) : WSEvent()
 }
 
 data class Badge(

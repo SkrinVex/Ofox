@@ -1075,6 +1075,17 @@ class Repository(private val context: Context) {
         try { apiClient.api.uninstallPack(packId) } catch (_: Exception) {}
     }
 
+    suspend fun deleteMessage(chatId: Int, messageId: Int): Boolean = withContext(Dispatchers.IO) {
+        try {
+            apiClient.api.deleteMessage(chatId, messageId)
+            db.messageDao().deleteMessageById(messageId)
+            true
+        } catch (e: Exception) {
+            android.util.Log.e("Repository", "deleteMessage error", e)
+            false
+        }
+    }
+
     suspend fun sendTyping(chatId: Int) = withContext(Dispatchers.IO) {
         try { apiClient.api.sendTyping(chatId) } catch (_: Exception) {}
     }

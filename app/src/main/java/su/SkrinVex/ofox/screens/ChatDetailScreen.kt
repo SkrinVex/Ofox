@@ -22,6 +22,7 @@ import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.EmojiEmotions
 import androidx.compose.material.icons.filled.ErrorOutline
@@ -95,6 +96,7 @@ fun ChatDetailScreen(repository: Repository, chatId: Int, initialName: String? =
     var downloadingChatName by remember { mutableStateOf("") }
     var downloadingSentAt by remember { mutableStateOf(0L) }
     var downloadSavedPath by remember { mutableStateOf<String?>(null) }
+    var messageToDelete by remember { mutableStateOf<su.SkrinVex.ofox.data.Message?>(null) }
 
     fun loadMessages(before: Int? = null) {
         scope.launch {
@@ -231,6 +233,17 @@ fun ChatDetailScreen(repository: Repository, chatId: Int, initialName: String? =
                         messages.indices.forEach { i ->
                             if (messages[i].isFromMe && messages[i].status == "sent") {
                                 messages[i] = messages[i].copy(status = "read")
+                            }
+                        }
+                    }
+                }
+                is su.SkrinVex.ofox.data.api.WSEvent.MessageDeleted -> {
+                    if (event.chatId == chatId) {
+                        messages.removeAll { it.id == event.messageId }
+                        // Убираем reply-ссылки на удалённое сообщение
+                        messages.indices.forEach { i ->
+                            if (messages[i].replyToId == event.messageId) {
+                                messages[i] = messages[i].copy(replyToId = null, replyToText = null, replyToSenderName = null)
                             }
                         }
                     }
@@ -716,6 +729,66 @@ fun ChatDetailScreen(repository: Repository, chatId: Int, initialName: String? =
         }
     }
 
+    // Диалог подтверждения удаления сообщения
+    if (messageToDelete != null) {
+        val msg = messageToDelete!!
+        androidx.compose.ui.window.Dialog(onDismissRequest = { messageToDelete = null }) {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = MaterialTheme.shapes.large,
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+            ) {
+                Column(
+                    modifier = Modifier.fillMaxWidth().padding(24.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Icon(
+                        Icons.Default.Delete, null,
+                        tint = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.size(48.dp)
+                    )
+                    Spacer(Modifier.height(16.dp))
+                    Text("Удалить сообщение?", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                    Spacer(Modifier.height(12.dp))
+                    Text(
+                        "Сообщение будет удалено без следов для всех участников чата.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f)
+                    )
+                    Spacer(Modifier.height(24.dp))
+                    Button(
+                        onClick = {
+                            val toDelete = messageToDelete
+                            messageToDelete = null
+                            if (toDelete != null) {
+                                val realId = if (toDelete.id > 0) toDelete.id
+                                             else messages.firstOrNull { it.timestamp == toDelete.timestamp && it.id > 0 }?.id ?: 0
+                                if (realId > 0) scope.launch {
+                                    val ok = repository.deleteMessage(chatId, realId)
+                                    if (ok) {
+                                        messages.removeAll { it.id == realId }
+                                        messages.indices.forEach { i ->
+                                            if (messages[i].replyToId == realId) {
+                                                messages[i] = messages[i].copy(replyToId = null, replyToText = null, replyToSenderName = null)
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
+                        modifier = Modifier.fillMaxWidth()
+                    ) { Text("Удалить") }
+                    Spacer(Modifier.height(8.dp))
+                    TextButton(onClick = { messageToDelete = null }, modifier = Modifier.fillMaxWidth()) {
+                        Text("Отмена")
+                    }
+                }
+            }
+        }
+    }
+
     // Диалог прогресса скачивания (вне bottomsheet — живёт независимо от selectedMessage)
     if (showDownloadDialog) {
         val ctx = androidx.compose.ui.platform.LocalContext.current
@@ -847,7 +920,7 @@ fun ChatDetailScreen(repository: Repository, chatId: Int, initialName: String? =
                             }
                         }
                     }
-                    Divider(modifier = Modifier.padding(bottom = 4.dp))
+                    HorizontalDivider(modifier = Modifier.padding(bottom = 4.dp))
                 }
                 Row(
                     modifier = Modifier.fillMaxWidth()
@@ -896,6 +969,22 @@ fun ChatDetailScreen(repository: Repository, chatId: Int, initialName: String? =
                 ) {
                     Icon(Icons.Default.ContentCopy, null, tint = MaterialTheme.colorScheme.onSurface)
                     Text("Копировать", style = MaterialTheme.typography.bodyLarge)
+                }
+                // Удалить — только своё сообщение с реальным id
+                val realIdForDelete = if (msg.id > 0) msg.id
+                                      else messages.firstOrNull { it.timestamp == msg.timestamp && it.id > 0 }?.id ?: 0
+                if (msg.isFromMe && realIdForDelete > 0) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth()
+                            .clip(MaterialTheme.shapes.medium)
+                            .clickable { messageToDelete = msg; selectedMessage = null }
+                            .padding(vertical = 14.dp, horizontal = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(16.dp)
+                    ) {
+                        Icon(Icons.Default.Delete, null, tint = MaterialTheme.colorScheme.error)
+                        Text("Удалить", style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.error)
+                    }
                 }
                 Spacer(Modifier.height(8.dp))
             }

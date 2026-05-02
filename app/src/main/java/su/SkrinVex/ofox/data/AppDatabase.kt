@@ -212,6 +212,9 @@ interface MessageDao {
 
     @Query("UPDATE messages SET reactions = :reactions WHERE id = :messageId")
     suspend fun updateReactions(messageId: Int, reactions: String)
+
+    @Query("DELETE FROM messages WHERE id = :messageId")
+    suspend fun deleteMessageById(messageId: Int)
 }
 
 @Dao
