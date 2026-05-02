@@ -941,6 +941,45 @@ fun SwipeToReply(
     }
 }
 
+@Composable
+private fun ReplyQuote(message: su.SkrinVex.ofox.data.Message, onReplyClick: ((Int) -> Unit)?, isFromMe: Boolean) {
+    if (message.replyToText == null && message.replyToSenderName == null) return
+    Row(
+        modifier = Modifier.fillMaxWidth()
+            .clip(RoundedCornerShape(8.dp))
+            .background(if (isFromMe) MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.15f) else MaterialTheme.colorScheme.primary.copy(alpha = 0.08f))
+            .then(if (onReplyClick != null && message.replyToId != null) Modifier.clickable { onReplyClick(message.replyToId) } else Modifier)
+            .padding(horizontal = 8.dp, vertical = 6.dp)
+    ) {
+        Box(Modifier.width(3.dp).fillMaxHeight().clip(RoundedCornerShape(2.dp)).background(if (isFromMe) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.primary))
+        Spacer(Modifier.width(8.dp))
+        Column {
+            Text(message.replyToSenderName ?: "", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = if (isFromMe) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.primary)
+            Text(message.replyToText ?: "", style = MaterialTheme.typography.bodySmall, maxLines = 2,
+                color = if (isFromMe) MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.75f) else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f))
+        }
+    }
+    Spacer(Modifier.height(6.dp))
+}
+
+@Composable
+private fun ReplyQuotePlain(message: su.SkrinVex.ofox.data.Message, onReplyClick: ((Int) -> Unit)?) {
+    Row(
+        modifier = Modifier.widthIn(max = 200.dp)
+            .clip(RoundedCornerShape(8.dp))
+            .background(MaterialTheme.colorScheme.surfaceVariant)
+            .then(if (onReplyClick != null && message.replyToId != null) Modifier.clickable { onReplyClick(message.replyToId) } else Modifier)
+            .padding(horizontal = 8.dp, vertical = 6.dp)
+    ) {
+        Box(Modifier.width(3.dp).fillMaxHeight().clip(RoundedCornerShape(2.dp)).background(MaterialTheme.colorScheme.primary))
+        Spacer(Modifier.width(8.dp))
+        Column {
+            Text(message.replyToSenderName ?: "", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+            Text(message.replyToText ?: "", style = MaterialTheme.typography.bodySmall, maxLines = 2, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f))
+        }
+    }
+}
+
 @OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class, ExperimentalMaterial3Api::class)
 @Composable
 fun MessageBubble(
@@ -962,8 +1001,20 @@ fun MessageBubble(
         targetValue = if (isHighlighted) 0.12f else 0f,
         animationSpec = androidx.compose.animation.core.tween(400)
     )
-    // Попап "кто поставил реакцию"
     var reactionPopupEmoji by remember { mutableStateOf<String?>(null) }
+
+    val reactionsMap = try {
+        if (reactionsJson.isBlank() || reactionsJson == "{}") emptyMap()
+        else {
+            val obj = org.json.JSONObject(reactionsJson)
+            obj.keys().asSequence().associateWith { key ->
+                val arr = obj.getJSONArray(key)
+                (0 until arr.length()).map { arr.getInt(it) }
+            }.filter { it.value.isNotEmpty() }
+        }
+    } catch (_: Exception) { emptyMap<String, List<Int>>() }
+
+    val startPadding = if (message.isFromMe) 0.dp else if (isDiscoveryChat) 36.dp else 0.dp
 
     Column(
         modifier = Modifier
@@ -971,334 +1022,110 @@ fun MessageBubble(
             .background(MaterialTheme.colorScheme.primary.copy(alpha = highlightAlpha)),
         horizontalAlignment = if (message.isFromMe) Alignment.End else Alignment.Start
     ) {
-        // Никнейм и аватар — только в групповых чатах (открытиях) и только для чужих
+        // Ник + аватар в групповом чате
         if (!message.isFromMe && isDiscoveryChat) {
-            val senderClickMod = if (onSenderClick != null && message.senderId != 0)
-                Modifier.clickable { onSenderClick(message.senderId) }
-            else Modifier
-            Row(
-                modifier = Modifier.padding(start = 4.dp, bottom = 2.dp).then(senderClickMod),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                su.SkrinVex.ofox.components.UserAvatar(
-                    name = message.senderName,
-                    avatarUrl = message.senderAvatarUrl.takeIf { it.isNotBlank() },
-                    size = 28.dp
-                )
+            val mod = if (onSenderClick != null && message.senderId != 0)
+                Modifier.clickable { onSenderClick(message.senderId) } else Modifier
+            Row(modifier = Modifier.padding(start = 4.dp, bottom = 2.dp).then(mod), verticalAlignment = Alignment.CenterVertically) {
+                su.SkrinVex.ofox.components.UserAvatar(name = message.senderName, avatarUrl = message.senderAvatarUrl.takeIf { it.isNotBlank() }, size = 28.dp)
                 Spacer(Modifier.width(6.dp))
-                Text(
-                    text = message.senderName,
-                    style = MaterialTheme.typography.labelMedium,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.primary
-                )
+                Text(message.senderName, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
             }
         }
 
-        if (message.messageType == "voice" && message.voiceKey != null) {
-            Card(
-                colors = CardDefaults.cardColors(
-                    containerColor = if (message.isFromMe) MaterialTheme.colorScheme.primary
-                    else MaterialTheme.colorScheme.surfaceVariant
-                ),
-                shape = RoundedCornerShape(16.dp),
-                modifier = Modifier
-                    .widthIn(max = 260.dp)
-                    .padding(start = if (message.isFromMe) 0.dp else if (isDiscoveryChat) 36.dp else 0.dp)
-                    .combinedClickable(onClick = {}, onLongClick = { onLongPress?.invoke() })
-            ) {
-                Column(modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp)) {
-                    // Цитата в голосовом
+        when (message.messageType) {
+            "voice" -> {
+                if (message.voiceKey != null) {
+                    Card(
+                        colors = CardDefaults.cardColors(containerColor = if (message.isFromMe) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant),
+                        shape = RoundedCornerShape(16.dp),
+                        modifier = Modifier.widthIn(max = 260.dp).padding(start = startPadding)
+                            .combinedClickable(onClick = {}, onLongClick = { onLongPress?.invoke() })
+                    ) {
+                        Column(modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp)) {
+                            ReplyQuote(message, onReplyClick, isFromMe = message.isFromMe)
+                            su.SkrinVex.ofox.components.VoiceMessagePlayer(
+                                voiceKey = message.voiceKey,
+                                durationMs = message.voiceDuration,
+                                isFromMe = message.isFromMe,
+                                repository = repository
+                            )
+                            Row(modifier = Modifier.align(Alignment.End), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(3.dp)) {
+                                Text(formatTime(message.timestamp), style = MaterialTheme.typography.labelSmall,
+                                    color = if (message.isFromMe) MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.7f) else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f))
+                                if (message.isFromMe) MessageStatusIcon(message.status, true)
+                            }
+                        }
+                    }
+                }
+            }
+            "sticker" -> {
+                Column(modifier = Modifier.padding(start = startPadding), horizontalAlignment = if (message.isFromMe) Alignment.End else Alignment.Start) {
                     if (message.replyToText != null || message.replyToSenderName != null) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clip(RoundedCornerShape(8.dp))
-                                .background(
-                                    if (message.isFromMe) MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.15f)
-                                    else MaterialTheme.colorScheme.primary.copy(alpha = 0.08f)
-                                )
-                                .then(if (onReplyClick != null && message.replyToId != null)
-                                    Modifier.clickable { onReplyClick(message.replyToId) }
-                                else Modifier)
-                                .padding(horizontal = 8.dp, vertical = 6.dp)
-                        ) {
-                            Box(modifier = Modifier.width(3.dp).fillMaxHeight()
-                                .clip(RoundedCornerShape(2.dp))
-                                .background(if (message.isFromMe) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.primary)
-                            )
-                            Spacer(Modifier.width(8.dp))
-                            Column {
-                                Text(
-                                    message.replyToSenderName ?: "",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    fontWeight = FontWeight.Bold,
-                                    color = if (message.isFromMe) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.primary
-                                )
-                                Text(
-                                    message.replyToText ?: "",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = if (message.isFromMe) MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.75f)
-                                            else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
-                                    maxLines = 2
-                                )
+                        ReplyQuotePlain(message, onReplyClick)
+                        Spacer(Modifier.height(4.dp))
+                    }
+                    val stickerCtx = androidx.compose.ui.platform.LocalContext.current
+                    var isLoading by remember { mutableStateOf(true) }
+                    Box(modifier = Modifier.size(120.dp).combinedClickable(onClick = { onStickerClick(message.text) }, onLongClick = { onLongPress?.invoke() })) {
+                        AsyncImage(
+                            model = remember(message.text) {
+                                coil.request.ImageRequest.Builder(stickerCtx).data(message.text)
+                                    .memoryCacheKey(message.text).diskCacheKey(message.text.substringBefore("?"))
+                                    .crossfade(false).allowHardware(true).build()
+                            },
+                            contentDescription = "Стикер",
+                            onSuccess = { isLoading = false }, onError = { isLoading = false },
+                            modifier = Modifier.fillMaxSize()
+                        )
+                        if (isLoading) {
+                            val inf = androidx.compose.animation.core.rememberInfiniteTransition()
+                            val a by inf.animateFloat(0.2f, 0.6f, androidx.compose.animation.core.infiniteRepeatable(androidx.compose.animation.core.tween(700), androidx.compose.animation.core.RepeatMode.Reverse))
+                            Box(Modifier.fillMaxSize().clip(RoundedCornerShape(12.dp)).background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = a)), contentAlignment = Alignment.Center) {
+                                Text("🎭", style = MaterialTheme.typography.headlineMedium)
                             }
                         }
-                        Spacer(Modifier.height(6.dp))
                     }
-                    su.SkrinVex.ofox.components.VoiceMessagePlayer(
-                        voiceKey = message.voiceKey,
-                        durationMs = message.voiceDuration,
-                        isFromMe = message.isFromMe,
-                        repository = repository
-                    )
-                    Row(
-                        modifier = Modifier.align(Alignment.End),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(3.dp)
-                    ) {
-                        Text(
-                            formatTime(message.timestamp),
-                            style = MaterialTheme.typography.labelSmall,
-                            color = if (message.isFromMe) MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.7f)
-                            else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
-                        )
-                        if (message.isFromMe) MessageStatusIcon(message.status, true)
-                    }
+                    Text(formatTime(message.timestamp), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f), modifier = Modifier.padding(top = 2.dp))
                 }
             }
-        } else if (message.messageType == "sticker") {
-            Column(
-                modifier = Modifier
-                    .padding(start = if (message.isFromMe) 0.dp else if (isDiscoveryChat) 36.dp else 0.dp),
-                horizontalAlignment = if (message.isFromMe) Alignment.End else Alignment.Start
-            ) {
-                // Цитата над стикером
-                if (message.replyToText != null || message.replyToSenderName != null) {
-                    Row(
-                        modifier = Modifier
-                            .widthIn(max = 200.dp)
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(MaterialTheme.colorScheme.surfaceVariant)
-                            .then(if (onReplyClick != null && message.replyToId != null)
-                                Modifier.clickable { onReplyClick(message.replyToId) }
-                            else Modifier)
-                            .padding(horizontal = 8.dp, vertical = 6.dp)
-                    ) {
-                        Box(modifier = Modifier.width(3.dp).fillMaxHeight()
-                            .clip(RoundedCornerShape(2.dp))
-                            .background(MaterialTheme.colorScheme.primary)
-                        )
-                        Spacer(Modifier.width(8.dp))
-                        Column {
-                            Text(
-                                message.replyToSenderName ?: "",
-                                style = MaterialTheme.typography.labelSmall,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.primary
-                            )
-                            Text(
-                                message.replyToText ?: "",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
-                                maxLines = 2
-                            )
-                        }
-                    }
-                    Spacer(Modifier.height(4.dp))
-                }
-                Box(modifier = Modifier.size(120.dp).combinedClickable(
-                    onClick = { onStickerClick(message.text) },
-                    onLongClick = { onLongPress?.invoke() }
-                )) {
-                    val stickerContext = androidx.compose.ui.platform.LocalContext.current
-                    var isLoading by remember { mutableStateOf(true) }
-                    AsyncImage(
-                        model = remember(message.text) {
-                            coil.request.ImageRequest.Builder(stickerContext)
-                                .data(message.text)
-                                .memoryCacheKey(message.text)
-                                .diskCacheKey(message.text.substringBefore("?"))
-                                .crossfade(false)
-                                .allowHardware(true)
-                                .build()
-                        },
-                        contentDescription = "Стикер",
-                        onSuccess = { isLoading = false },
-                        onError = { isLoading = false },
-                        modifier = Modifier.fillMaxSize()
-                    )
-                    if (isLoading) {
-                        val infiniteTransition = androidx.compose.animation.core.rememberInfiniteTransition()
-                        val alpha by infiniteTransition.animateFloat(
-                            initialValue = 0.2f, targetValue = 0.6f,
-                            animationSpec = androidx.compose.animation.core.infiniteRepeatable(
-                                animation = androidx.compose.animation.core.tween(700),
-                                repeatMode = androidx.compose.animation.core.RepeatMode.Reverse
-                            )
-                        )
-                        Box(modifier = Modifier.fillMaxSize()
-                            .clip(RoundedCornerShape(12.dp))
-                            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = alpha)),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text("🎭", style = MaterialTheme.typography.headlineMedium)
+            else -> {
+                Card(
+                    colors = CardDefaults.cardColors(containerColor = if (message.isFromMe) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant),
+                    shape = RoundedCornerShape(topStart = if (message.isFromMe) 16.dp else 4.dp, topEnd = if (message.isFromMe) 4.dp else 16.dp, bottomStart = 16.dp, bottomEnd = 16.dp),
+                    modifier = Modifier.widthIn(max = 280.dp).padding(start = startPadding)
+                ) {
+                    Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
+                        ReplyQuote(message, onReplyClick, isFromMe = message.isFromMe)
+                        val textColor = if (message.isFromMe) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface
+                        su.SkrinVex.ofox.components.LinkedText(message.text, style = MaterialTheme.typography.bodyLarge.copy(color = textColor), linkColor = if (message.isFromMe) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.primary)
+                        Row(modifier = Modifier.align(Alignment.End), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(3.dp)) {
+                            Text(formatTime(message.timestamp), style = MaterialTheme.typography.labelSmall,
+                                color = if (message.isFromMe) MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.7f) else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f))
+                            if (message.isFromMe) MessageStatusIcon(message.status, true)
                         }
                     }
                 }
-                Text(
-                    text = formatTime(message.timestamp),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
-                    modifier = Modifier.padding(top = 2.dp)
-                )
             }
         }
 
-        if (message.messageType != "voice" && message.messageType != "sticker") {
-        Card(
-            colors = CardDefaults.cardColors(
-                containerColor = if (message.isFromMe)
-                    MaterialTheme.colorScheme.primary
-                else
-                    MaterialTheme.colorScheme.surfaceVariant
-            ),
-            shape = RoundedCornerShape(
-                topStart = if (message.isFromMe) 16.dp else 4.dp,
-                topEnd = if (message.isFromMe) 4.dp else 16.dp,
-                bottomStart = 16.dp,
-                bottomEnd = 16.dp
-            ),
-            modifier = Modifier
-                .widthIn(max = 280.dp)
-                .padding(start = if (message.isFromMe) 0.dp else if (isDiscoveryChat) 36.dp else 0.dp)
-        ) {
-            Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
-                // Цитата
-                if (message.replyToText != null || message.replyToSenderName != null) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(
-                                if (message.isFromMe) MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.15f)
-                                else MaterialTheme.colorScheme.primary.copy(alpha = 0.08f)
-                            )
-                            .then(if (onReplyClick != null && message.replyToId != null)
-                                Modifier.clickable { onReplyClick(message.replyToId) }
-                            else Modifier)
-                            .padding(horizontal = 8.dp, vertical = 6.dp),
-                    ) {
-                        Box(modifier = Modifier
-                            .width(3.dp)
-                            .fillMaxHeight()
-                            .clip(RoundedCornerShape(2.dp))
-                            .background(if (message.isFromMe) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.primary)
-                        )
-                        Spacer(Modifier.width(8.dp))
-                        Column {
-                            Text(
-                                message.replyToSenderName ?: "",
-                                style = MaterialTheme.typography.labelSmall,
-                                fontWeight = FontWeight.Bold,
-                                color = if (message.isFromMe) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.primary
-                            )
-                            Text(
-                                when {
-                                    message.replyToText?.startsWith("http") == true && message.replyToText.contains("sticker") -> "Стикер"
-                                    message.replyToText.isNullOrEmpty() && message.messageType == "voice" -> "Голосовое сообщение"
-                                    else -> (message.replyToText ?: "").take(80)
-                                },
-                                style = MaterialTheme.typography.bodySmall,
-                                color = if (message.isFromMe) MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.75f)
-                                        else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
-                                maxLines = 2
-                            )
-                        }
-                    }
-                    Spacer(Modifier.height(6.dp))
-                }
-
-                val textColor = if (message.isFromMe) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface
-                val linkColor = if (message.isFromMe) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.primary
-                su.SkrinVex.ofox.components.LinkedText(
-                    text = message.text,
-                    style = MaterialTheme.typography.bodyLarge.copy(color = textColor),
-                    linkColor = linkColor
-                )
-                Row(
-                    modifier = Modifier.align(Alignment.End),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(3.dp)
-                ) {
-                    Text(
-                        text = formatTime(message.timestamp),
-                        style = MaterialTheme.typography.labelSmall,
-                        color = if (message.isFromMe)
-                            MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.7f)
-                        else
-                            MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
-                    )
-                    if (message.isFromMe) {
-                        MessageStatusIcon(status = message.status, isFromMe = true)
-                    }
-                }
-            }
-        } // end Card + if text message
-
-        // Реакции — для всех типов сообщений (текст, голосовое, стикер)
-        val reactionsMap = try {
-            if (reactionsJson.isBlank() || reactionsJson == "{}") emptyMap()
-            else {
-                val obj = org.json.JSONObject(reactionsJson)
-                obj.keys().asSequence().associateWith { key ->
-                    val arr = obj.getJSONArray(key)
-                    (0 until arr.length()).map { arr.getInt(it) }
-                }.filter { it.value.isNotEmpty() }
-            }
-        } catch (_: Exception) { emptyMap() }
+        // Реакции — под любым типом сообщения
         if (reactionsMap.isNotEmpty()) {
-                Row(
-                    modifier = Modifier.padding(top = 2.dp, bottom = 2.dp),
-                    horizontalArrangement = Arrangement.spacedBy(4.dp)
-                ) {
-                    reactionsMap.forEach { (emoji, userIds) ->
-                        val isMine = currentUserId != 0 && currentUserId in userIds
-                        Surface(
-                            shape = RoundedCornerShape(12.dp),
-                            color = if (isMine) MaterialTheme.colorScheme.primary.copy(alpha = 0.18f)
-                                    else MaterialTheme.colorScheme.surfaceVariant,
-                            border = if (isMine) androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)) else null,
-                            modifier = Modifier.combinedClickable(
-                                onClick = { onReact?.invoke(emoji) },
-                                onLongClick = { reactionPopupEmoji = emoji }
-                            )
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(2.dp)
-                            ) {
-                                Text(emoji, style = MaterialTheme.typography.labelMedium)
-                                val avatarUserIds = userIds.take(3)
-                                val extraCount = userIds.size - avatarUserIds.size
-                                avatarUserIds.forEach { uid ->
-                                    val avatarUrl = su.SkrinVex.ofox.data.UserCache.getAvatar(uid)
-                                    val name = su.SkrinVex.ofox.data.UserCache.getName(uid) ?: "?"
-                                    su.SkrinVex.ofox.components.UserAvatar(
-                                        name = name,
-                                        avatarUrl = avatarUrl,
-                                        size = 16.dp
-                                    )
-                                }
-                                if (extraCount > 0) {
-                                    Text(
-                                        "+$extraCount",
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
-                                    )
-                                }
+            Row(modifier = Modifier.padding(top = 2.dp, bottom = 2.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                reactionsMap.forEach { (emoji, userIds) ->
+                    val isMine = currentUserId != 0 && currentUserId in userIds
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = if (isMine) MaterialTheme.colorScheme.primary.copy(alpha = 0.18f) else MaterialTheme.colorScheme.surfaceVariant,
+                        border = if (isMine) androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)) else null,
+                        modifier = Modifier.combinedClickable(onClick = { onReact?.invoke(emoji) }, onLongClick = { reactionPopupEmoji = emoji })
+                    ) {
+                        Row(modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+                            Text(emoji, style = MaterialTheme.typography.labelMedium)
+                            userIds.take(3).forEach { uid ->
+                                su.SkrinVex.ofox.components.UserAvatar(name = su.SkrinVex.ofox.data.UserCache.getName(uid) ?: "?", avatarUrl = su.SkrinVex.ofox.data.UserCache.getAvatar(uid), size = 16.dp)
                             }
+                            if (userIds.size > 3) Text("+${userIds.size - 3}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f))
                         }
                     }
                 }
@@ -1306,42 +1133,16 @@ fun MessageBubble(
         }
     }
 
-    // Попап "кто поставил реакцию"
     if (reactionPopupEmoji != null) {
         val emoji = reactionPopupEmoji!!
-        val reactionsMap = try {
-                val obj = org.json.JSONObject(reactionsJson)
-                obj.keys().asSequence().associateWith { key ->
-                    val arr = obj.getJSONArray(key)
-                    (0 until arr.length()).map { arr.getInt(it) }
-                }
-            } catch (_: Exception) { emptyMap() }
         val userIds = reactionsMap[emoji] ?: emptyList()
-        androidx.compose.material3.ModalBottomSheet(
-            onDismissRequest = { reactionPopupEmoji = null },
-            containerColor = MaterialTheme.colorScheme.surface
-        ) {
+        androidx.compose.material3.ModalBottomSheet(onDismissRequest = { reactionPopupEmoji = null }, containerColor = MaterialTheme.colorScheme.surface) {
             Column(modifier = Modifier.padding(horizontal = 16.dp).padding(bottom = 32.dp)) {
-                Text(
-                    "$emoji  ${userIds.size}",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold,
-                    modifier = Modifier.padding(bottom = 12.dp)
-                )
+                Text("$emoji  ${userIds.size}", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, modifier = Modifier.padding(bottom = 12.dp))
                 userIds.forEach { uid ->
-                    val name = su.SkrinVex.ofox.data.UserCache.getName(uid) ?: "Пользователь"
-                    val avatarUrl = su.SkrinVex.ofox.data.UserCache.getAvatar(uid)
-                    Row(
-                        modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(12.dp)
-                    ) {
-                        su.SkrinVex.ofox.components.UserAvatar(name = name, avatarUrl = avatarUrl, size = 36.dp)
-                        Text(
-                            if (uid == currentUserId) "Вы" else name,
-                            style = MaterialTheme.typography.bodyMedium,
-                            fontWeight = if (uid == currentUserId) FontWeight.Bold else FontWeight.Normal
-                        )
+                    Row(modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        su.SkrinVex.ofox.components.UserAvatar(name = su.SkrinVex.ofox.data.UserCache.getName(uid) ?: "?", avatarUrl = su.SkrinVex.ofox.data.UserCache.getAvatar(uid), size = 36.dp)
+                        Text(if (uid == currentUserId) "Вы" else su.SkrinVex.ofox.data.UserCache.getName(uid) ?: "Пользователь", style = MaterialTheme.typography.bodyMedium, fontWeight = if (uid == currentUserId) FontWeight.Bold else FontWeight.Normal)
                     }
                 }
             }
