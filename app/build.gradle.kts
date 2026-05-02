@@ -134,6 +134,9 @@ dependencies {
     // Pager для полноэкранного просмотра изображений
     implementation("androidx.compose.foundation:foundation:1.6.0")
 
+    // Media session / playback notification
+    implementation("androidx.media:media:1.7.0")
+
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)

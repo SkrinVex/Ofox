@@ -1,6 +1,5 @@
 package su.SkrinVex.ofox.components
 
-import android.media.MediaPlayer
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
@@ -10,11 +9,12 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
-import kotlinx.coroutines.delay
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import su.SkrinVex.ofox.OfoxApp
+import su.SkrinVex.ofox.VoicePlayerService
 import su.SkrinVex.ofox.data.Repository
 
 @Composable
@@ -22,44 +22,43 @@ fun VoiceMessagePlayer(
     voiceKey: String,
     durationMs: Long,
     isFromMe: Boolean,
-    repository: Repository
+    repository: Repository,
+    senderName: String = "",
+    senderAvatarUrl: String = ""
 ) {
-    var playUrl by remember(voiceKey) { mutableStateOf<String?>(null) }
-    var isPlaying by remember { mutableStateOf(false) }
-    var progress by remember { mutableStateOf(0f) }
-    var player by remember { mutableStateOf<MediaPlayer?>(null) }
-    var isLoading by remember { mutableStateOf(false) }
+    val context = LocalContext.current
     val scope = rememberCoroutineScope()
+
+    val globalState by VoicePlayerService.state.collectAsState()
+    val isThisVoice = globalState.voiceKey == voiceKey
+    val isPlaying = isThisVoice && globalState.isPlaying
+    val isLoading = isThisVoice && globalState.isLoading
+    val progress = if (isThisVoice) globalState.progress else 0f
+    val positionMs = if (isThisVoice) globalState.positionMs else 0L
+    val displayDuration = if (isThisVoice && globalState.durationMs > 0) globalState.durationMs else durationMs
+
+    var playUrl by remember(voiceKey) { mutableStateOf<String?>(null) }
 
     val contentColor = if (isFromMe) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface
     val trackColor = contentColor.copy(alpha = 0.3f)
 
-    // Обновляем прогресс во время воспроизведения
-    LaunchedEffect(isPlaying) {
-        if (isPlaying) {
-            while (isPlaying) {
-                val p = player
-                if (p != null && p.isPlaying) {
-                    progress = p.currentPosition.toFloat() / p.duration.toFloat()
-                }
-                delay(200)
+    fun onPlayPause() {
+        val svc = OfoxApp.voiceService
+        if (isThisVoice && svc != null) {
+            if (isPlaying) svc.pause() else svc.resume()
+        } else {
+            scope.launch(Dispatchers.IO) {
+                val url = playUrl ?: repository.getVoicePlayUrl(voiceKey)?.also { playUrl = it } ?: return@launch
+                OfoxApp.voiceService?.load(url, voiceKey, durationMs, senderName, senderAvatarUrl)
             }
-        }
-    }
-
-    DisposableEffect(voiceKey) {
-        onDispose {
-            player?.release()
-            player = null
         }
     }
 
     Row(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp),
-        modifier = Modifier.widthIn(min = 160.dp, max = 240.dp)
+        modifier = Modifier.widthIn(min = 180.dp, max = 260.dp)
     ) {
-        // Кнопка play/pause
         Surface(
             shape = CircleShape,
             color = contentColor.copy(alpha = 0.15f),
@@ -67,42 +66,9 @@ fun VoiceMessagePlayer(
         ) {
             Box(contentAlignment = Alignment.Center) {
                 if (isLoading) {
-                    CircularProgressIndicator(
-                        modifier = Modifier.size(20.dp),
-                        strokeWidth = 2.dp,
-                        color = contentColor
-                    )
+                    CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp, color = contentColor)
                 } else {
-                    IconButton(
-                        onClick = {
-                            if (isPlaying) {
-                                player?.pause()
-                                isPlaying = false
-                            } else {
-                                scope.launch {
-                                    if (playUrl == null) {
-                                        isLoading = true
-                                        playUrl = repository.getVoicePlayUrl(voiceKey)
-                                        isLoading = false
-                                    }
-                                    val url = playUrl ?: return@launch
-                                    if (player == null) {
-                                        val mp = MediaPlayer()
-                                        mp.setDataSource(url)
-                                        mp.setOnCompletionListener {
-                                            isPlaying = false
-                                            progress = 0f
-                                        }
-                                        mp.prepare()
-                                        player = mp
-                                    }
-                                    player?.start()
-                                    isPlaying = true
-                                }
-                            }
-                        },
-                        modifier = Modifier.fillMaxSize()
-                    ) {
+                    IconButton(onClick = ::onPlayPause, modifier = Modifier.fillMaxSize()) {
                         Icon(
                             if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
                             contentDescription = null,
@@ -114,21 +80,31 @@ fun VoiceMessagePlayer(
             }
         }
 
-        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            // Прогресс-бар
-            LinearProgressIndicator(
-                progress = { progress },
-                modifier = Modifier.fillMaxWidth().height(3.dp).clip(MaterialTheme.shapes.small),
-                color = contentColor,
-                trackColor = trackColor
+        Column(modifier = Modifier.weight(1f)) {
+            Slider(
+                value = progress,
+                onValueChange = { v ->
+                    if (isThisVoice) OfoxApp.voiceService?.seekTo((v * displayDuration).toLong())
+                },
+                modifier = Modifier.fillMaxWidth().height(20.dp),
+                colors = SliderDefaults.colors(
+                    thumbColor = contentColor,
+                    activeTrackColor = contentColor,
+                    inactiveTrackColor = trackColor
+                )
             )
-            // Длительность
-            val displayMs = if (isPlaying) (progress * durationMs).toLong() else durationMs
-            Text(
-                formatDuration(displayMs),
-                style = MaterialTheme.typography.labelSmall,
-                color = contentColor.copy(alpha = 0.7f)
-            )
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                Text(
+                    formatDuration(if (isThisVoice) positionMs else 0L),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = contentColor.copy(alpha = 0.7f)
+                )
+                Text(
+                    formatDuration(displayDuration),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = contentColor.copy(alpha = 0.7f)
+                )
+            }
         }
     }
 }

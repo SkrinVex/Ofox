@@ -1340,7 +1340,9 @@ fun MessageBubble(
                                 voiceKey = message.voiceKey,
                                 durationMs = message.voiceDuration,
                                 isFromMe = message.isFromMe,
-                                repository = repository
+                                repository = repository,
+                                senderName = message.senderName,
+                                senderAvatarUrl = message.senderAvatarUrl
                             )
                             Row(modifier = Modifier.align(Alignment.End), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(3.dp)) {
                                 Text(formatTime(message.timestamp), style = MaterialTheme.typography.labelSmall,
