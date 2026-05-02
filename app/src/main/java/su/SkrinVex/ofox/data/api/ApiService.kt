@@ -117,6 +117,12 @@ interface ApiService {
     @POST("chats/{chatId}/typing")
     suspend fun sendTyping(@Path("chatId") chatId: Int)
 
+    @GET("chats/{chatId}/voice/upload")
+    suspend fun getVoiceUploadUrl(@Path("chatId") chatId: Int): VoiceUploadUrlResponse
+
+    @GET("chats/voice/play")
+    suspend fun getVoicePlayUrl(@Query("key") key: String): VoicePlayUrlResponse
+
     @GET("chats/online/users")
     suspend fun getOnlineUsers(): Map<String, List<Int>>
     
@@ -262,6 +268,9 @@ interface ApiService {
         @Path("chatId") chatId: Int,
         @Body request: SendMessageRequest
     ): MessageResponse
+
+    @GET("discoveries/chat/{chatId}/voice/upload")
+    suspend fun getDiscoveryVoiceUploadUrl(@Path("chatId") chatId: Int): VoiceUploadUrlResponse
 
     @GET("notification-settings")
     suspend fun getNotificationSettings(): NotificationSettingsResponse

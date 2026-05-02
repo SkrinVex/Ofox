@@ -595,7 +595,13 @@ class Repository(private val context: Context) {
     suspend fun sendMessage(chatId: Int, text: String, replyToId: Int? = null): Message? = withContext(Dispatchers.IO) {
         try {
             val currentUserId = getCurrentUserId()
-            val response = apiClient.api.sendMessage(chatId, SendMessageRequest(text, replyToId = replyToId))
+            val chat = db.chatDao().getChatById(chatId)
+            val request = SendMessageRequest(text, replyToId = replyToId)
+            val response = if (chat?.discoveryId != null && chat.discoveryId != 0) {
+                apiClient.api.sendDiscoveryChatMessage(chatId, request)
+            } else {
+                apiClient.api.sendMessage(chatId, request)
+            }
             val message = response.toMessage(currentUserId)
             db.messageDao().insertMessage(message)
             db.chatDao().updateChat(chatId, text, message.timestamp)
@@ -962,7 +968,9 @@ class Repository(private val context: Context) {
         replyToText = reply_to_text,
         replyToSenderName = reply_to_sender_name,
         status = if (sender_id == currentUserId) (if (is_read) "read" else "sent") else "sent",
-        reactions = if (reactions.isNullOrEmpty()) "" else reactionsToJson(reactions)
+        reactions = if (reactions.isNullOrEmpty()) "" else reactionsToJson(reactions),
+        voiceKey = voice_key,
+        voiceDuration = voice_duration ?: 0L
     )
 
     private fun parseTimestamp(dateStr: String): Long {
@@ -1070,9 +1078,54 @@ class Repository(private val context: Context) {
         try { apiClient.api.sendTyping(chatId) } catch (_: Exception) {}
     }
 
+    suspend fun getVoiceUploadUrl(chatId: Int): su.SkrinVex.ofox.data.api.models.VoiceUploadUrlResponse? = withContext(Dispatchers.IO) {
+        try {
+            // Определяем тип чата — личный или discovery
+            val chat = db.chatDao().getChatById(chatId)
+            if (chat?.discoveryId != null && chat.discoveryId != 0) {
+                apiClient.api.getDiscoveryVoiceUploadUrl(chatId)
+            } else {
+                apiClient.api.getVoiceUploadUrl(chatId)
+            }
+        } catch (_: Exception) { null }
+    }
+
+    suspend fun getVoicePlayUrl(key: String): String? = withContext(Dispatchers.IO) {
+        try { apiClient.api.getVoicePlayUrl(key).playUrl } catch (_: Exception) { null }
+    }
+
+    suspend fun sendVoiceMessage(chatId: Int, voiceKey: String, durationMs: Long, replyToId: Int? = null): Message? = withContext(Dispatchers.IO) {
+        try {
+            val currentUserId = getCurrentUserId()
+            val request = su.SkrinVex.ofox.data.api.models.SendMessageRequest(
+                text = "", messageType = "voice", replyToId = replyToId,
+                voiceKey = voiceKey, voiceDuration = durationMs
+            )
+            val chat = db.chatDao().getChatById(chatId)
+            val response = if (chat?.discoveryId != null && chat.discoveryId != 0) {
+                apiClient.api.sendDiscoveryChatMessage(chatId, request)
+            } else {
+                apiClient.api.sendMessage(chatId, request)
+            }
+            val message = response.toMessage(currentUserId)
+            db.messageDao().insertMessage(message)
+            db.chatDao().updateChat(chatId, "Голосовое сообщение", message.timestamp)
+            message
+        } catch (e: Exception) {
+            android.util.Log.e("Repository", "sendVoiceMessage error", e)
+            null
+        }
+    }
+
     suspend fun sendSticker(chatId: Int, stickerUrl: String, replyToId: Int? = null): Message? = withContext(Dispatchers.IO) {
         try {
-            val response = apiClient.api.sendMessage(chatId, SendMessageRequest(stickerUrl, "sticker", replyToId))
+            val chat = db.chatDao().getChatById(chatId)
+            val request = SendMessageRequest(stickerUrl, "sticker", replyToId)
+            val response = if (chat?.discoveryId != null && chat.discoveryId != 0) {
+                apiClient.api.sendDiscoveryChatMessage(chatId, request)
+            } else {
+                apiClient.api.sendMessage(chatId, request)
+            }
             response.toMessage(getCurrentUserId())
         } catch (e: Exception) {
             android.util.Log.e("Repository", "sendSticker error", e)

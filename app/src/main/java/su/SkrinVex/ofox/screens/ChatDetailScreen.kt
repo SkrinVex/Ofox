@@ -58,6 +58,7 @@ fun ChatDetailScreen(repository: Repository, chatId: Int, initialName: String? =
     var stickerInfoPackName by remember { mutableStateOf<String?>(null) }
     var myPackIds by remember { mutableStateOf(emptySet<Int>()) }
     var currentUserId by remember { mutableStateOf(0) }
+    val reactionsOverride = remember { androidx.compose.runtime.snapshots.SnapshotStateMap<Int, String>() }
     val scope = rememberCoroutineScope()
     val listState = rememberLazyListState()
     val context = androidx.compose.ui.platform.LocalContext.current
@@ -82,6 +83,7 @@ fun ChatDetailScreen(repository: Repository, chatId: Int, initialName: String? =
     var replyTo by remember { mutableStateOf<su.SkrinVex.ofox.data.Message?>(null) }
     var selectedMessage by remember { mutableStateOf<su.SkrinVex.ofox.data.Message?>(null) }
     var highlightedMessageTimestamp by remember { mutableStateOf<Long?>(null) }
+    var isVoiceRecording by remember { mutableStateOf(false) }
 
     fun loadMessages(before: Int? = null) {
         scope.launch {
@@ -224,15 +226,16 @@ fun ChatDetailScreen(repository: Repository, chatId: Int, initialName: String? =
                 }
                 is su.SkrinVex.ofox.data.api.WSEvent.MessageReaction -> {
                     if (event.chatId == chatId) {
+                        val newJson = org.json.JSONObject().apply {
+                            event.reactions.forEach { r ->
+                                val arr = org.json.JSONArray()
+                                r.user_ids.forEach { arr.put(it) }
+                                put(r.emoji, arr)
+                            }
+                        }.toString()
+                        reactionsOverride[event.messageId] = newJson
                         val idx = messages.indexOfFirst { it.id == event.messageId }
                         if (idx != -1) {
-                            val newJson = org.json.JSONObject().apply {
-                                event.reactions.forEach { r ->
-                                    val arr = org.json.JSONArray()
-                                    r.user_ids.forEach { arr.put(it) }
-                                    put(r.emoji, arr)
-                                }
-                            }.toString()
                             messages[idx] = messages[idx].copy(reactions = newJson)
                         }
                     }
@@ -413,6 +416,7 @@ fun ChatDetailScreen(repository: Repository, chatId: Int, initialName: String? =
                 ) {
                     MessageBubble(
                         message = message,
+                        repository = repository,
                         chatName = chat?.name ?: "",
                         stickerPackMap = stickerPackMap,
                         onStickerClick = { stickerUrl ->
@@ -442,16 +446,21 @@ fun ChatDetailScreen(repository: Repository, chatId: Int, initialName: String? =
                             }
                         },
                         onReact = { emoji ->
-                            val msgId = message.id
+                            val msgId = if (message.id > 0) message.id
+                                        else messages.firstOrNull { it.timestamp == message.timestamp && it.id > 0 }?.id ?: 0
                             if (msgId > 0) {
+                                val currentReactions = reactionsOverride[msgId] ?: message.reactions
                                 scope.launch {
-                                    val newReactions = repository.toggleReaction(chatId, msgId, emoji, currentUserId, message.reactions)
-                                    val idx = messages.indexOfFirst { it.id == msgId }
+                                    val newReactions = repository.toggleReaction(chatId, msgId, emoji, currentUserId, currentReactions)
+                                    reactionsOverride[msgId] = newReactions
+                                    val idx = messages.indexOfFirst { it.id == msgId || (it.id == 0 && it.timestamp == message.timestamp) }
                                     if (idx != -1) messages[idx] = messages[idx].copy(reactions = newReactions)
                                 }
                             }
                         },
+                        onLongPress = { selectedMessage = message },
                         currentUserId = currentUserId,
+                        reactionsJson = reactionsOverride[message.id] ?: message.reactions,
                         isHighlighted = message.timestamp == highlightedMessageTimestamp,
                         isDiscoveryChat = (chat?.discoveryId ?: 0) != 0
                     )
@@ -489,7 +498,11 @@ fun ChatDetailScreen(repository: Repository, chatId: Int, initialName: String? =
                             fontWeight = FontWeight.Bold
                         )
                         Text(
-                            if (reply.messageType == "sticker") "🎭 Стикер" else reply.text.take(80),
+                            when {
+                                reply.messageType == "sticker" -> "Стикер"
+                                reply.messageType == "voice" -> "Голосовое сообщение"
+                                else -> reply.text.take(80)
+                            },
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.55f),
                             maxLines = 1
@@ -539,8 +552,9 @@ fun ChatDetailScreen(repository: Repository, chatId: Int, initialName: String? =
                     modifier = Modifier.fillMaxWidth(),
                     placeholder = { 
                         Text(
-                            "Сообщение...",
-                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                            if (isVoiceRecording) "Запись..." else "Сообщение...",
+                            color = if (isVoiceRecording) MaterialTheme.colorScheme.error
+                                    else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
                         ) 
                     },
                     colors = TextFieldDefaults.colors(
@@ -557,12 +571,10 @@ fun ChatDetailScreen(repository: Repository, chatId: Int, initialName: String? =
                 )
             }
             Spacer(modifier = Modifier.width(8.dp))
+            if (messageText.isNotBlank()) {
             Surface(
                 shape = CircleShape,
-                color = if (messageText.isNotBlank()) 
-                    MaterialTheme.colorScheme.primary 
-                else 
-                    MaterialTheme.colorScheme.surfaceVariant
+                color = MaterialTheme.colorScheme.primary
             ) {
                 IconButton(
                     onClick = {
@@ -573,7 +585,6 @@ fun ChatDetailScreen(repository: Repository, chatId: Int, initialName: String? =
                             val replySenderName = replyTo?.senderName
                             messageText = ""
                             replyTo = null
-                            // Уникальный отрицательный id для временного сообщения
                             val localId = -(System.currentTimeMillis().toInt())
                             val tempMessage = su.SkrinVex.ofox.data.Message(
                                 id = localId, chatId = chatId, text = text,
@@ -585,26 +596,55 @@ fun ChatDetailScreen(repository: Repository, chatId: Int, initialName: String? =
                             scope.launch {
                                 listState.scrollToItem(messages.size - 1)
                                 val sent = repository.sendMessage(chatId, text, replyId)
-                                // Заменяем временное сообщение реальным по localId
                                 val idx = messages.indexOfFirst { it.id == localId }
                                 if (idx != -1) {
                                     if (sent != null) messages[idx] = sent
-                                    else messages.removeAt(idx) // ошибка отправки
+                                    else messages.removeAt(idx)
                                 }
                             }
                         }
-                    },
-                    enabled = messageText.isNotBlank()
+                    }
                 ) {
-                    Icon(
-                        Icons.AutoMirrored.Filled.Send,
-                        contentDescription = "Отправить",
-                        tint = if (messageText.isNotBlank()) 
-                            MaterialTheme.colorScheme.onPrimary 
-                        else 
-                            MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
-                    )
+                    Icon(Icons.AutoMirrored.Filled.Send, "Отправить", tint = MaterialTheme.colorScheme.onPrimary)
                 }
+            }
+            } else {
+                su.SkrinVex.ofox.components.VoiceMessageButton(
+                    repository = repository,
+                    chatId = chatId,
+                    onRecordingStateChange = { isVoiceRecording = it },
+                    onVoiceSent = { key, duration ->
+                        val replyMsg = replyTo
+                        val replyId = replyMsg?.let { r ->
+                            if (r.id > 0) r.id
+                            else messages.firstOrNull { it.timestamp == r.timestamp && it.id > 0 }?.id
+                        }
+                        replyTo = null
+                        val localId = -(System.currentTimeMillis().toInt())
+                        val tempMsg = su.SkrinVex.ofox.data.Message(
+                            id = localId, chatId = chatId, text = "",
+                            timestamp = System.currentTimeMillis(), isFromMe = true,
+                            messageType = "voice", voiceKey = key, voiceDuration = duration,
+                            status = "sending"
+                        )
+                        messages.add(tempMsg)
+                        scope.launch {
+                            listState.scrollToItem(messages.size - 1)
+                            val sent = repository.sendVoiceMessage(chatId, key, duration, replyId)
+                            val idx = messages.indexOfFirst { it.id == localId }
+                            if (idx != -1) {
+                                if (sent != null) {
+                                    messages[idx] = sent
+                                } else {
+                                    // Не удаляем — перезагружаем чтобы получить реальный id
+                                    val loaded = repository.getMessages(chatId)
+                                    messages.clear()
+                                    messages.addAll(loaded)
+                                }
+                            }
+                        }
+                    }
+                )
             }
         }
     }
@@ -674,8 +714,10 @@ fun ChatDetailScreen(repository: Repository, chatId: Int, initialName: String? =
             containerColor = MaterialTheme.colorScheme.surface
         ) {
             Column(modifier = Modifier.padding(16.dp)) {
-                // Быстрые реакции
-                if (msg.id > 0) {
+                // Быстрые реакции — для сохранённых сообщений (id>0) или если можно найти реальный id
+                val realMsgId = if (msg.id > 0) msg.id
+                                else messages.firstOrNull { it.timestamp == msg.timestamp && it.id > 0 }?.id ?: 0
+                if (realMsgId > 0) {
                     val quickEmojis = listOf("❤️", "😂", "👍", "😮", "😢", "🔥")
                     val currentReactions = remember(msg.reactions) { repository.parseReactions(msg.reactions) }
                     Row(
@@ -690,8 +732,10 @@ fun ChatDetailScreen(repository: Repository, chatId: Int, initialName: String? =
                                         else MaterialTheme.colorScheme.surfaceVariant,
                                 modifier = Modifier.clickable {
                                     scope.launch {
-                                        val newReactions = repository.toggleReaction(chatId, msg.id, emoji, currentUserId, msg.reactions)
-                                        val idx = messages.indexOfFirst { it.id == msg.id }
+                                        val cur = reactionsOverride[realMsgId] ?: msg.reactions
+                                        val newReactions = repository.toggleReaction(chatId, realMsgId, emoji, currentUserId, cur)
+                                        reactionsOverride[realMsgId] = newReactions
+                                        val idx = messages.indexOfFirst { it.id == realMsgId || (it.id == 0 && it.timestamp == msg.timestamp) }
                                         if (idx != -1) messages[idx] = messages[idx].copy(reactions = newReactions)
                                     }
                                     selectedMessage = null
@@ -741,9 +785,17 @@ fun ChatDetailScreen(repository: Repository, chatId: Int, initialName: String? =
             onStickerSelected = { sticker ->
                 showStickerPicker = false
                 stickerPickerInitialPackId = null
-                val replyId = replyTo?.id?.takeIf { it != 0 }
-                val replyText = replyTo?.text
-                val replySenderName = replyTo?.senderName
+                val replyMsg = replyTo
+                val replyId = replyMsg?.let { r ->
+                    if (r.id > 0) r.id
+                    else messages.firstOrNull { it.timestamp == r.timestamp && it.id > 0 }?.id
+                }
+                val replyText = when (replyMsg?.messageType) {
+                    "voice" -> "Голосовое сообщение"
+                    "sticker" -> "Стикер"
+                    else -> replyMsg?.text
+                }
+                val replySenderName = replyMsg?.senderName
                 replyTo = null
                 val localId = -(System.currentTimeMillis().toInt())
                 val tempMessage = su.SkrinVex.ofox.data.Message(
@@ -893,13 +945,16 @@ fun SwipeToReply(
 @Composable
 fun MessageBubble(
     message: su.SkrinVex.ofox.data.Message,
+    repository: su.SkrinVex.ofox.data.Repository,
     chatName: String = "",
     stickerPackMap: Map<String, Pair<Int?, String>> = emptyMap(),
     onStickerClick: (stickerUrl: String) -> Unit = {},
     onSenderClick: ((Int) -> Unit)? = null,
     onReplyClick: ((Int) -> Unit)? = null,
     onReact: ((String) -> Unit)? = null,
+    onLongPress: (() -> Unit)? = null,
     currentUserId: Int = 0,
+    reactionsJson: String = "",
     isHighlighted: Boolean = false,
     isDiscoveryChat: Boolean = false
 ) {
@@ -940,16 +995,124 @@ fun MessageBubble(
             }
         }
 
-        if (message.messageType == "sticker") {
+        if (message.messageType == "voice" && message.voiceKey != null) {
+            Card(
+                colors = CardDefaults.cardColors(
+                    containerColor = if (message.isFromMe) MaterialTheme.colorScheme.primary
+                    else MaterialTheme.colorScheme.surfaceVariant
+                ),
+                shape = RoundedCornerShape(16.dp),
+                modifier = Modifier
+                    .widthIn(max = 260.dp)
+                    .padding(start = if (message.isFromMe) 0.dp else if (isDiscoveryChat) 36.dp else 0.dp)
+                    .combinedClickable(onClick = {}, onLongClick = { onLongPress?.invoke() })
+            ) {
+                Column(modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp)) {
+                    // Цитата в голосовом
+                    if (message.replyToText != null || message.replyToSenderName != null) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(
+                                    if (message.isFromMe) MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.15f)
+                                    else MaterialTheme.colorScheme.primary.copy(alpha = 0.08f)
+                                )
+                                .then(if (onReplyClick != null && message.replyToId != null)
+                                    Modifier.clickable { onReplyClick(message.replyToId) }
+                                else Modifier)
+                                .padding(horizontal = 8.dp, vertical = 6.dp)
+                        ) {
+                            Box(modifier = Modifier.width(3.dp).fillMaxHeight()
+                                .clip(RoundedCornerShape(2.dp))
+                                .background(if (message.isFromMe) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.primary)
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            Column {
+                                Text(
+                                    message.replyToSenderName ?: "",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (message.isFromMe) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.primary
+                                )
+                                Text(
+                                    message.replyToText ?: "",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = if (message.isFromMe) MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.75f)
+                                            else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+                                    maxLines = 2
+                                )
+                            }
+                        }
+                        Spacer(Modifier.height(6.dp))
+                    }
+                    su.SkrinVex.ofox.components.VoiceMessagePlayer(
+                        voiceKey = message.voiceKey,
+                        durationMs = message.voiceDuration,
+                        isFromMe = message.isFromMe,
+                        repository = repository
+                    )
+                    Row(
+                        modifier = Modifier.align(Alignment.End),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(3.dp)
+                    ) {
+                        Text(
+                            formatTime(message.timestamp),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = if (message.isFromMe) MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.7f)
+                            else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
+                        )
+                        if (message.isFromMe) MessageStatusIcon(message.status, true)
+                    }
+                }
+            }
+        } else if (message.messageType == "sticker") {
             Column(
                 modifier = Modifier
-                    .padding(start = if (message.isFromMe) 0.dp else if (isDiscoveryChat) 36.dp else 0.dp)
-                    .clickable { onStickerClick(message.text) },
+                    .padding(start = if (message.isFromMe) 0.dp else if (isDiscoveryChat) 36.dp else 0.dp),
                 horizontalAlignment = if (message.isFromMe) Alignment.End else Alignment.Start
             ) {
-                val stickerContext = androidx.compose.ui.platform.LocalContext.current
-                var isLoading by remember { mutableStateOf(true) }
-                Box(modifier = Modifier.size(120.dp)) {
+                // Цитата над стикером
+                if (message.replyToText != null || message.replyToSenderName != null) {
+                    Row(
+                        modifier = Modifier
+                            .widthIn(max = 200.dp)
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(MaterialTheme.colorScheme.surfaceVariant)
+                            .then(if (onReplyClick != null && message.replyToId != null)
+                                Modifier.clickable { onReplyClick(message.replyToId) }
+                            else Modifier)
+                            .padding(horizontal = 8.dp, vertical = 6.dp)
+                    ) {
+                        Box(modifier = Modifier.width(3.dp).fillMaxHeight()
+                            .clip(RoundedCornerShape(2.dp))
+                            .background(MaterialTheme.colorScheme.primary)
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Column {
+                            Text(
+                                message.replyToSenderName ?: "",
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                            Text(
+                                message.replyToText ?: "",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+                                maxLines = 2
+                            )
+                        }
+                    }
+                    Spacer(Modifier.height(4.dp))
+                }
+                Box(modifier = Modifier.size(120.dp).combinedClickable(
+                    onClick = { onStickerClick(message.text) },
+                    onLongClick = { onLongPress?.invoke() }
+                )) {
+                    val stickerContext = androidx.compose.ui.platform.LocalContext.current
+                    var isLoading by remember { mutableStateOf(true) }
                     AsyncImage(
                         model = remember(message.text) {
                             coil.request.ImageRequest.Builder(stickerContext)
@@ -990,9 +1153,9 @@ fun MessageBubble(
                     modifier = Modifier.padding(top = 2.dp)
                 )
             }
-            return
         }
 
+        if (message.messageType != "voice" && message.messageType != "sticker") {
         Card(
             colors = CardDefaults.cardColors(
                 containerColor = if (message.isFromMe)
@@ -1041,8 +1204,11 @@ fun MessageBubble(
                                 color = if (message.isFromMe) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.primary
                             )
                             Text(
-                                if (message.replyToText?.startsWith("http") == true && message.replyToText.contains("sticker")) "🎭 Стикер"
-                                else (message.replyToText ?: "").take(80),
+                                when {
+                                    message.replyToText?.startsWith("http") == true && message.replyToText.contains("sticker") -> "Стикер"
+                                    message.replyToText.isNullOrEmpty() && message.messageType == "voice" -> "Голосовое сообщение"
+                                    else -> (message.replyToText ?: "").take(80)
+                                },
                                 style = MaterialTheme.typography.bodySmall,
                                 color = if (message.isFromMe) MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.75f)
                                         else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
@@ -1078,19 +1244,20 @@ fun MessageBubble(
                     }
                 }
             }
-        }
-        // Реакции — как в Telegram: аватарки + счётчик
-        if (message.reactions.isNotEmpty()) {
-            val reactionsMap = remember(message.reactions) {
-                try {
-                    val obj = org.json.JSONObject(message.reactions)
-                    obj.keys().asSequence().associateWith { key ->
-                        val arr = obj.getJSONArray(key)
-                        (0 until arr.length()).map { arr.getInt(it) }
-                    }
-                } catch (_: Exception) { emptyMap() }
+        } // end Card + if text message
+
+        // Реакции — для всех типов сообщений (текст, голосовое, стикер)
+        val reactionsMap = try {
+            if (reactionsJson.isBlank() || reactionsJson == "{}") emptyMap()
+            else {
+                val obj = org.json.JSONObject(reactionsJson)
+                obj.keys().asSequence().associateWith { key ->
+                    val arr = obj.getJSONArray(key)
+                    (0 until arr.length()).map { arr.getInt(it) }
+                }.filter { it.value.isNotEmpty() }
             }
-            if (reactionsMap.isNotEmpty()) {
+        } catch (_: Exception) { emptyMap() }
+        if (reactionsMap.isNotEmpty()) {
                 Row(
                     modifier = Modifier.padding(top = 2.dp, bottom = 2.dp),
                     horizontalArrangement = Arrangement.spacedBy(4.dp)
@@ -1113,11 +1280,9 @@ fun MessageBubble(
                                 horizontalArrangement = Arrangement.spacedBy(2.dp)
                             ) {
                                 Text(emoji, style = MaterialTheme.typography.labelMedium)
-                                // Аватарки: до 3 человек показываем фото, остальные — счётчик
                                 val avatarUserIds = userIds.take(3)
                                 val extraCount = userIds.size - avatarUserIds.size
                                 avatarUserIds.forEach { uid ->
-                                    // Аватарки берём из UserCache
                                     val avatarUrl = su.SkrinVex.ofox.data.UserCache.getAvatar(uid)
                                     val name = su.SkrinVex.ofox.data.UserCache.getName(uid) ?: "?"
                                     su.SkrinVex.ofox.components.UserAvatar(
@@ -1144,15 +1309,13 @@ fun MessageBubble(
     // Попап "кто поставил реакцию"
     if (reactionPopupEmoji != null) {
         val emoji = reactionPopupEmoji!!
-        val reactionsMap = remember(message.reactions) {
-            try {
-                val obj = org.json.JSONObject(message.reactions)
+        val reactionsMap = try {
+                val obj = org.json.JSONObject(reactionsJson)
                 obj.keys().asSequence().associateWith { key ->
                     val arr = obj.getJSONArray(key)
                     (0 until arr.length()).map { arr.getInt(it) }
                 }
             } catch (_: Exception) { emptyMap() }
-        }
         val userIds = reactionsMap[emoji] ?: emptyList()
         androidx.compose.material3.ModalBottomSheet(
             onDismissRequest = { reactionPopupEmoji = null },

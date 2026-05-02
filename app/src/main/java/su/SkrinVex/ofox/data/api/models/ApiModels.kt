@@ -128,7 +128,9 @@ data class MessageResponse(
     val reply_to_text: String? = null,
     val reply_to_sender_name: String? = null,
     val is_read: Boolean = false,
-    val reactions: Map<String, List<Int>>? = null
+    val reactions: Map<String, List<Int>>? = null,
+    val voice_key: String? = null,
+    val voice_duration: Long? = null
 )
 
 data class StickerItem(
@@ -170,7 +172,16 @@ data class StickerUploadResponse(
     val url: String
 )
 
-data class SendMessageRequest(val text: String, val messageType: String = "text", val replyToId: Int? = null)
+data class SendMessageRequest(
+    val text: String,
+    val messageType: String = "text",
+    val replyToId: Int? = null,
+    val voiceKey: String? = null,
+    val voiceDuration: Long? = null
+)
+
+data class VoiceUploadUrlResponse(val uploadUrl: String, val key: String)
+data class VoicePlayUrlResponse(val playUrl: String)
 
 data class ReactionRequest(val emoji: String)
 data class ReactionUser(val id: Int, val name: String, val avatar_url: String? = null)

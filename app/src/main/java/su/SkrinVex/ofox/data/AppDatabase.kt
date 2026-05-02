@@ -6,7 +6,7 @@ import kotlinx.coroutines.flow.Flow
 
 @Database(
     entities = [User::class, Post::class, Chat::class, Message::class, Discovery::class],
-    version = 23
+    version = 24
 )
 abstract class AppDatabase : RoomDatabase() {
     abstract fun userDao(): UserDao
@@ -101,7 +101,9 @@ data class Message(
     val replyToText: String? = null,
     val replyToSenderName: String? = null,
     val status: String = "sent", // "sending" | "sent" | "read"
-    val reactions: String = "" // JSON: {"❤️":[userId1,userId2],...}
+    val reactions: String = "", // JSON: {"❤️":[userId1,userId2],...}
+    val voiceKey: String? = null,   // ключ в приватном S3
+    val voiceDuration: Long = 0     // длительность в мс
 )
 
 @Entity(tableName = "discoveries")

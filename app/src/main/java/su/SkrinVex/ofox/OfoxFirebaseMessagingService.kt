@@ -48,7 +48,13 @@ class OfoxFirebaseMessagingService : FirebaseMessagingService() {
                 val chatId = data["chatId"]?.toIntOrNull() ?: return
                 if (ActiveChatTracker.activeChatId == chatId) return
                 val title = data["senderName"] ?: "Новое сообщение"
-                val body = data["message"] ?: ""
+                val messageType = data["messageType"] ?: "text"
+                val rawBody = data["message"] ?: ""
+                val body = when (messageType) {
+                    "sticker" -> "Стикер"
+                    "voice" -> "Голосовое сообщение"
+                    else -> rawBody
+                }
                 val avatarUrl = data["senderAvatarUrl"]
                 CoroutineScope(Dispatchers.IO).launch {
                     val bitmap = avatarUrl?.let { loadCircleBitmap(it) }
@@ -63,7 +69,14 @@ class OfoxFirebaseMessagingService : FirebaseMessagingService() {
                 if (ActiveChatTracker.activeChatId == chatId) return
                 val senderName = data["senderName"] ?: "Участник"
                 val discoveryTitle = data["discoveryTitle"]?.takeIf { it.isNotBlank() } ?: "Открытие"
-                val body = "$senderName: ${data["message"] ?: ""}"
+                val messageType = data["messageType"] ?: "text"
+                val rawMsg = data["message"] ?: ""
+                val msgText = when (messageType) {
+                    "sticker" -> "Стикер"
+                    "voice" -> "Голосовое сообщение"
+                    else -> rawMsg
+                }
+                val body = "$senderName: $msgText"
                 val avatarUrl = data["senderAvatarUrl"]
                 CoroutineScope(Dispatchers.IO).launch {
                     val bitmap = avatarUrl?.let { loadCircleBitmap(it) }
