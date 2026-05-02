@@ -27,8 +27,8 @@ android {
         applicationId = "su.SkrinVex.ofox"
         minSdk = 24
         targetSdk = 36
-        versionCode = 231
-        versionName = "1.4"
+        versionCode = 235
+        versionName = "1.4.5"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
