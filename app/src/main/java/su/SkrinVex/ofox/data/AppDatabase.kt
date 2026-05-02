@@ -6,7 +6,7 @@ import kotlinx.coroutines.flow.Flow
 
 @Database(
     entities = [User::class, Post::class, Chat::class, Message::class, Discovery::class],
-    version = 22
+    version = 23
 )
 abstract class AppDatabase : RoomDatabase() {
     abstract fun userDao(): UserDao
@@ -100,7 +100,8 @@ data class Message(
     val replyToId: Int? = null,
     val replyToText: String? = null,
     val replyToSenderName: String? = null,
-    val status: String = "sent" // "sending" | "sent" | "read"
+    val status: String = "sent", // "sending" | "sent" | "read"
+    val reactions: String = "" // JSON: {"❤️":[userId1,userId2],...}
 )
 
 @Entity(tableName = "discoveries")
@@ -205,6 +206,9 @@ interface MessageDao {
 
     @Query("DELETE FROM messages WHERE chatId = :chatId")
     suspend fun deleteMessagesByChat(chatId: Int)
+
+    @Query("UPDATE messages SET reactions = :reactions WHERE id = :messageId")
+    suspend fun updateReactions(messageId: Int, reactions: String)
 }
 
 @Dao

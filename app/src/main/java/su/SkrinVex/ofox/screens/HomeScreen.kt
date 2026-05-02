@@ -310,6 +310,7 @@ fun HomeScreen(
                 is su.SkrinVex.ofox.data.api.WSEvent.UserOnline,
                 is su.SkrinVex.ofox.data.api.WSEvent.UserOffline,
                 is su.SkrinVex.ofox.data.api.WSEvent.ChatRead,
+                is su.SkrinVex.ofox.data.api.WSEvent.MessageReaction,
                 is su.SkrinVex.ofox.data.api.WSEvent.NewFollower -> {}
                 is su.SkrinVex.ofox.data.api.WSEvent.ContentDeleted -> {
                     if (event.contentType == "post") {

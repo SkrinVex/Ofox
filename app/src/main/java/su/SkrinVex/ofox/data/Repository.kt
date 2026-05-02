@@ -132,8 +132,10 @@ class Repository(private val context: Context) {
             try {
                 val response = apiClient.api.getProfile()
                 db.userDao().insertUser(response.toUser())
+                su.SkrinVex.ofox.data.UserCache.put(response.id, response.name, response.avatar_url)
             } catch (_: Exception) {}
         }
+        if (cached != null) su.SkrinVex.ofox.data.UserCache.put(cached.id, cached.name, cached.avatarUrl.takeIf { it.isNotBlank() })
         cached
     }
 
@@ -545,7 +547,12 @@ class Repository(private val context: Context) {
 
     suspend fun getChatById(chatId: Int): Chat? = withContext(Dispatchers.IO) {
         try {
-            apiClient.api.getChatById(chatId).toChat()
+            val chat = apiClient.api.getChatById(chatId).toChat()
+            // Кэшируем собеседника чтобы его аватарка отображалась в реакциях
+            if (chat != null && chat.userId != 0) {
+                su.SkrinVex.ofox.data.UserCache.put(chat.userId, chat.name, chat.userAvatarUrl.takeIf { it.isNotBlank() })
+            }
+            chat
         } catch (e: Exception) {
             android.util.Log.e("Repository", "Failed to get chat $chatId", e)
             db.chatDao().getChatById(chatId)
@@ -949,7 +956,8 @@ class Repository(private val context: Context) {
         replyToId = reply_to_id,
         replyToText = reply_to_text,
         replyToSenderName = reply_to_sender_name,
-        status = if (sender_id == currentUserId) (if (is_read) "read" else "sent") else "sent"
+        status = if (sender_id == currentUserId) (if (is_read) "read" else "sent") else "sent",
+        reactions = if (reactions.isNullOrEmpty()) "" else reactionsToJson(reactions)
     )
 
     private fun parseTimestamp(dateStr: String): Long {
@@ -1065,6 +1073,53 @@ class Repository(private val context: Context) {
             android.util.Log.e("Repository", "sendSticker error", e)
             null
         }
+    }
+
+    suspend fun toggleReaction(chatId: Int, messageId: Int, emoji: String, currentUserId: Int, currentReactionsJson: String): String = withContext(Dispatchers.IO) {
+        try {
+            val map = parseReactions(currentReactionsJson).toMutableMap()
+            val users = map[emoji]?.toMutableList() ?: mutableListOf()
+            val isRemoving = currentUserId in users
+            val serverReactions = if (isRemoving) {
+                apiClient.api.removeReaction(chatId, messageId, emoji)
+            } else {
+                apiClient.api.addReaction(chatId, messageId, su.SkrinVex.ofox.data.api.models.ReactionRequest(emoji))
+            }
+            // Используем ответ сервера как источник истины
+            val serverMap = serverReactions.associate { it.emoji to it.user_ids }
+            val newJson = reactionsToJson(serverMap)
+            db.messageDao().updateReactions(messageId, newJson)
+            newJson
+        } catch (e: Exception) {
+            android.util.Log.e("Repository", "toggleReaction error", e)
+            // Оптимистичное обновление при ошибке сети
+            val map = parseReactions(currentReactionsJson).toMutableMap()
+            val users = map[emoji]?.toMutableList() ?: mutableListOf()
+            if (currentUserId in users) users.remove(currentUserId) else users.add(currentUserId)
+            if (users.isEmpty()) map.remove(emoji) else map[emoji] = users
+            reactionsToJson(map)
+        }
+    }
+
+    fun parseReactions(json: String): Map<String, List<Int>> {
+        if (json.isBlank()) return emptyMap()
+        return try {
+            val obj = org.json.JSONObject(json)
+            obj.keys().asSequence().associateWith { key ->
+                val arr = obj.getJSONArray(key)
+                (0 until arr.length()).map { arr.getInt(it) }
+            }
+        } catch (_: Exception) { emptyMap() }
+    }
+
+    private fun reactionsToJson(map: Map<String, List<Int>>): String {
+        val obj = org.json.JSONObject()
+        map.forEach { (emoji, ids) ->
+            val arr = org.json.JSONArray()
+            ids.forEach { arr.put(it) }
+            obj.put(emoji, arr)
+        }
+        return obj.toString()
     }
 
     // Discovery features

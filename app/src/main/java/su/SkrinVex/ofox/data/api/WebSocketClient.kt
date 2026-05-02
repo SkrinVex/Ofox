@@ -194,6 +194,21 @@ class WebSocketClient(private val context: Context) {
                             )
                             Log.d("WebSocket", "Content deleted event received")
                         }
+                        "message_reaction" -> {
+                            val chatId = json.getInt("chatId")
+                            val messageId = json.getInt("messageId")
+                            val arr = json.getJSONArray("reactions")
+                            val reactions = (0 until arr.length()).map { i ->
+                                val obj = arr.getJSONObject(i)
+                                val idsArr = obj.getJSONArray("user_ids")
+                                su.SkrinVex.ofox.data.api.models.MessageReaction(
+                                    emoji = obj.getString("emoji"),
+                                    user_ids = (0 until idsArr.length()).map { idsArr.getInt(it) },
+                                    count = obj.getInt("count")
+                                )
+                            }
+                            _events.value = WSEvent.MessageReaction(chatId, messageId, reactions)
+                        }
                     }
                 } catch (e: Exception) {
                     Log.e("WebSocket", "Error parsing message", e)
@@ -253,6 +268,7 @@ sealed class WSEvent {
     data class ChatRead(val chatId: Int) : WSEvent()
     data class NewFollower(val actorId: Int, val actorName: String, val actorAvatarUrl: String?) : WSEvent()
     data class DiscoveryMessage(val chatId: Int, val message: String, val timestamp: Long, val senderId: Int = 0, val senderName: String = "", val senderAvatarUrl: String? = null, val messageType: String = "text", val replyToId: Int? = null, val replyToText: String? = null, val replyToSenderName: String? = null) : WSEvent()
+    data class MessageReaction(val chatId: Int, val messageId: Int, val reactions: List<su.SkrinVex.ofox.data.api.models.MessageReaction>) : WSEvent()
 }
 
 data class Badge(

@@ -98,6 +98,12 @@ interface ApiService {
     
     @POST("chats/{chatId}/messages")
     suspend fun sendMessage(@Path("chatId") chatId: Int, @Body message: SendMessageRequest): MessageResponse
+
+    @POST("chats/{chatId}/messages/{messageId}/reactions")
+    suspend fun addReaction(@Path("chatId") chatId: Int, @Path("messageId") messageId: Int, @Body request: ReactionRequest): List<MessageReaction>
+
+    @DELETE("chats/{chatId}/messages/{messageId}/reactions/{emoji}")
+    suspend fun removeReaction(@Path("chatId") chatId: Int, @Path("messageId") messageId: Int, @Path("emoji") emoji: String): List<MessageReaction>
     
     @POST("chats/{chatId}/read")
     suspend fun markChatAsRead(@Path("chatId") chatId: Int)

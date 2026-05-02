@@ -114,7 +114,8 @@ data class MessageResponse(
     val reply_to_id: Int? = null,
     val reply_to_text: String? = null,
     val reply_to_sender_name: String? = null,
-    val is_read: Boolean = false
+    val is_read: Boolean = false,
+    val reactions: Map<String, List<Int>>? = null
 )
 
 data class StickerItem(
@@ -157,6 +158,10 @@ data class StickerUploadResponse(
 )
 
 data class SendMessageRequest(val text: String, val messageType: String = "text", val replyToId: Int? = null)
+
+data class ReactionRequest(val emoji: String)
+data class ReactionUser(val id: Int, val name: String, val avatar_url: String? = null)
+data class MessageReaction(val emoji: String, val user_ids: List<Int>, val users: List<ReactionUser>? = null, val count: Int)
 
 data class CommentResponse(
     val id: Int,

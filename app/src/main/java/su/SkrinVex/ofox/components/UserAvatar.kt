@@ -46,7 +46,8 @@ fun UserAvatar(
             text = name.firstOrNull()?.toString()?.uppercase() ?: "?",
             color = MaterialTheme.colorScheme.onPrimary,
             fontWeight = FontWeight.Bold,
-            fontSize = (size.value * 0.4f).sp
+            fontSize = (size.value * 0.4f).sp,
+            lineHeight = (size.value * 0.4f).sp
         )
 
         if (url != null && !loadFailed) {
