@@ -264,7 +264,7 @@ fun CommentsBottomSheet(
                                 onLongPress = { selectedCommentId = pinnedComment.id },
                                 onMenuClick = { selectedCommentId = pinnedComment.id },
                                 onAuthorClick = { if (pinnedComment.author_id != currentUserId) onAuthorClick(pinnedComment.author_id) },
-                                onReply = { replyTo = pinnedComment; commentText = "" }
+                                onReply = { replyTo = pinnedComment }
                             )
                             // Ответы на закреплённый тоже показываем
                             val pinnedReplies = repliesMap[pinnedComment.id] ?: emptyList()
@@ -286,7 +286,7 @@ fun CommentsBottomSheet(
                                         Column(modifier = Modifier.weight(1f)) {
                                             pinnedReplies.forEach { reply ->
                                                 val r = effectiveComment(reply)
-                                                CommentItem(comment = r, currentUserId = currentUserId, isHighlighted = highlightedCommentId == r.id, onLongPress = { selectedCommentId = r.id }, onMenuClick = { selectedCommentId = r.id }, onAuthorClick = { if (r.author_id != currentUserId) onAuthorClick(r.author_id) }, onReply = { replyTo = r; commentText = "" })
+                                                CommentItem(comment = r, currentUserId = currentUserId, isHighlighted = highlightedCommentId == r.id, onLongPress = { selectedCommentId = r.id }, onMenuClick = { selectedCommentId = r.id }, onAuthorClick = { if (r.author_id != currentUserId) onAuthorClick(r.author_id) }, onReply = { replyTo = r })
                                             }
                                         }
                                     }
@@ -307,7 +307,7 @@ fun CommentsBottomSheet(
                             onLongPress = { selectedCommentId = comment.id },
                             onMenuClick = { selectedCommentId = comment.id },
                             onAuthorClick = { if (comment.author_id != currentUserId) onAuthorClick(comment.author_id) },
-                            onReply = { replyTo = comment; commentText = "" }
+                            onReply = { replyTo = comment }
                         )
 
                         // Ответы на этот комментарий (все в треде, плоско)
@@ -358,7 +358,7 @@ fun CommentsBottomSheet(
                                                 onLongPress = { selectedCommentId = r.id },
                                                 onMenuClick = { selectedCommentId = r.id },
                                                 onAuthorClick = { if (r.author_id != currentUserId) onAuthorClick(r.author_id) },
-                                                onReply = { replyTo = r; commentText = "" }
+                                                onReply = { replyTo = r }
                                             )
                                         }
                                     }

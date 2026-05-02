@@ -684,16 +684,21 @@ fun ChatDetailScreen(repository: Repository, chatId: Int, initialName: String? =
             onStickerSelected = { sticker ->
                 showStickerPicker = false
                 stickerPickerInitialPackId = null
+                val replyId = replyTo?.id?.takeIf { it != 0 }
+                val replyText = replyTo?.text
+                val replySenderName = replyTo?.senderName
+                replyTo = null
                 val localId = -(System.currentTimeMillis().toInt())
                 val tempMessage = su.SkrinVex.ofox.data.Message(
                     id = localId, chatId = chatId, text = sticker.url,
                     timestamp = System.currentTimeMillis(), isFromMe = true, messageType = "sticker",
+                    replyToId = replyId, replyToText = replyText, replyToSenderName = replySenderName,
                     status = "sending"
                 )
                 messages.add(tempMessage)
                 scope.launch {
                     listState.scrollToItem(messages.size - 1)
-                    val sent = repository.sendSticker(chatId, sticker.url)
+                    val sent = repository.sendSticker(chatId, sticker.url, replyId)
                     val idx = messages.indexOfFirst { it.id == localId }
                     if (idx != -1) {
                         if (sent != null) messages[idx] = sent else messages.removeAt(idx)

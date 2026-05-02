@@ -1057,9 +1057,9 @@ class Repository(private val context: Context) {
         try { apiClient.api.sendTyping(chatId) } catch (_: Exception) {}
     }
 
-    suspend fun sendSticker(chatId: Int, stickerUrl: String): Message? = withContext(Dispatchers.IO) {
+    suspend fun sendSticker(chatId: Int, stickerUrl: String, replyToId: Int? = null): Message? = withContext(Dispatchers.IO) {
         try {
-            val response = apiClient.api.sendMessage(chatId, SendMessageRequest(stickerUrl, "sticker"))
+            val response = apiClient.api.sendMessage(chatId, SendMessageRequest(stickerUrl, "sticker", replyToId))
             response.toMessage(getCurrentUserId())
         } catch (e: Exception) {
             android.util.Log.e("Repository", "sendSticker error", e)
