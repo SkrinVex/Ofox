@@ -973,7 +973,12 @@ class Repository(private val context: Context) {
         voiceDuration = voice_duration ?: 0L,
         voiceDeletedByServer = voice_deleted_at != null,
         imageKey = image_key,
-        imageDeletedByServer = image_deleted_at != null
+        imageDeletedByServer = image_deleted_at != null,
+        fileKey = file_key,
+        fileName = file_name,
+        fileSize = file_size ?: 0L,
+        fileMime = file_mime,
+        fileDeletedByServer = file_deleted_at != null
     )
 
     private fun parseTimestamp(dateStr: String): Long {
@@ -1117,6 +1122,40 @@ class Repository(private val context: Context) {
 
     fun isImageWarningShown(): Boolean = prefs.getBoolean("image_warning_shown", false)
     fun setImageWarningShown() = prefs.edit().putBoolean("image_warning_shown", true).apply()
+
+    fun isFileWarningShown(): Boolean = prefs.getBoolean("file_warning_shown", false)
+    fun setFileWarningShown() = prefs.edit().putBoolean("file_warning_shown", true).apply()
+
+    suspend fun getChatFileUploadUrl(chatId: Int, fileName: String, mimeType: String = "application/octet-stream"): su.SkrinVex.ofox.data.api.models.ChatFileUploadUrlResponse? = withContext(Dispatchers.IO) {
+        try { apiClient.api.getChatFileUploadUrl(chatId, fileName, mimeType) } catch (_: Exception) { null }
+    }
+
+    suspend fun getChatFileDownloadUrl(key: String, chatName: String, sentAt: Long): su.SkrinVex.ofox.data.api.models.ChatFileDownloadUrlResponse? = withContext(Dispatchers.IO) {
+        try { apiClient.api.getChatFileDownloadUrl(key, chatName, sentAt) } catch (_: Exception) { null }
+    }
+
+    suspend fun sendFileMessage(chatId: Int, fileKey: String, fileName: String, fileSize: Long, fileMime: String, replyToId: Int? = null): Message? = withContext(Dispatchers.IO) {
+        try {
+            val currentUserId = getCurrentUserId()
+            val request = su.SkrinVex.ofox.data.api.models.SendMessageRequest(
+                text = "", messageType = "file", replyToId = replyToId,
+                fileKey = fileKey, fileName = fileName, fileSize = fileSize, fileMime = fileMime
+            )
+            val chat = db.chatDao().getChatById(chatId)
+            val response = if (chat?.discoveryId != null && chat.discoveryId != 0) {
+                apiClient.api.sendDiscoveryChatMessage(chatId, request)
+            } else {
+                apiClient.api.sendMessage(chatId, request)
+            }
+            val message = response.toMessage(currentUserId)
+            db.messageDao().insertMessage(message)
+            db.chatDao().updateChat(chatId, "📎 $fileName", message.timestamp)
+            message
+        } catch (e: Exception) {
+            android.util.Log.e("Repository", "sendFileMessage error", e)
+            null
+        }
+    }
 
     suspend fun getChatImageUploadUrl(chatId: Int, mimeType: String = "image/jpeg"): su.SkrinVex.ofox.data.api.models.ChatImageUploadUrlResponse? = withContext(Dispatchers.IO) {
         try { apiClient.api.getChatImageUploadUrl(chatId, mimeType) } catch (_: Exception) { null }

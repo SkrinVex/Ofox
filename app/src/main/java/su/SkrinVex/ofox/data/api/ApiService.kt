@@ -149,6 +149,20 @@ interface ApiService {
         @Query("sentAt") sentAt: Long
     ): ChatImageDownloadUrlResponse
 
+    @GET("chats/{chatId}/file/upload")
+    suspend fun getChatFileUploadUrl(
+        @Path("chatId") chatId: Int,
+        @Query("fileName") fileName: String,
+        @Query("mimeType") mimeType: String = "application/octet-stream"
+    ): ChatFileUploadUrlResponse
+
+    @GET("chats/file/download")
+    suspend fun getChatFileDownloadUrl(
+        @Query("key") key: String,
+        @Query("chatName") chatName: String,
+        @Query("sentAt") sentAt: Long
+    ): ChatFileDownloadUrlResponse
+
     @GET("chats/online/users")
     suspend fun getOnlineUsers(): Map<String, List<Int>>
     

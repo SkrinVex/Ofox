@@ -5,6 +5,9 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.material.icons.filled.Done
 import androidx.compose.material.icons.filled.DoneAll
 import androidx.compose.material.icons.filled.Image
+import androidx.compose.material.icons.filled.AttachFile
+import androidx.compose.material.icons.filled.InsertDriveFile
+import androidx.compose.material.icons.filled.Videocam
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -105,6 +108,27 @@ fun ChatDetailScreen(repository: Repository, chatId: Int, initialName: String? =
     var imageUploadProgress by remember { mutableStateOf<Float?>(null) }
     var imageUploadError by remember { mutableStateOf<String?>(null) }
     var showImageWarningDialog by remember { mutableStateOf(false) }
+    // Файлы
+    var showAttachSheet by remember { mutableStateOf(false) }
+    var fileUploadProgress by remember { mutableStateOf<Float?>(null) }
+    var fileUploadError by remember { mutableStateOf<String?>(null) }
+    var showFileWarningDialog by remember { mutableStateOf(false) }
+    var showFileDownloadDialog by remember { mutableStateOf(false) }
+    var downloadingFileKey by remember { mutableStateOf<String?>(null) }
+    var downloadingFileName by remember { mutableStateOf("") }
+    var fileDownloadProgress by remember { mutableStateOf<Float?>(null) }
+    var fileDownloadError by remember { mutableStateOf<String?>(null) }
+    var fileDownloadSavedPath by remember { mutableStateOf<String?>(null) }
+    var pendingFileReplyId by remember { mutableStateOf<Int?>(null) }
+    // Открытие файла
+    var showOpenFileDialog by remember { mutableStateOf(false) }
+    var openingFileKey by remember { mutableStateOf<String?>(null) }
+    var openingFileName by remember { mutableStateOf("") }
+    var openFileSentAt by remember { mutableStateOf(0L) }
+    var showApkWarningDialog by remember { mutableStateOf(false) }
+    var pendingApkFileKey by remember { mutableStateOf<String?>(null) }
+    var pendingApkFileName by remember { mutableStateOf("") }
+    var pendingApkSentAt by remember { mutableStateOf(0L) }
     // Кроп + подпись перед отправкой
     var pendingCropUri by remember { mutableStateOf<android.net.Uri?>(null) }
     var pendingCropReplyId by remember { mutableStateOf<Int?>(null) }
@@ -200,6 +224,122 @@ fun ChatDetailScreen(repository: Repository, chatId: Int, initialName: String? =
         }
     }
 
+    val filePickerLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
+        contract = androidx.activity.result.contract.ActivityResultContracts.GetContent()
+    ) { uri ->
+        if (uri != null) {
+            val replyId = pendingFileReplyId
+            pendingFileReplyId = null
+            try {
+                context.contentResolver.takePersistableUriPermission(
+                    uri, android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION
+                )
+            } catch (_: Exception) {}
+
+            val cursor = context.contentResolver.query(uri, arrayOf(
+                android.provider.OpenableColumns.DISPLAY_NAME,
+                android.provider.OpenableColumns.SIZE
+            ), null, null, null)
+            var fileName = "Файл"
+            var fileSize = 0L
+            cursor?.use { if (it.moveToFirst()) { fileName = it.getString(0) ?: "Файл"; fileSize = it.getLong(1) } }
+
+            val localId = -(System.currentTimeMillis())
+            val tempMsg = su.SkrinVex.ofox.data.Message(
+                id = localId.toInt(), chatId = chatId, text = "",
+                timestamp = System.currentTimeMillis(), isFromMe = true,
+                messageType = "file", fileName = fileName, fileSize = fileSize,
+                fileMime = context.contentResolver.getType(uri) ?: "application/octet-stream",
+                status = "sending"
+            )
+            messages.add(tempMsg)
+            scope.launch { listState.scrollToItem(messages.size - 1) }
+
+            su.SkrinVex.ofox.FileUploadService.start(context, chatId, uri, replyId, localId)
+        }
+    }
+
+    // SnapshotStateMap для прогресса — гарантирует рекомпозицию карточки
+    val fileProgressMap = remember { androidx.compose.runtime.snapshots.SnapshotStateMap<Int, Float>() }
+
+    // Подписка на StateFlow сервиса
+    val uploadState by su.SkrinVex.ofox.FileUploadService.state.collectAsState()
+    LaunchedEffect(uploadState) {
+        when (val s = uploadState) {
+            is su.SkrinVex.ofox.FileUploadService.Companion.UploadState.Uploading -> {
+                if (s.chatId == chatId) {
+                    fileProgressMap[s.localId.toInt()] = s.progress
+                    // Восстанавливаем карточку если её нет (перезашли в чат)
+                    if (messages.none { it.id == s.localId.toInt() }) {
+                        messages.add(su.SkrinVex.ofox.data.Message(
+                            id = s.localId.toInt(), chatId = chatId, text = "",
+                            timestamp = System.currentTimeMillis(), isFromMe = true,
+                            messageType = "file", fileName = s.fileName, fileSize = 0L,
+                            status = "sending"
+                        ))
+                    }
+                }
+            }
+            is su.SkrinVex.ofox.FileUploadService.Companion.UploadState.Done -> {
+                fileProgressMap.remove(s.localId.toInt())
+                val idx = messages.indexOfFirst { it.id == s.localId.toInt() }
+                if (idx != -1) {
+                    messages.removeAll { it.id == s.message.id && it.id != s.localId.toInt() }
+                    messages[idx] = s.message
+                } else {
+                    // Карточки нет — просто добавляем готовое сообщение
+                    messages.add(s.message)
+                }
+                su.SkrinVex.ofox.FileUploadService.resetState()
+            }
+            is su.SkrinVex.ofox.FileUploadService.Companion.UploadState.Error -> {
+                fileProgressMap.remove(s.localId.toInt())
+                val idx = messages.indexOfFirst { it.id == s.localId.toInt() }
+                if (idx != -1) messages[idx] = messages[idx].copy(status = "error")
+                su.SkrinVex.ofox.FileUploadService.resetState()
+            }
+            is su.SkrinVex.ofox.FileUploadService.Companion.UploadState.Cancelled -> {
+                fileProgressMap.remove(s.localId.toInt())
+                messages.removeAll { it.id == s.localId.toInt() }
+                su.SkrinVex.ofox.FileUploadService.resetState()
+            }
+            else -> {}
+        }
+    }
+
+    // Диалог отмены загрузки файла
+    var showCancelUploadDialog by remember { mutableStateOf(false) }
+    if (showCancelUploadDialog) {
+        androidx.compose.ui.window.Dialog(onDismissRequest = { showCancelUploadDialog = false }) {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = MaterialTheme.shapes.large,
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+            ) {
+                Column(modifier = Modifier.fillMaxWidth().padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text("Отменить отправку?", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                    Spacer(Modifier.height(12.dp))
+                    Text("Файл не будет отправлен.", style = MaterialTheme.typography.bodyMedium,
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+                    Spacer(Modifier.height(24.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        TextButton(onClick = { showCancelUploadDialog = false }, modifier = Modifier.weight(1f)) { Text("Нет") }
+                        Button(
+                            onClick = {
+                                showCancelUploadDialog = false
+                                context.startService(android.content.Intent(context, su.SkrinVex.ofox.FileUploadService::class.java).apply {
+                                    action = su.SkrinVex.ofox.FileUploadService.ACTION_CANCEL
+                                })
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
+                            modifier = Modifier.weight(1f)
+                        ) { Text("Отменить") }
+                    }
+                }
+            }
+        }
+    }
+
     fun loadMessages(before: Int? = null) {
         scope.launch {
             if (before == null) {
@@ -228,10 +368,12 @@ fun ChatDetailScreen(repository: Repository, chatId: Int, initialName: String? =
                 // Ключи медиа из pending tempMsg (id < 0) — не добавляем дубликаты
                 val pendingVoiceKeys = messages.filter { it.id < 0 }.mapNotNull { it.voiceKey }.toSet()
                 val pendingImageKeys = messages.filter { it.id < 0 }.mapNotNull { it.imageKey }.toSet()
+                val pendingFileKeys = messages.filter { it.id < 0 }.mapNotNull { it.fileKey }.toSet()
                 loaded.filter { it.id > lastKnownId }.forEach { msg ->
                     val isDuplicate = messages.any { it.id == msg.id }
                         || (msg.voiceKey != null && msg.voiceKey in pendingVoiceKeys)
                         || (msg.imageKey != null && msg.imageKey in pendingImageKeys)
+                        || (msg.fileKey != null && msg.fileKey in pendingFileKeys)
                     if (!isDuplicate) messages.add(msg)
                 }
             } catch (_: Exception) {}
@@ -386,7 +528,9 @@ fun ChatDetailScreen(repository: Repository, chatId: Int, initialName: String? =
                             messageType = event.messageType,
                             replyToId = event.replyToId, replyToText = event.replyToText,
                             replyToSenderName = event.replyToSenderName,
-                            imageKey = event.imageKey
+                            imageKey = event.imageKey,
+                            fileKey = event.fileKey, fileName = event.fileName ?: "",
+                            fileSize = event.fileSize, fileMime = event.fileMime
                         )
                         if (!messages.any { it.timestamp == event.timestamp && it.senderId == event.senderId }) {
                             messages.add(newMessage)
@@ -408,7 +552,9 @@ fun ChatDetailScreen(repository: Repository, chatId: Int, initialName: String? =
                             messageType = event.messageType,
                             replyToId = event.replyToId, replyToText = event.replyToText,
                             replyToSenderName = event.replyToSenderName,
-                            imageKey = event.imageKey
+                            imageKey = event.imageKey,
+                            fileKey = event.fileKey, fileName = event.fileName ?: "",
+                            fileSize = event.fileSize, fileMime = event.fileMime
                         )
                         if (!messages.any { it.timestamp == event.timestamp && it.senderId == event.senderId }) {
                             messages.add(newMessage)
@@ -577,6 +723,16 @@ fun ChatDetailScreen(repository: Repository, chatId: Int, initialName: String? =
                             }
                         },
                         onImageClick = { url -> fullscreenImageUrl = url },
+                        onFileClick = { key, fileName, sentAt ->
+                            val isApk = fileName.endsWith(".apk", ignoreCase = true)
+                            if (isApk) {
+                                pendingApkFileKey = key; pendingApkFileName = fileName; pendingApkSentAt = sentAt
+                                showApkWarningDialog = true
+                            } else {
+                                openingFileKey = key; openingFileName = fileName; openFileSentAt = sentAt
+                                showOpenFileDialog = true
+                            }
+                        },
                         imageUrlCache = imageUrlCache,
                         onReact = { emoji ->
                             val msgId = if (message.id > 0) message.id
@@ -595,7 +751,8 @@ fun ChatDetailScreen(repository: Repository, chatId: Int, initialName: String? =
                         currentUserId = currentUserId,
                         reactionsJson = reactionsOverride[message.id] ?: message.reactions,
                         isHighlighted = message.timestamp == highlightedMessageTimestamp,
-                        isDiscoveryChat = (chat?.discoveryId ?: 0) != 0
+                        isDiscoveryChat = (chat?.discoveryId ?: 0) != 0,
+                        fileUploadProgress = fileProgressMap[message.id]
                     )
                 }
             }
@@ -664,23 +821,17 @@ fun ChatDetailScreen(repository: Repository, chatId: Int, initialName: String? =
                 )
             }
             if (messageText.isBlank()) {
-                IconButton(onClick = {
-                    if (!repository.isImageWarningShown()) {
-                        showImageWarningDialog = true
-                    } else {
-                        imagePickerLauncher.launch("image/*")
-                    }
-                }) {
-                    if (imageUploadProgress != null) {
+                IconButton(onClick = { showAttachSheet = true }) {
+                    if (imageUploadProgress != null || fileUploadProgress != null) {
                         CircularProgressIndicator(
-                            progress = { imageUploadProgress!! },
+                            progress = { (imageUploadProgress ?: fileUploadProgress)!! },
                             modifier = Modifier.size(24.dp),
                             strokeWidth = 2.dp
                         )
                     } else {
                         Icon(
-                            Icons.Default.Image,
-                            contentDescription = "Фото",
+                            Icons.Default.AttachFile,
+                            contentDescription = "Прикрепить",
                             tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
                         )
                     }
@@ -1148,6 +1299,329 @@ fun ChatDetailScreen(repository: Repository, chatId: Int, initialName: String? =
         }
     }
 
+    // Bottom sheet — выбор вложения
+    if (showAttachSheet) {
+        androidx.compose.material3.ModalBottomSheet(
+            onDismissRequest = { showAttachSheet = false },
+            containerColor = MaterialTheme.colorScheme.surface
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 24.dp)
+                    .padding(bottom = 32.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Text("Прикрепить", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold,
+                    modifier = Modifier.padding(bottom = 8.dp))
+                // Изображение
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(MaterialTheme.shapes.medium)
+                        .clickable {
+                            showAttachSheet = false
+                            val replyMsg = replyTo
+                            pendingCropReplyId = replyMsg?.let { r ->
+                                if (r.id > 0) r.id
+                                else messages.firstOrNull { it.timestamp == r.timestamp && it.id > 0 }?.id
+                            }
+                            replyTo = null
+                            if (repository.isImageWarningShown()) {
+                                imagePickerLauncher.launch("image/*")
+                            } else {
+                                showImageWarningDialog = true
+                            }
+                        }
+                        .padding(vertical = 14.dp, horizontal = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    Icon(Icons.Default.Image, null, tint = MaterialTheme.colorScheme.primary)
+                    Text("Изображение", style = MaterialTheme.typography.bodyLarge)
+                }
+                // Видео — в разработке
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(MaterialTheme.shapes.medium)
+                        .padding(vertical = 14.dp, horizontal = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    Icon(Icons.Default.Videocam, null, tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.35f))
+                    Column {
+                        Text("Видео", style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.35f))
+                        Text("В разработке", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary.copy(alpha = 0.6f))
+                    }
+                }
+                // Файл
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(MaterialTheme.shapes.medium)
+                        .clickable {
+                            showAttachSheet = false
+                            val replyMsg = replyTo
+                            pendingFileReplyId = replyMsg?.let { r ->
+                                if (r.id > 0) r.id
+                                else messages.firstOrNull { it.timestamp == r.timestamp && it.id > 0 }?.id
+                            }
+                            replyTo = null
+                            if (repository.isFileWarningShown()) {
+                                filePickerLauncher.launch("*/*")
+                            } else {
+                                showFileWarningDialog = true
+                            }
+                        }
+                        .padding(vertical = 14.dp, horizontal = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    Icon(Icons.Default.InsertDriveFile, null, tint = MaterialTheme.colorScheme.primary)
+                    Text("Файл", style = MaterialTheme.typography.bodyLarge)
+                }
+            }
+        }
+    }
+
+    // Предупреждение об автоудалении файлов (первый раз)
+    if (showFileWarningDialog) {
+        androidx.compose.ui.window.Dialog(
+            onDismissRequest = {},
+            properties = androidx.compose.ui.window.DialogProperties(dismissOnBackPress = false, dismissOnClickOutside = false)
+        ) {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = MaterialTheme.shapes.large,
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+            ) {
+                Column(
+                    modifier = Modifier.fillMaxWidth().padding(24.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Icon(Icons.Default.InsertDriveFile, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(48.dp))
+                    Spacer(Modifier.height(16.dp))
+                    Text("Файлы в чатах", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                    Spacer(Modifier.height(12.dp))
+                    Text(
+                        "Файлы в чатах автоматически удаляются через 3 дня после отправки в целях экономии места на серверах Ofox.\n\nМаксимальный размер файла — 5 ГБ.\n\nЕсли файл важен — сохраните его на устройство до истечения срока.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f)
+                    )
+                    Spacer(Modifier.height(24.dp))
+                    Button(
+                        onClick = {
+                            repository.setFileWarningShown()
+                            showFileWarningDialog = false
+                            filePickerLauncher.launch("*/*")
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    ) { Text("Понятно") }
+                }
+            }
+        }
+    }
+
+    // Диалог скачивания файла
+    if (showFileDownloadDialog) {
+        val ctx = androidx.compose.ui.platform.LocalContext.current
+        LaunchedEffect(downloadingFileKey) {
+            val key = downloadingFileKey ?: return@LaunchedEffect
+            downloadChatFile(
+                ctx = ctx,
+                repository = repository,
+                fileKey = key,
+                fileName = downloadingFileName,
+                chatName = downloadingChatName,
+                sentAt = downloadingSentAt,
+                onProgress = { fileDownloadProgress = it },
+                onError = { fileDownloadError = it },
+                onSavedPath = { fileDownloadSavedPath = it }
+            )
+        }
+        androidx.compose.ui.window.Dialog(
+            onDismissRequest = {},
+            properties = androidx.compose.ui.window.DialogProperties(dismissOnBackPress = false, dismissOnClickOutside = false)
+        ) {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = MaterialTheme.shapes.large,
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+            ) {
+                Column(
+                    modifier = Modifier.fillMaxWidth().padding(24.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(0.dp)
+                ) {
+                    when {
+                        fileDownloadError != null -> {
+                            Icon(Icons.Default.ErrorOutline, null, tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(48.dp))
+                            Spacer(Modifier.height(16.dp))
+                            Text("Ошибка загрузки", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                            Spacer(Modifier.height(12.dp))
+                            Text(fileDownloadError!!, style = MaterialTheme.typography.bodyMedium, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+                            Spacer(Modifier.height(24.dp))
+                            Button(onClick = {
+                                showFileDownloadDialog = false; fileDownloadProgress = null
+                                fileDownloadError = null; downloadingFileKey = null; fileDownloadSavedPath = null
+                            }, modifier = Modifier.fillMaxWidth()) { Text("Закрыть") }
+                        }
+                        fileDownloadProgress == 1f -> {
+                            Icon(Icons.Default.CheckCircle, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(48.dp))
+                            Spacer(Modifier.height(16.dp))
+                            Text("Файл сохранён", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                            Spacer(Modifier.height(12.dp))
+                            if (fileDownloadSavedPath != null) {
+                                Text(fileDownloadSavedPath!!, style = MaterialTheme.typography.bodySmall,
+                                    textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f))
+                            }
+                            Spacer(Modifier.height(24.dp))
+                            Button(onClick = {
+                                showFileDownloadDialog = false; fileDownloadProgress = null
+                                fileDownloadError = null; downloadingFileKey = null; fileDownloadSavedPath = null
+                            }, modifier = Modifier.fillMaxWidth()) { Text("Готово") }
+                        }
+                        else -> {
+                            CircularProgressIndicator(modifier = Modifier.size(48.dp), strokeWidth = 3.dp)
+                            Spacer(Modifier.height(16.dp))
+                            Text("Сохранение...", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                            Spacer(Modifier.height(12.dp))
+                            if (fileDownloadProgress != null) {
+                                LinearProgressIndicator(progress = { fileDownloadProgress!! }, modifier = Modifier.fillMaxWidth())
+                                Spacer(Modifier.height(6.dp))
+                                Text("${(fileDownloadProgress!! * 100).toInt()}%", style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f))
+                            } else {
+                                LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Диалог открытия файла (скачивает во временный кеш и открывает через Intent)
+    if (showOpenFileDialog) {
+        val ctx = androidx.compose.ui.platform.LocalContext.current
+        var openProgress by remember { mutableStateOf<Float?>(null) }
+        var openError by remember { mutableStateOf<String?>(null) }
+        LaunchedEffect(openingFileKey) {
+            val key = openingFileKey ?: return@LaunchedEffect
+            openProgress = 0f
+            openError = null
+            try {
+                val info = repository.getChatFileDownloadUrl(key, chat?.name ?: "chat", openFileSentAt)
+                if (info == null) { openError = "Не удалось получить ссылку"; return@LaunchedEffect }
+                val client = okhttp3.OkHttpClient.Builder()
+                    .connectTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
+                    .readTimeout(300, java.util.concurrent.TimeUnit.SECONDS)
+                    .build()
+                val response = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                    client.newCall(okhttp3.Request.Builder().url(info.downloadUrl).build()).execute()
+                }
+                if (!response.isSuccessful) { openError = "Ошибка (${response.code})"; return@LaunchedEffect }
+                val body = response.body ?: run { openError = "Пустой ответ"; return@LaunchedEffect }
+                val total = body.contentLength().toFloat()
+                val file = java.io.File(ctx.cacheDir, info.filename.ifBlank { openingFileName })
+                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                    val buf = ByteArray(65536); var downloaded = 0L
+                    body.byteStream().use { input -> file.outputStream().use { out ->
+                        var n: Int
+                        while (input.read(buf).also { n = it } != -1) {
+                            out.write(buf, 0, n); downloaded += n
+                            if (total > 0) openProgress = (downloaded / total).coerceIn(0f, 0.99f)
+                        }
+                    }}
+                }
+                openProgress = 1f
+                val uri = androidx.core.content.FileProvider.getUriForFile(ctx, "${ctx.packageName}.provider", file)
+                val mime = ctx.contentResolver.getType(uri) ?: "application/octet-stream"
+                val intent = android.content.Intent(android.content.Intent.ACTION_VIEW).apply {
+                    setDataAndType(uri, mime)
+                    addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                }
+                ctx.startActivity(android.content.Intent.createChooser(intent, "Открыть с помощью"))
+                showOpenFileDialog = false; openingFileKey = null
+            } catch (e: Exception) {
+                openError = "Ошибка: ${e.message}"
+            }
+        }
+        androidx.compose.ui.window.Dialog(
+            onDismissRequest = { if (openProgress == null || openError != null) { showOpenFileDialog = false; openingFileKey = null } },
+            properties = androidx.compose.ui.window.DialogProperties(dismissOnBackPress = openError != null, dismissOnClickOutside = false)
+        ) {
+            Card(modifier = Modifier.fillMaxWidth(), shape = MaterialTheme.shapes.large,
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
+                Column(modifier = Modifier.fillMaxWidth().padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                    when {
+                        openError != null -> {
+                            Icon(Icons.Default.ErrorOutline, null, tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(48.dp))
+                            Spacer(Modifier.height(12.dp))
+                            Text("Ошибка", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                            Spacer(Modifier.height(8.dp))
+                            Text(openError!!, style = MaterialTheme.typography.bodyMedium, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+                            Spacer(Modifier.height(16.dp))
+                            Button(onClick = { showOpenFileDialog = false; openingFileKey = null }, modifier = Modifier.fillMaxWidth()) { Text("Закрыть") }
+                        }
+                        else -> {
+                            CircularProgressIndicator(modifier = Modifier.size(48.dp), strokeWidth = 3.dp)
+                            Spacer(Modifier.height(12.dp))
+                            Text("Открытие файла…", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                            if (openProgress != null && openProgress!! > 0f) {
+                                Spacer(Modifier.height(8.dp))
+                                LinearProgressIndicator(progress = { openProgress!! }, modifier = Modifier.fillMaxWidth())
+                                Text("${(openProgress!! * 100).toInt()}%", style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f))
+                            } else {
+                                Spacer(Modifier.height(8.dp))
+                                LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Предупреждение перед открытием APK
+    if (showApkWarningDialog) {
+        val ctx = androidx.compose.ui.platform.LocalContext.current
+        val apkWarnShownKey = "apk_warn_shown"
+        androidx.compose.ui.window.Dialog(onDismissRequest = { showApkWarningDialog = false }) {
+            Card(modifier = Modifier.fillMaxWidth(), shape = MaterialTheme.shapes.large,
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
+                Column(modifier = Modifier.fillMaxWidth().padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                    Icon(Icons.Default.ErrorOutline, null, tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(48.dp))
+                    Spacer(Modifier.height(12.dp))
+                    Text("Установка приложения", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        "Вы собираетесь установить APK-файл «${pendingApkFileName}».\n\nУстанавливайте приложения только от людей, которым доверяете. Вредоносные приложения могут навредить вашему устройству.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.85f)
+                    )
+                    Spacer(Modifier.height(20.dp))
+                    Button(
+                        onClick = {
+                            showApkWarningDialog = false
+                            openingFileKey = pendingApkFileKey; openingFileName = pendingApkFileName; openFileSentAt = pendingApkSentAt
+                            showOpenFileDialog = true
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                    ) { Text("Я доверяю, открыть") }
+                    Spacer(Modifier.height(8.dp))
+                    TextButton(onClick = { showApkWarningDialog = false }, modifier = Modifier.fillMaxWidth()) { Text("Отмена") }
+                }
+            }
+        }
+    }
+
     // Диалог скачивания фото
     if (showImageDownloadDialog) {
         val ctx = androidx.compose.ui.platform.LocalContext.current
@@ -1316,6 +1790,43 @@ fun ChatDetailScreen(repository: Repository, chatId: Int, initialName: String? =
                     ) {
                         Icon(Icons.Default.Download, null, tint = MaterialTheme.colorScheme.primary)
                         Text("Скачать фото", style = MaterialTheme.typography.bodyLarge)
+                    }
+                }
+                if (msg.messageType == "file" && msg.fileKey != null) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth()
+                            .clip(MaterialTheme.shapes.medium)
+                            .clickable {
+                                downloadingFileKey = msg.fileKey
+                                downloadingFileName = msg.fileName ?: "file"
+                                downloadingChatName = chat?.name ?: "chat"
+                                downloadingSentAt = msg.timestamp
+                                fileDownloadProgress = null
+                                fileDownloadError = null
+                                fileDownloadSavedPath = null
+                                showFileDownloadDialog = true
+                                selectedMessage = null
+                            }
+                            .padding(vertical = 14.dp, horizontal = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(16.dp)
+                    ) {
+                        Icon(Icons.Default.Download, null, tint = MaterialTheme.colorScheme.primary)
+                        Text("Скачать файл", style = MaterialTheme.typography.bodyLarge)
+                    }
+                }
+                // Отменить отправку файла
+                if (msg.messageType == "file" && msg.status == "sending" && msg.isFromMe) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth()
+                            .clip(MaterialTheme.shapes.medium)
+                            .clickable { showCancelUploadDialog = true; selectedMessage = null }
+                            .padding(vertical = 14.dp, horizontal = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(16.dp)
+                    ) {
+                        Icon(Icons.Default.Close, null, tint = MaterialTheme.colorScheme.error)
+                        Text("Отменить отправку", style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.error)
                     }
                 }
                 Row(
@@ -1569,11 +2080,13 @@ fun MessageBubble(
     onReact: ((String) -> Unit)? = null,
     onLongPress: (() -> Unit)? = null,
     onImageClick: ((String) -> Unit)? = null,
+    onFileClick: ((key: String, fileName: String, sentAt: Long) -> Unit)? = null,
     imageUrlCache: androidx.compose.runtime.snapshots.SnapshotStateMap<String, String>? = null,
     currentUserId: Int = 0,
     reactionsJson: String = "",
     isHighlighted: Boolean = false,
-    isDiscoveryChat: Boolean = false
+    isDiscoveryChat: Boolean = false,
+    fileUploadProgress: Float? = null
 ) {
     val highlightAlpha by androidx.compose.animation.core.animateFloatAsState(
         targetValue = if (isHighlighted) 0.12f else 0f,
@@ -1899,6 +2412,99 @@ fun MessageBubble(
                     Text(formatTime(message.timestamp), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f), modifier = Modifier.padding(top = 2.dp))
                 }
             }
+            "file" -> {
+                val isDeleted = message.fileKey == null && message.status != "sending"
+                Card(
+                    colors = CardDefaults.cardColors(
+                        containerColor = if (message.isFromMe)
+                            (if (isDeleted) MaterialTheme.colorScheme.primary.copy(alpha = 0.4f) else MaterialTheme.colorScheme.primary)
+                        else MaterialTheme.colorScheme.surfaceVariant
+                    ),
+                    shape = RoundedCornerShape(16.dp),
+                    modifier = Modifier.widthIn(max = 280.dp).padding(start = startPadding)
+                        .combinedClickable(
+                            onClick = {
+                                if (!isDeleted && message.fileKey != null)
+                                    onFileClick?.invoke(message.fileKey, message.fileName ?: "file", message.timestamp)
+                            },
+                            onLongClick = { onLongPress?.invoke() }
+                        )
+                ) {
+                    Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp)) {
+                        ReplyQuote(message, onReplyClick, isFromMe = message.isFromMe)
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                            Icon(
+                                if (isDeleted) Icons.Default.Block else Icons.Default.InsertDriveFile,
+                                contentDescription = null,
+                                modifier = Modifier.size(32.dp),
+                                tint = if (message.isFromMe) MaterialTheme.colorScheme.onPrimary.copy(alpha = if (isDeleted) 0.5f else 1f)
+                                       else MaterialTheme.colorScheme.onSurface.copy(alpha = if (isDeleted) 0.4f else 0.8f)
+                            )
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    if (isDeleted) "Файл удалён" else (message.fileName ?: "Файл"),
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontWeight = FontWeight.Medium,
+                                    maxLines = 2,
+                                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                                    color = if (message.isFromMe) MaterialTheme.colorScheme.onPrimary.copy(alpha = if (isDeleted) 0.6f else 1f)
+                                            else MaterialTheme.colorScheme.onSurface.copy(alpha = if (isDeleted) 0.5f else 1f)
+                                )
+                                if (!isDeleted && (message.fileSize ?: 0L) > 0L) {
+                                    Text(
+                                        formatFileSize(message.fileSize!!),
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = if (message.isFromMe) MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.7f)
+                                                else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
+                                    )
+                                }
+                            }
+                        }
+                        if (message.status == "sending") {
+                            Spacer(Modifier.height(6.dp))
+                            if (fileUploadProgress != null) {
+                                LinearProgressIndicator(
+                                    progress = { fileUploadProgress },
+                                    modifier = Modifier.fillMaxWidth(),
+                                    color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.85f),
+                                    trackColor = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.25f)
+                                )
+                                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                                    Text("${(fileUploadProgress * 100).toInt()}%", style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.7f))
+                                    TextButton(
+                                        onClick = { onLongPress?.invoke() },
+                                        contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp)
+                                    ) {
+                                        Text("Отменить", style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.85f))
+                                    }
+                                }
+                            } else {
+                                LinearProgressIndicator(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.85f),
+                                    trackColor = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.25f)
+                                )
+                            }
+                        }
+                        if (message.status == "error") {
+                            Text("Ошибка отправки", style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(top = 4.dp))
+                        }
+                        Row(
+                            modifier = Modifier.align(Alignment.End).padding(top = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(3.dp)
+                        ) {
+                            Text(formatTime(message.timestamp), style = MaterialTheme.typography.labelSmall,
+                                color = if (message.isFromMe) MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.7f)
+                                        else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f))
+                            if (message.isFromMe) MessageStatusIcon(message.status, true)
+                        }
+                    }
+                }
+            }
             else -> {
                 Card(
                     colors = CardDefaults.cardColors(containerColor = if (message.isFromMe) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant),
@@ -1917,7 +2523,7 @@ fun MessageBubble(
                     }
                 }
             }
-        }
+        } // end when
 
         // Реакции — под любым типом сообщения
         if (reactionsMap.isNotEmpty()) {
@@ -2189,6 +2795,131 @@ private suspend fun downloadChatImage(
         onSavedPath(savedPath)
     } catch (e: Exception) {
         android.util.Log.e("ImageDownload", "Error", e)
+        onError("Ошибка: ${e.message}")
+    }
+}
+
+private data class FileUploadResult(val key: String, val fileName: String, val fileSize: Long, val mimeType: String)
+
+private fun formatFileSize(bytes: Long): String = when {
+    bytes >= 1_073_741_824L -> "%.1f ГБ".format(bytes / 1_073_741_824.0)
+    bytes >= 1_048_576L -> "%.1f МБ".format(bytes / 1_048_576.0)
+    bytes >= 1024L -> "%.1f КБ".format(bytes / 1024.0)
+    else -> "$bytes Б"
+}
+private suspend fun uploadChatFile(
+    ctx: android.content.Context,
+    repository: su.SkrinVex.ofox.data.Repository,
+    chatId: Int,
+    uri: android.net.Uri,
+    onProgress: (Float) -> Unit
+): FileUploadResult? = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+    try {
+        val mimeType = ctx.contentResolver.getType(uri) ?: "application/octet-stream"
+        val cursor = ctx.contentResolver.query(uri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME, android.provider.OpenableColumns.SIZE), null, null, null)
+        var fileName = "file"
+        var fileSize = 0L
+        cursor?.use {
+            if (it.moveToFirst()) {
+                fileName = it.getString(0) ?: "file"
+                fileSize = it.getLong(1)
+            }
+        }
+
+        val info = repository.getChatFileUploadUrl(chatId, fileName, mimeType) ?: return@withContext null
+        val stream = ctx.contentResolver.openInputStream(uri) ?: return@withContext null
+        val bytes = stream.readBytes()
+        stream.close()
+        if (fileSize == 0L) fileSize = bytes.size.toLong()
+
+        val client = okhttp3.OkHttpClient.Builder()
+            .connectTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
+            .writeTimeout(300, java.util.concurrent.TimeUnit.SECONDS)
+            .build()
+
+        val total = bytes.size.toFloat()
+        var uploaded = 0L
+        val requestBody = object : okhttp3.RequestBody() {
+            override fun contentType() = mimeType.toMediaTypeOrNull()
+            override fun contentLength() = bytes.size.toLong()
+            override fun writeTo(sink: okio.BufferedSink) {
+                val buf = ByteArray(8192)
+                bytes.inputStream().use { input ->
+                    var n: Int
+                    while (input.read(buf).also { n = it } != -1) {
+                        sink.write(buf, 0, n)
+                        uploaded += n
+                        if (total > 0) onProgress((uploaded / total).coerceIn(0f, 0.99f))
+                    }
+                }
+            }
+        }
+
+        val request = okhttp3.Request.Builder()
+            .url(info.uploadUrl)
+            .put(requestBody)
+            .build()
+
+        val response = client.newCall(request).execute()
+        if (!response.isSuccessful) return@withContext null
+        onProgress(1f)
+        FileUploadResult(key = info.key, fileName = fileName, fileSize = fileSize, mimeType = mimeType)
+    } catch (e: Exception) {
+        android.util.Log.e("FileUpload", "Error", e)
+        null
+    }
+}
+
+private suspend fun downloadChatFile(
+    ctx: android.content.Context,
+    repository: su.SkrinVex.ofox.data.Repository,
+    fileKey: String,
+    fileName: String,
+    chatName: String,
+    sentAt: Long,
+    onProgress: (Float) -> Unit,
+    onError: (String) -> Unit,
+    onSavedPath: (String) -> Unit
+) = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+    try {
+        val info = repository.getChatFileDownloadUrl(fileKey, chatName, sentAt)
+        if (info == null) { onError("Не удалось получить ссылку для скачивания"); return@withContext }
+
+        val client = okhttp3.OkHttpClient.Builder()
+            .connectTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
+            .readTimeout(300, java.util.concurrent.TimeUnit.SECONDS)
+            .build()
+
+        val response = client.newCall(okhttp3.Request.Builder().url(info.downloadUrl).build()).execute()
+        if (!response.isSuccessful) { onError("Ошибка загрузки (${response.code})"); return@withContext }
+
+        val body = response.body ?: run { onError("Пустой ответ сервера"); return@withContext }
+        val total = body.contentLength().toFloat()
+        val safeFileName = info.filename.ifBlank { fileName }
+
+        val dir = java.io.File(
+            android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_DOWNLOADS),
+            "Ofox"
+        )
+        dir.mkdirs()
+        val file = java.io.File(dir, safeFileName)
+        val buf = ByteArray(8192)
+        var downloaded = 0L
+        body.byteStream().use { input ->
+            file.outputStream().use { out ->
+                var n: Int
+                while (input.read(buf).also { n = it } != -1) {
+                    out.write(buf, 0, n)
+                    downloaded += n
+                    if (total > 0) onProgress((downloaded / total).coerceIn(0f, 0.99f))
+                }
+            }
+        }
+        android.media.MediaScannerConnection.scanFile(ctx, arrayOf(file.absolutePath), null, null)
+        onProgress(1f)
+        onSavedPath(file.absolutePath)
+    } catch (e: Exception) {
+        android.util.Log.e("FileDownload", "Error", e)
         onError("Ошибка: ${e.message}")
     }
 }

@@ -131,9 +131,14 @@ data class MessageResponse(
     val reactions: Map<String, List<Int>>? = null,
     val voice_key: String? = null,
     val voice_duration: Long? = null,
-    val voice_deleted_at: String? = null,  // не null = удалено сервером
+    val voice_deleted_at: String? = null,
     val image_key: String? = null,
-    val image_deleted_at: String? = null   // не null = удалено сервером
+    val image_deleted_at: String? = null,
+    val file_key: String? = null,
+    val file_name: String? = null,
+    val file_size: Long? = null,
+    val file_mime: String? = null,
+    val file_deleted_at: String? = null
 )
 
 data class StickerItem(
@@ -181,7 +186,11 @@ data class SendMessageRequest(
     val replyToId: Int? = null,
     val voiceKey: String? = null,
     val voiceDuration: Long? = null,
-    val imageKey: String? = null
+    val imageKey: String? = null,
+    val fileKey: String? = null,
+    val fileName: String? = null,
+    val fileSize: Long? = null,
+    val fileMime: String? = null
 )
 
 data class VoiceUploadUrlResponse(val uploadUrl: String, val key: String)
@@ -190,6 +199,8 @@ data class VoiceDownloadUrlResponse(val downloadUrl: String, val filename: Strin
 data class ChatImageUploadUrlResponse(val uploadUrl: String, val key: String)
 data class ChatImagePlayUrlResponse(val imageUrl: String)
 data class ChatImageDownloadUrlResponse(val downloadUrl: String, val filename: String)
+data class ChatFileUploadUrlResponse(val uploadUrl: String, val key: String, val maxSize: Long = 5368709120L)
+data class ChatFileDownloadUrlResponse(val downloadUrl: String, val filename: String)
 
 data class ReactionRequest(val emoji: String)
 data class ReactionUser(val id: Int, val name: String, val avatar_url: String? = null)

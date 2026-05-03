@@ -90,7 +90,11 @@ class WebSocketClient(private val context: Context) {
                                 replyToId = json.optInt("replyToId", -1).takeIf { it != -1 },
                                 replyToText = json.optString("replyToText").takeIf { it.isNotBlank() },
                                 replyToSenderName = json.optString("replyToSenderName").takeIf { it.isNotBlank() },
-                                imageKey = json.optString("imageKey").takeIf { it.isNotBlank() && it != "null" }
+                                imageKey = json.optString("imageKey").takeIf { it.isNotBlank() && it != "null" },
+                                fileKey = json.optString("fileKey").takeIf { it.isNotBlank() && it != "null" },
+                                fileName = json.optString("fileName").takeIf { it.isNotBlank() && it != "null" },
+                                fileSize = json.optLong("fileSize", 0),
+                                fileMime = json.optString("fileMime").takeIf { it.isNotBlank() && it != "null" }
                             )
                         }
                         "chat_update" -> {
@@ -171,7 +175,11 @@ class WebSocketClient(private val context: Context) {
                                 replyToId = json.optInt("replyToId", -1).takeIf { it != -1 },
                                 replyToText = json.optString("replyToText").takeIf { it.isNotBlank() },
                                 replyToSenderName = json.optString("replyToSenderName").takeIf { it.isNotBlank() },
-                                imageKey = json.optString("imageKey").takeIf { it.isNotBlank() && it != "null" }
+                                imageKey = json.optString("imageKey").takeIf { it.isNotBlank() && it != "null" },
+                                fileKey = json.optString("fileKey").takeIf { it.isNotBlank() && it != "null" },
+                                fileName = json.optString("fileName").takeIf { it.isNotBlank() && it != "null" },
+                                fileSize = json.optLong("fileSize", 0),
+                                fileMime = json.optString("fileMime").takeIf { it.isNotBlank() && it != "null" }
                             )
                         }
                         "comment_reply" -> {
@@ -276,7 +284,7 @@ sealed class WSEvent {
     data class BadgeUpdate(val userId: Int, val badges: List<Badge>) : WSEvent()
     data class PostUpdate(val postId: Int, val likes: Int, val shares: Int) : WSEvent()
     data class NewPost(val postId: Int) : WSEvent()
-    data class NewMessage(val chatId: Int, val message: String, val timestamp: Long, val senderId: Int = 0, val senderName: String = "", val senderAvatarUrl: String? = null, val messageType: String = "text", val replyToId: Int? = null, val replyToText: String? = null, val replyToSenderName: String? = null, val imageKey: String? = null) : WSEvent()
+    data class NewMessage(val chatId: Int, val message: String, val timestamp: Long, val senderId: Int = 0, val senderName: String = "", val senderAvatarUrl: String? = null, val messageType: String = "text", val replyToId: Int? = null, val replyToText: String? = null, val replyToSenderName: String? = null, val imageKey: String? = null, val fileKey: String? = null, val fileName: String? = null, val fileSize: Long = 0, val fileMime: String? = null) : WSEvent()
     data class ChatUpdate(val chatId: Int, val lastMessage: String, val timestamp: Long) : WSEvent()
     data class NewComment(val postId: Int, val comment: su.SkrinVex.ofox.data.api.models.CommentResponse) : WSEvent()
     data class DeleteComment(val postId: Int, val commentId: Int) : WSEvent()
@@ -290,7 +298,7 @@ sealed class WSEvent {
     data class UserOffline(val userId: Int) : WSEvent()
     data class ChatRead(val chatId: Int) : WSEvent()
     data class NewFollower(val actorId: Int, val actorName: String, val actorAvatarUrl: String?) : WSEvent()
-    data class DiscoveryMessage(val chatId: Int, val message: String, val timestamp: Long, val senderId: Int = 0, val senderName: String = "", val senderAvatarUrl: String? = null, val messageType: String = "text", val replyToId: Int? = null, val replyToText: String? = null, val replyToSenderName: String? = null, val imageKey: String? = null) : WSEvent()
+    data class DiscoveryMessage(val chatId: Int, val message: String, val timestamp: Long, val senderId: Int = 0, val senderName: String = "", val senderAvatarUrl: String? = null, val messageType: String = "text", val replyToId: Int? = null, val replyToText: String? = null, val replyToSenderName: String? = null, val imageKey: String? = null, val fileKey: String? = null, val fileName: String? = null, val fileSize: Long = 0, val fileMime: String? = null) : WSEvent()
     data class MessageReaction(val chatId: Int, val messageId: Int, val reactions: List<su.SkrinVex.ofox.data.api.models.MessageReaction>) : WSEvent()
     data class MessageDeleted(val chatId: Int, val messageId: Int) : WSEvent()
 }
