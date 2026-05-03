@@ -225,37 +225,38 @@ fun ChatDetailScreen(repository: Repository, chatId: Int, initialName: String? =
     }
 
     val filePickerLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
-        contract = androidx.activity.result.contract.ActivityResultContracts.GetContent()
-    ) { uri ->
-        if (uri != null) {
+        contract = androidx.activity.result.contract.ActivityResultContracts.GetMultipleContents()
+    ) { uris ->
+        if (uris.isNotEmpty()) {
             val replyId = pendingFileReplyId
             pendingFileReplyId = null
-            try {
-                context.contentResolver.takePersistableUriPermission(
-                    uri, android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION
+            uris.forEach { uri ->
+                try {
+                    context.contentResolver.takePersistableUriPermission(
+                        uri, android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION
+                    )
+                } catch (_: Exception) {}
+
+                val cursor = context.contentResolver.query(uri, arrayOf(
+                    android.provider.OpenableColumns.DISPLAY_NAME,
+                    android.provider.OpenableColumns.SIZE
+                ), null, null, null)
+                var fileName = "Файл"
+                var fileSize = 0L
+                cursor?.use { if (it.moveToFirst()) { fileName = it.getString(0) ?: "Файл"; fileSize = it.getLong(1) } }
+
+                val localId = -(System.currentTimeMillis() + uris.indexOf(uri))
+                val tempMsg = su.SkrinVex.ofox.data.Message(
+                    id = localId.toInt(), chatId = chatId, text = "",
+                    timestamp = System.currentTimeMillis() + uris.indexOf(uri), isFromMe = true,
+                    messageType = "file", fileName = fileName, fileSize = fileSize,
+                    fileMime = context.contentResolver.getType(uri) ?: "application/octet-stream",
+                    status = "sending"
                 )
-            } catch (_: Exception) {}
-
-            val cursor = context.contentResolver.query(uri, arrayOf(
-                android.provider.OpenableColumns.DISPLAY_NAME,
-                android.provider.OpenableColumns.SIZE
-            ), null, null, null)
-            var fileName = "Файл"
-            var fileSize = 0L
-            cursor?.use { if (it.moveToFirst()) { fileName = it.getString(0) ?: "Файл"; fileSize = it.getLong(1) } }
-
-            val localId = -(System.currentTimeMillis())
-            val tempMsg = su.SkrinVex.ofox.data.Message(
-                id = localId.toInt(), chatId = chatId, text = "",
-                timestamp = System.currentTimeMillis(), isFromMe = true,
-                messageType = "file", fileName = fileName, fileSize = fileSize,
-                fileMime = context.contentResolver.getType(uri) ?: "application/octet-stream",
-                status = "sending"
-            )
-            messages.add(tempMsg)
+                messages.add(tempMsg)
+                su.SkrinVex.ofox.FileUploadService.enqueue(context, chatId, uri, if (uris.indexOf(uri) == 0) replyId else null, localId)
+            }
             scope.launch { listState.scrollToItem(messages.size - 1) }
-
-            su.SkrinVex.ofox.FileUploadService.start(context, chatId, uri, replyId, localId)
         }
     }
 
