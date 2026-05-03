@@ -971,7 +971,9 @@ class Repository(private val context: Context) {
         reactions = if (reactions.isNullOrEmpty()) "" else reactionsToJson(reactions),
         voiceKey = voice_key,
         voiceDuration = voice_duration ?: 0L,
-        voiceDeletedByServer = voice_deleted_at != null
+        voiceDeletedByServer = voice_deleted_at != null,
+        imageKey = image_key,
+        imageDeletedByServer = image_deleted_at != null
     )
 
     private fun parseTimestamp(dateStr: String): Long {
@@ -1112,6 +1114,43 @@ class Repository(private val context: Context) {
 
     fun isVoiceWarningShown(): Boolean = prefs.getBoolean("voice_warning_shown", false)
     fun setVoiceWarningShown() = prefs.edit().putBoolean("voice_warning_shown", true).apply()
+
+    fun isImageWarningShown(): Boolean = prefs.getBoolean("image_warning_shown", false)
+    fun setImageWarningShown() = prefs.edit().putBoolean("image_warning_shown", true).apply()
+
+    suspend fun getChatImageUploadUrl(chatId: Int, mimeType: String = "image/jpeg"): su.SkrinVex.ofox.data.api.models.ChatImageUploadUrlResponse? = withContext(Dispatchers.IO) {
+        try { apiClient.api.getChatImageUploadUrl(chatId, mimeType) } catch (_: Exception) { null }
+    }
+
+    suspend fun getChatImagePlayUrl(key: String): String? = withContext(Dispatchers.IO) {
+        try { apiClient.api.getChatImagePlayUrl(key).imageUrl } catch (_: Exception) { null }
+    }
+
+    suspend fun getChatImageDownloadUrl(key: String, chatName: String, sentAt: Long): su.SkrinVex.ofox.data.api.models.ChatImageDownloadUrlResponse? = withContext(Dispatchers.IO) {
+        try { apiClient.api.getChatImageDownloadUrl(key, chatName, sentAt) } catch (_: Exception) { null }
+    }
+
+    suspend fun sendImageMessage(chatId: Int, imageKey: String, replyToId: Int? = null, caption: String = ""): Message? = withContext(Dispatchers.IO) {
+        try {
+            val currentUserId = getCurrentUserId()
+            val request = su.SkrinVex.ofox.data.api.models.SendMessageRequest(
+                text = caption, messageType = "image", replyToId = replyToId, imageKey = imageKey
+            )
+            val chat = db.chatDao().getChatById(chatId)
+            val response = if (chat?.discoveryId != null && chat.discoveryId != 0) {
+                apiClient.api.sendDiscoveryChatMessage(chatId, request)
+            } else {
+                apiClient.api.sendMessage(chatId, request)
+            }
+            val message = response.toMessage(currentUserId)
+            db.messageDao().insertMessage(message)
+            db.chatDao().updateChat(chatId, "Фотография", message.timestamp)
+            message
+        } catch (e: Exception) {
+            android.util.Log.e("Repository", "sendImageMessage error", e)
+            null
+        }
+    }
 
     suspend fun sendVoiceMessage(chatId: Int, voiceKey: String, durationMs: Long, replyToId: Int? = null): Message? = withContext(Dispatchers.IO) {
         try {

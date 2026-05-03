@@ -131,7 +131,9 @@ data class MessageResponse(
     val reactions: Map<String, List<Int>>? = null,
     val voice_key: String? = null,
     val voice_duration: Long? = null,
-    val voice_deleted_at: String? = null  // не null = удалено сервером
+    val voice_deleted_at: String? = null,  // не null = удалено сервером
+    val image_key: String? = null,
+    val image_deleted_at: String? = null   // не null = удалено сервером
 )
 
 data class StickerItem(
@@ -178,12 +180,16 @@ data class SendMessageRequest(
     val messageType: String = "text",
     val replyToId: Int? = null,
     val voiceKey: String? = null,
-    val voiceDuration: Long? = null
+    val voiceDuration: Long? = null,
+    val imageKey: String? = null
 )
 
 data class VoiceUploadUrlResponse(val uploadUrl: String, val key: String)
 data class VoicePlayUrlResponse(val playUrl: String)
 data class VoiceDownloadUrlResponse(val downloadUrl: String, val filename: String)
+data class ChatImageUploadUrlResponse(val uploadUrl: String, val key: String)
+data class ChatImagePlayUrlResponse(val imageUrl: String)
+data class ChatImageDownloadUrlResponse(val downloadUrl: String, val filename: String)
 
 data class ReactionRequest(val emoji: String)
 data class ReactionUser(val id: Int, val name: String, val avatar_url: String? = null)

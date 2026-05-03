@@ -6,7 +6,7 @@ import kotlinx.coroutines.flow.Flow
 
 @Database(
     entities = [User::class, Post::class, Chat::class, Message::class, Discovery::class],
-    version = 25
+    version = 26
 )
 abstract class AppDatabase : RoomDatabase() {
     abstract fun userDao(): UserDao
@@ -104,7 +104,9 @@ data class Message(
     val reactions: String = "", // JSON: {"❤️":[userId1,userId2],...}
     val voiceKey: String? = null,
     val voiceDuration: Long = 0,
-    val voiceDeletedByServer: Boolean = false  // удалено сервером (истёк срок)
+    val voiceDeletedByServer: Boolean = false,  // удалено сервером (истёк срок)
+    val imageKey: String? = null,
+    val imageDeletedByServer: Boolean = false   // удалено сервером (истёк срок)
 )
 
 @Entity(tableName = "discoveries")

@@ -4,6 +4,7 @@ import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.material.icons.filled.Done
 import androidx.compose.material.icons.filled.DoneAll
+import androidx.compose.material.icons.filled.Image
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -41,6 +42,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import kotlinx.coroutines.launch
+import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import su.SkrinVex.ofox.components.StickerPicker
 import su.SkrinVex.ofox.data.Repository
 import su.SkrinVex.ofox.utils.formatTime
@@ -63,6 +65,8 @@ fun ChatDetailScreen(repository: Repository, chatId: Int, initialName: String? =
     var myPackIds by remember { mutableStateOf(emptySet<Int>()) }
     var currentUserId by remember { mutableStateOf(0) }
     val reactionsOverride = remember { androidx.compose.runtime.snapshots.SnapshotStateMap<Int, String>() }
+    // Кеш presigned URL для фото чата: imageKey -> url
+    val imageUrlCache = remember { androidx.compose.runtime.snapshots.SnapshotStateMap<String, String>() }
     val scope = rememberCoroutineScope()
     val listState = rememberLazyListState()
     val context = androidx.compose.ui.platform.LocalContext.current
@@ -97,6 +101,104 @@ fun ChatDetailScreen(repository: Repository, chatId: Int, initialName: String? =
     var downloadingSentAt by remember { mutableStateOf(0L) }
     var downloadSavedPath by remember { mutableStateOf<String?>(null) }
     var messageToDelete by remember { mutableStateOf<su.SkrinVex.ofox.data.Message?>(null) }
+    // Отправка фото
+    var imageUploadProgress by remember { mutableStateOf<Float?>(null) }
+    var imageUploadError by remember { mutableStateOf<String?>(null) }
+    var showImageWarningDialog by remember { mutableStateOf(false) }
+    // Кроп + подпись перед отправкой
+    var pendingCropUri by remember { mutableStateOf<android.net.Uri?>(null) }
+    var pendingCropReplyId by remember { mutableStateOf<Int?>(null) }
+    var imageCaption by remember { mutableStateOf("") }
+    // Полноэкранный просмотр фото
+    var fullscreenImageUrl by remember { mutableStateOf<String?>(null) }
+    // Скачивание фото
+    var showImageDownloadDialog by remember { mutableStateOf(false) }
+    var downloadingImageKey by remember { mutableStateOf<String?>(null) }
+    var imageDownloadProgress by remember { mutableStateOf<Float?>(null) }
+    var imageDownloadError by remember { mutableStateOf<String?>(null) }
+    var imageDownloadSavedPath by remember { mutableStateOf<String?>(null) }
+
+    fun sendImageFromUri(uri: android.net.Uri, caption: String, replyId: Int?) {
+        scope.launch {
+            imageUploadProgress = 0f
+            imageUploadError = null
+            val result = uploadChatImage(
+                ctx = context,
+                repository = repository,
+                chatId = chatId,
+                uri = uri,
+                onProgress = { imageUploadProgress = it }
+            )
+            if (result != null) {
+                imageUploadProgress = null
+                // Предзагружаем presigned URL в кеш ДО добавления tempMsg
+                // чтобы при замене tempMsg→sent пузырь не мигал
+                val preloadedUrl = repository.getChatImagePlayUrl(result)
+                if (preloadedUrl != null) imageUrlCache[result] = preloadedUrl
+
+                val localId = -(System.currentTimeMillis().toInt())
+                val tempMsg = su.SkrinVex.ofox.data.Message(
+                    id = localId, chatId = chatId, text = caption,
+                    timestamp = System.currentTimeMillis(), isFromMe = true,
+                    messageType = "image", imageKey = result,
+                    status = "sending"
+                )
+                messages.add(tempMsg)
+                listState.scrollToItem(messages.size - 1)
+                val sent = repository.sendImageMessage(chatId, result, replyId, caption)
+                val idx = messages.indexOfFirst { it.id == localId }
+                if (idx != -1) {
+                    if (sent != null) {
+                        // Удаляем дубликат от polling если он уже появился
+                        messages.removeAll { it.id == sent.id && it.id != localId }
+                        messages[idx] = sent
+                    } else {
+                        messages.removeAt(idx)
+                    }
+                }
+            } else {
+                imageUploadProgress = null
+                imageUploadError = "Не удалось загрузить фото"
+            }
+        }
+    }
+
+    val cropLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
+        contract = androidx.activity.result.contract.ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        if (result.resultCode == android.app.Activity.RESULT_OK) {
+            val croppedUri = com.yalantis.ucrop.UCrop.getOutput(result.data!!)
+            if (croppedUri != null) {
+                pendingCropUri = croppedUri
+                // Показываем диалог подписи
+            }
+        }
+    }
+
+    val imagePickerLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
+        contract = androidx.activity.result.contract.ActivityResultContracts.GetContent()
+    ) { uri ->
+        if (uri != null) {
+            val replyMsg = replyTo
+            pendingCropReplyId = replyMsg?.let { r ->
+                if (r.id > 0) r.id
+                else messages.firstOrNull { it.timestamp == r.timestamp && it.id > 0 }?.id
+            }
+            replyTo = null
+            // Запускаем UCrop
+            val destUri = android.net.Uri.fromFile(
+                java.io.File(context.cacheDir, "chat_crop_${System.currentTimeMillis()}.jpg")
+            )
+            val cropIntent = com.yalantis.ucrop.UCrop.of(uri, destUri)
+                .withOptions(com.yalantis.ucrop.UCrop.Options().apply {
+                    setFreeStyleCropEnabled(true)
+                    setCompressionQuality(90)
+                })
+                .withMaxResultSize(1280, 1280)
+                .getIntent(context)
+            cropLauncher.launch(cropIntent)
+        }
+    }
 
     fun loadMessages(before: Int? = null) {
         scope.launch {
@@ -122,10 +224,15 @@ fun ChatDetailScreen(repository: Repository, chatId: Int, initialName: String? =
             try {
                 val loaded = repository.getMessages(chatId)
                 if (loaded.isEmpty()) return@launch
-                // Максимальный реальный id (положительный)
                 val lastKnownId = messages.filter { it.id > 0 }.maxOfOrNull { it.id } ?: 0
+                // Ключи медиа из pending tempMsg (id < 0) — не добавляем дубликаты
+                val pendingVoiceKeys = messages.filter { it.id < 0 }.mapNotNull { it.voiceKey }.toSet()
+                val pendingImageKeys = messages.filter { it.id < 0 }.mapNotNull { it.imageKey }.toSet()
                 loaded.filter { it.id > lastKnownId }.forEach { msg ->
-                    if (messages.none { it.id == msg.id }) messages.add(msg)
+                    val isDuplicate = messages.any { it.id == msg.id }
+                        || (msg.voiceKey != null && msg.voiceKey in pendingVoiceKeys)
+                        || (msg.imageKey != null && msg.imageKey in pendingImageKeys)
+                    if (!isDuplicate) messages.add(msg)
                 }
             } catch (_: Exception) {}
         }
@@ -266,11 +373,9 @@ fun ChatDetailScreen(repository: Repository, chatId: Int, initialName: String? =
                 }
                 is su.SkrinVex.ofox.data.api.WSEvent.NewMessage -> {
                     if (event.chatId == chatId) {
-                        // Обновляем кэш пользователей
                         if (event.senderId != 0 && event.senderName.isNotBlank()) {
                             su.SkrinVex.ofox.data.UserCache.put(event.senderId, event.senderName, event.senderAvatarUrl)
                         }
-                        // Берём имя из кэша если WS не прислал
                         val cachedName = if (event.senderName.isBlank()) su.SkrinVex.ofox.data.UserCache.getName(event.senderId) ?: "" else event.senderName
                         val cachedAvatar = event.senderAvatarUrl ?: su.SkrinVex.ofox.data.UserCache.getAvatar(event.senderId)
                         val newMessage = su.SkrinVex.ofox.data.Message(
@@ -280,9 +385,10 @@ fun ChatDetailScreen(repository: Repository, chatId: Int, initialName: String? =
                             senderAvatarUrl = cachedAvatar ?: "",
                             messageType = event.messageType,
                             replyToId = event.replyToId, replyToText = event.replyToText,
-                            replyToSenderName = event.replyToSenderName
+                            replyToSenderName = event.replyToSenderName,
+                            imageKey = event.imageKey
                         )
-                        if (!messages.any { it.text == event.message && it.timestamp == event.timestamp }) {
+                        if (!messages.any { it.timestamp == event.timestamp && it.senderId == event.senderId }) {
                             messages.add(newMessage)
                         }
                     }
@@ -301,9 +407,10 @@ fun ChatDetailScreen(repository: Repository, chatId: Int, initialName: String? =
                             senderAvatarUrl = cachedAvatar ?: "",
                             messageType = event.messageType,
                             replyToId = event.replyToId, replyToText = event.replyToText,
-                            replyToSenderName = event.replyToSenderName
+                            replyToSenderName = event.replyToSenderName,
+                            imageKey = event.imageKey
                         )
-                        if (!messages.any { it.text == event.message && it.timestamp == event.timestamp }) {
+                        if (!messages.any { it.timestamp == event.timestamp && it.senderId == event.senderId }) {
                             messages.add(newMessage)
                         }
                     }
@@ -469,6 +576,8 @@ fun ChatDetailScreen(repository: Repository, chatId: Int, initialName: String? =
                                 highlightedMessageTimestamp = null
                             }
                         },
+                        onImageClick = { url -> fullscreenImageUrl = url },
+                        imageUrlCache = imageUrlCache,
                         onReact = { emoji ->
                             val msgId = if (message.id > 0) message.id
                                         else messages.firstOrNull { it.timestamp == message.timestamp && it.id > 0 }?.id ?: 0
@@ -525,6 +634,7 @@ fun ChatDetailScreen(repository: Repository, chatId: Int, initialName: String? =
                             when {
                                 reply.messageType == "sticker" -> "Стикер"
                                 reply.messageType == "voice" -> "Голосовое сообщение"
+                                reply.messageType == "image" -> "Фотография"
                                 else -> reply.text.take(80)
                             },
                             style = MaterialTheme.typography.bodySmall,
@@ -552,6 +662,29 @@ fun ChatDetailScreen(repository: Repository, chatId: Int, initialName: String? =
                     contentDescription = "Стикеры",
                     tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
                 )
+            }
+            if (messageText.isBlank()) {
+                IconButton(onClick = {
+                    if (!repository.isImageWarningShown()) {
+                        showImageWarningDialog = true
+                    } else {
+                        imagePickerLauncher.launch("image/*")
+                    }
+                }) {
+                    if (imageUploadProgress != null) {
+                        CircularProgressIndicator(
+                            progress = { imageUploadProgress!! },
+                            modifier = Modifier.size(24.dp),
+                            strokeWidth = 2.dp
+                        )
+                    } else {
+                        Icon(
+                            Icons.Default.Image,
+                            contentDescription = "Фото",
+                            tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                        )
+                    }
+                }
             }
             Surface(
                 modifier = Modifier.weight(1f),
@@ -790,8 +923,7 @@ fun ChatDetailScreen(repository: Repository, chatId: Int, initialName: String? =
     }
 
     // Диалог прогресса скачивания (вне bottomsheet — живёт независимо от selectedMessage)
-    if (showDownloadDialog) {
-        val ctx = androidx.compose.ui.platform.LocalContext.current
+    if (showDownloadDialog) {        val ctx = androidx.compose.ui.platform.LocalContext.current
         LaunchedEffect(downloadingVoiceKey) {
             val key = downloadingVoiceKey ?: return@LaunchedEffect
             downloadVoiceMessage(
@@ -881,6 +1013,217 @@ fun ChatDetailScreen(repository: Repository, chatId: Int, initialName: String? =
         }
     }
 
+    // Предупреждение об автоудалении фото (первый раз)
+    if (showImageWarningDialog) {
+        androidx.compose.ui.window.Dialog(
+            onDismissRequest = {},
+            properties = androidx.compose.ui.window.DialogProperties(dismissOnBackPress = false, dismissOnClickOutside = false)
+        ) {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = MaterialTheme.shapes.large,
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+            ) {
+                Column(
+                    modifier = Modifier.fillMaxWidth().padding(24.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Icon(Icons.Default.Image, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(48.dp))
+                    Spacer(Modifier.height(16.dp))
+                    Text("Фото в чатах", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                    Spacer(Modifier.height(12.dp))
+                    Text(
+                        "Фотографии в чатах автоматически удаляются через 7 дней после отправки в целях экономии места на серверах Ofox.\n\nЕсли фото важно — зажмите на него и выберите «Скачать фото», чтобы сохранить на устройство.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f)
+                    )
+                    Spacer(Modifier.height(24.dp))
+                    Button(
+                        onClick = {
+                            repository.setImageWarningShown()
+                            showImageWarningDialog = false
+                            imagePickerLauncher.launch("image/*")
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    ) { Text("Понятно") }
+                }
+            }
+        }
+    }
+
+    // Диалог подписи после кропа
+    if (pendingCropUri != null) {
+        val croppedUri = pendingCropUri!!
+        androidx.compose.ui.window.Dialog(onDismissRequest = { pendingCropUri = null; imageCaption = "" }) {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = MaterialTheme.shapes.large,
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+            ) {
+                Column(modifier = Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    AsyncImage(
+                        model = croppedUri,
+                        contentDescription = null,
+                        contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                        modifier = Modifier.fillMaxWidth().heightIn(max = 300.dp).clip(MaterialTheme.shapes.medium)
+                    )
+                    TextField(
+                        value = imageCaption,
+                        onValueChange = { imageCaption = it },
+                        placeholder = { Text("Подпись (необязательно)") },
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = TextFieldDefaults.colors(
+                            focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant,
+                            unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant,
+                            focusedIndicatorColor = Color.Transparent,
+                            unfocusedIndicatorColor = Color.Transparent
+                        ),
+                        shape = MaterialTheme.shapes.medium,
+                        singleLine = true
+                    )
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        TextButton(onClick = { pendingCropUri = null; imageCaption = "" }, modifier = Modifier.weight(1f)) {
+                            Text("Отмена")
+                        }
+                        Button(
+                            onClick = {
+                                val uri = croppedUri
+                                val caption = imageCaption
+                                val replyId = pendingCropReplyId
+                                pendingCropUri = null
+                                imageCaption = ""
+                                pendingCropReplyId = null
+                                sendImageFromUri(uri, caption, replyId)
+                            },
+                            modifier = Modifier.weight(1f)
+                        ) { Text("Отправить") }
+                    }
+                }
+            }
+        }
+    }
+
+    // Полноэкранный просмотр фото
+    if (fullscreenImageUrl != null) {
+        androidx.compose.ui.window.Dialog(
+            onDismissRequest = { fullscreenImageUrl = null },
+            properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false, dismissOnClickOutside = true)
+        ) {
+            Box(modifier = Modifier.fillMaxSize().background(Color.Black), contentAlignment = Alignment.Center) {
+                me.saket.telephoto.zoomable.coil.ZoomableAsyncImage(
+                    model = fullscreenImageUrl,
+                    contentDescription = null,
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = androidx.compose.ui.layout.ContentScale.Fit
+                )
+                IconButton(onClick = { fullscreenImageUrl = null }, modifier = Modifier.align(Alignment.TopEnd).padding(8.dp)) {
+                    Icon(Icons.Default.Close, contentDescription = "Закрыть", tint = Color.White)
+                }
+            }
+        }
+    }
+
+    // Диалог ошибки загрузки фото
+    if (imageUploadError != null) {
+        androidx.compose.ui.window.Dialog(onDismissRequest = { imageUploadError = null }) {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = MaterialTheme.shapes.large,
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+            ) {
+                Column(
+                    modifier = Modifier.fillMaxWidth().padding(24.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Icon(Icons.Default.ErrorOutline, null, tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(48.dp))
+                    Spacer(Modifier.height(16.dp))
+                    Text("Ошибка загрузки фото", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                    Spacer(Modifier.height(12.dp))
+                    Text(imageUploadError!!, style = MaterialTheme.typography.bodyMedium, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+                    Spacer(Modifier.height(24.dp))
+                    Button(onClick = { imageUploadError = null }, modifier = Modifier.fillMaxWidth()) { Text("Закрыть") }
+                }
+            }
+        }
+    }
+
+    // Диалог скачивания фото
+    if (showImageDownloadDialog) {
+        val ctx = androidx.compose.ui.platform.LocalContext.current
+        LaunchedEffect(downloadingImageKey) {
+            val key = downloadingImageKey ?: return@LaunchedEffect
+            downloadChatImage(
+                ctx = ctx,
+                repository = repository,
+                imageKey = key,
+                chatName = downloadingChatName,
+                sentAt = downloadingSentAt,
+                onProgress = { imageDownloadProgress = it },
+                onError = { imageDownloadError = it },
+                onSavedPath = { imageDownloadSavedPath = it }
+            )
+        }
+        androidx.compose.ui.window.Dialog(
+            onDismissRequest = {},
+            properties = androidx.compose.ui.window.DialogProperties(dismissOnBackPress = false, dismissOnClickOutside = false)
+        ) {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = MaterialTheme.shapes.large,
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+            ) {
+                Column(
+                    modifier = Modifier.fillMaxWidth().padding(24.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(0.dp)
+                ) {
+                    when {
+                        imageDownloadError != null -> {
+                            Icon(Icons.Default.ErrorOutline, null, tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(48.dp))
+                            Spacer(Modifier.height(16.dp))
+                            Text("Ошибка загрузки", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                            Spacer(Modifier.height(12.dp))
+                            Text(imageDownloadError!!, style = MaterialTheme.typography.bodyMedium, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+                            Spacer(Modifier.height(24.dp))
+                            Button(onClick = {
+                                showImageDownloadDialog = false; imageDownloadProgress = null
+                                imageDownloadError = null; downloadingImageKey = null; imageDownloadSavedPath = null
+                            }, modifier = Modifier.fillMaxWidth()) { Text("Закрыть") }
+                        }
+                        imageDownloadProgress == 1f -> {
+                            Icon(Icons.Default.CheckCircle, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(48.dp))
+                            Spacer(Modifier.height(16.dp))
+                            Text("Фото сохранено", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                            Spacer(Modifier.height(12.dp))
+                            if (imageDownloadSavedPath != null) {
+                                Text(imageDownloadSavedPath!!, style = MaterialTheme.typography.bodySmall, textAlign = androidx.compose.ui.text.style.TextAlign.Center, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f))
+                            }
+                            Spacer(Modifier.height(24.dp))
+                            Button(onClick = {
+                                showImageDownloadDialog = false; imageDownloadProgress = null
+                                imageDownloadError = null; downloadingImageKey = null; imageDownloadSavedPath = null
+                            }, modifier = Modifier.fillMaxWidth()) { Text("Готово") }
+                        }
+                        else -> {
+                            CircularProgressIndicator(modifier = Modifier.size(48.dp), strokeWidth = 3.dp)
+                            Spacer(Modifier.height(16.dp))
+                            Text("Сохранение...", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                            Spacer(Modifier.height(12.dp))
+                            if (imageDownloadProgress != null) {
+                                LinearProgressIndicator(progress = { imageDownloadProgress!! }, modifier = Modifier.fillMaxWidth())
+                                Spacer(Modifier.height(6.dp))
+                                Text("${(imageDownloadProgress!! * 100).toInt()}%", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f))
+                            } else {
+                                LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     // Меню сообщения (долгое нажатие)
     if (selectedMessage != null) {
         val msg = selectedMessage!!
@@ -952,6 +1295,27 @@ fun ChatDetailScreen(repository: Repository, chatId: Int, initialName: String? =
                     ) {
                         Icon(Icons.Default.Download, null, tint = MaterialTheme.colorScheme.primary)
                         Text("Скачать", style = MaterialTheme.typography.bodyLarge)
+                    }
+                }
+                if (msg.messageType == "image" && msg.imageKey != null) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth()
+                            .clip(MaterialTheme.shapes.medium)
+                            .clickable {
+                                downloadingImageKey = msg.imageKey
+                                downloadingChatName = chat?.name ?: "chat"
+                                downloadingSentAt = msg.timestamp
+                                imageDownloadProgress = null
+                                imageDownloadError = null
+                                showImageDownloadDialog = true
+                                selectedMessage = null
+                            }
+                            .padding(vertical = 14.dp, horizontal = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(16.dp)
+                    ) {
+                        Icon(Icons.Default.Download, null, tint = MaterialTheme.colorScheme.primary)
+                        Text("Скачать фото", style = MaterialTheme.typography.bodyLarge)
                     }
                 }
                 Row(
@@ -1204,6 +1568,8 @@ fun MessageBubble(
     onReplyClick: ((Int) -> Unit)? = null,
     onReact: ((String) -> Unit)? = null,
     onLongPress: (() -> Unit)? = null,
+    onImageClick: ((String) -> Unit)? = null,
+    imageUrlCache: androidx.compose.runtime.snapshots.SnapshotStateMap<String, String>? = null,
     currentUserId: Int = 0,
     reactionsJson: String = "",
     isHighlighted: Boolean = false,
@@ -1347,6 +1713,156 @@ fun MessageBubble(
                             Row(modifier = Modifier.align(Alignment.End), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(3.dp)) {
                                 Text(formatTime(message.timestamp), style = MaterialTheme.typography.labelSmall,
                                     color = if (message.isFromMe) MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.7f) else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f))
+                                if (message.isFromMe) MessageStatusIcon(message.status, true)
+                            }
+                        }
+                    }
+                }
+            }
+            "image" -> {
+                var showDeletedImageDialog by remember { mutableStateOf(false) }
+                if (showDeletedImageDialog) {
+                    androidx.compose.ui.window.Dialog(onDismissRequest = { showDeletedImageDialog = false }) {
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = MaterialTheme.shapes.large,
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+                        ) {
+                            Column(
+                                modifier = Modifier.fillMaxWidth().padding(24.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally
+                            ) {
+                                Icon(Icons.Default.Block, null,
+                                    tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f),
+                                    modifier = Modifier.size(48.dp))
+                                Spacer(Modifier.height(16.dp))
+                                Text("Фото удалено", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                                Spacer(Modifier.height(12.dp))
+                                Text(
+                                    "Фотографии в чатах автоматически удаляются через 7 дней после отправки в целях экономии места на серверах Ofox.\n\nЧтобы сохранить важные фото, зажмите на них и выберите «Скачать фото» до истечения срока.",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f)
+                                )
+                                Spacer(Modifier.height(24.dp))
+                                Button(onClick = { showDeletedImageDialog = false }, modifier = Modifier.fillMaxWidth()) {
+                                    Text("Понятно")
+                                }
+                            }
+                        }
+                    }
+                }
+
+                if (message.imageDeletedByServer) {
+                    Card(
+                        colors = CardDefaults.cardColors(
+                            containerColor = if (message.isFromMe)
+                                MaterialTheme.colorScheme.primary.copy(alpha = 0.4f)
+                            else MaterialTheme.colorScheme.surfaceVariant
+                        ),
+                        shape = RoundedCornerShape(16.dp),
+                        modifier = Modifier.widthIn(max = 260.dp).padding(start = startPadding)
+                            .combinedClickable(onClick = { showDeletedImageDialog = true }, onLongClick = { onLongPress?.invoke() })
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Icon(
+                                Icons.Default.Block, null,
+                                modifier = Modifier.size(18.dp),
+                                tint = if (message.isFromMe) MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.6f)
+                                       else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.45f)
+                            )
+                            Column {
+                                Text(
+                                    "Фото удалено",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = if (message.isFromMe) MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.7f)
+                                            else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.55f)
+                                )
+                                Text(
+                                    formatTime(message.timestamp),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = if (message.isFromMe) MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.5f)
+                                            else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f)
+                                )
+                            }
+                        }
+                    }
+                } else if (message.imageKey != null) {
+                    val imgCtx = androidx.compose.ui.platform.LocalContext.current
+                    var imageUrl by remember(message.imageKey) { mutableStateOf(imageUrlCache?.get(message.imageKey)) }
+                    var isLoadingUrl by remember(message.imageKey) { mutableStateOf(imageUrl == null) }
+                    LaunchedEffect(message.imageKey) {
+                        if (imageUrl == null) {
+                            val url = repository.getChatImagePlayUrl(message.imageKey)
+                            if (url != null) {
+                                imageUrlCache?.set(message.imageKey, url)
+                                imageUrl = url
+                            }
+                            isLoadingUrl = false
+                        }
+                    }
+                    Card(
+                        colors = CardDefaults.cardColors(
+                            containerColor = if (message.isFromMe) MaterialTheme.colorScheme.primary
+                                            else MaterialTheme.colorScheme.surfaceVariant
+                        ),
+                        shape = RoundedCornerShape(16.dp),
+                        modifier = Modifier.widthIn(max = 260.dp).padding(start = startPadding)
+                            .combinedClickable(
+                                onClick = { imageUrl?.let { onImageClick?.invoke(it) } },
+                                onLongClick = { onLongPress?.invoke() }
+                            )
+                    ) {
+                        Column(modifier = Modifier.padding(6.dp)) {
+                            ReplyQuote(message, onReplyClick, isFromMe = message.isFromMe)
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .heightIn(min = 120.dp, max = 240.dp)
+                                    .clip(RoundedCornerShape(12.dp)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                if (isLoadingUrl || imageUrl == null) {
+                                    val inf = androidx.compose.animation.core.rememberInfiniteTransition()
+                                    val a by inf.animateFloat(0.2f, 0.6f, androidx.compose.animation.core.infiniteRepeatable(androidx.compose.animation.core.tween(700), androidx.compose.animation.core.RepeatMode.Reverse))
+                                    Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = a)), contentAlignment = Alignment.Center) {
+                                        CircularProgressIndicator(modifier = Modifier.size(32.dp), strokeWidth = 2.dp)
+                                    }
+                                } else {
+                                    AsyncImage(
+                                        model = imageUrl,
+                                        contentDescription = "Фото",
+                                        contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                                        modifier = Modifier.fillMaxWidth()
+                                    )
+                                }
+                            }
+                            if (message.text.isNotBlank()) {
+                                Text(
+                                    message.text,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = if (message.isFromMe) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface,
+                                    modifier = Modifier.padding(top = 4.dp, start = 2.dp, end = 2.dp)
+                                )
+                            }
+                            if (message.status == "sending") {
+                                LinearProgressIndicator(modifier = Modifier.fillMaxWidth().padding(top = 4.dp))
+                            }
+                            Row(
+                                modifier = Modifier.align(Alignment.End).padding(top = 4.dp, end = 2.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(3.dp)
+                            ) {
+                                Text(
+                                    formatTime(message.timestamp),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = if (message.isFromMe) MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.7f)
+                                            else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
+                                )
                                 if (message.isFromMe) MessageStatusIcon(message.status, true)
                             }
                         }
@@ -1528,6 +2044,151 @@ private suspend fun downloadVoiceMessage(
         onSavedPath(savedPath)
     } catch (e: Exception) {
         android.util.Log.e("VoiceDownload", "Error", e)
+        onError("Ошибка: ${e.message}")
+    }
+}
+
+// Загрузка фото в приватный бакет через presigned PUT URL
+private suspend fun uploadChatImage(
+    ctx: android.content.Context,
+    repository: su.SkrinVex.ofox.data.Repository,
+    chatId: Int,
+    uri: android.net.Uri,
+    onProgress: (Float) -> Unit
+): String? = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+    try {
+        val mimeType = ctx.contentResolver.getType(uri) ?: "image/jpeg"
+        val info = repository.getChatImageUploadUrl(chatId, mimeType) ?: return@withContext null
+        val stream = ctx.contentResolver.openInputStream(uri) ?: return@withContext null
+        val bytes = stream.readBytes()
+        stream.close()
+
+        val client = okhttp3.OkHttpClient.Builder()
+            .connectTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
+            .writeTimeout(120, java.util.concurrent.TimeUnit.SECONDS)
+            .build()
+
+        val total = bytes.size.toFloat()
+        var uploaded = 0L
+        val requestBody = object : okhttp3.RequestBody() {
+            override fun contentType() = mimeType.toMediaTypeOrNull()
+            override fun contentLength() = bytes.size.toLong()
+            override fun writeTo(sink: okio.BufferedSink) {
+                val buf = ByteArray(8192)
+                bytes.inputStream().use { input ->
+                    var n: Int
+                    while (input.read(buf).also { n = it } != -1) {
+                        sink.write(buf, 0, n)
+                        uploaded += n
+                        if (total > 0) onProgress((uploaded / total).coerceIn(0f, 0.99f))
+                    }
+                }
+            }
+        }
+
+        val request = okhttp3.Request.Builder()
+            .url(info.uploadUrl)
+            .put(requestBody)
+            .build()
+
+        val response = client.newCall(request).execute()
+        if (!response.isSuccessful) return@withContext null
+        onProgress(1f)
+        info.key
+    } catch (e: Exception) {
+        android.util.Log.e("ImageUpload", "Error", e)
+        null
+    }
+}
+
+// Скачивание фото из чата в галерею
+private suspend fun downloadChatImage(
+    ctx: android.content.Context,
+    repository: su.SkrinVex.ofox.data.Repository,
+    imageKey: String,
+    chatName: String,
+    sentAt: Long,
+    onProgress: (Float) -> Unit,
+    onError: (String) -> Unit,
+    onSavedPath: (String) -> Unit
+) = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+    try {
+        val info = repository.getChatImageDownloadUrl(imageKey, chatName, sentAt)
+        if (info == null) { onError("Не удалось получить ссылку для скачивания"); return@withContext }
+
+        val client = okhttp3.OkHttpClient.Builder()
+            .connectTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
+            .readTimeout(120, java.util.concurrent.TimeUnit.SECONDS)
+            .build()
+
+        val response = client.newCall(okhttp3.Request.Builder().url(info.downloadUrl).build()).execute()
+        if (!response.isSuccessful) { onError("Ошибка загрузки (${response.code})"); return@withContext }
+
+        val body = response.body ?: run { onError("Пустой ответ сервера"); return@withContext }
+        val total = body.contentLength().toFloat()
+        val filename = info.filename
+        val ext = filename.substringAfterLast('.', "jpg")
+        val mimeType = when (ext.lowercase()) {
+            "png" -> "image/png"
+            "gif" -> "image/gif"
+            "webp" -> "image/webp"
+            else -> "image/jpeg"
+        }
+
+        val savedPath: String
+
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+            val values = android.content.ContentValues().apply {
+                put(android.provider.MediaStore.Images.Media.DISPLAY_NAME, filename)
+                put(android.provider.MediaStore.Images.Media.MIME_TYPE, mimeType)
+                put(android.provider.MediaStore.Images.Media.RELATIVE_PATH, "Pictures/Ofox")
+                put(android.provider.MediaStore.Images.Media.IS_PENDING, 1)
+            }
+            val collection = android.provider.MediaStore.Images.Media.getContentUri(android.provider.MediaStore.VOLUME_EXTERNAL_PRIMARY)
+            val uri = ctx.contentResolver.insert(collection, values)
+                ?: run { onError("Не удалось создать файл"); return@withContext }
+            ctx.contentResolver.openOutputStream(uri)?.use { out ->
+                val buf = ByteArray(8192)
+                var downloaded = 0L
+                body.byteStream().use { input ->
+                    var n: Int
+                    while (input.read(buf).also { n = it } != -1) {
+                        out.write(buf, 0, n)
+                        downloaded += n
+                        if (total > 0) onProgress((downloaded / total).coerceIn(0f, 0.99f))
+                    }
+                }
+            }
+            val update = android.content.ContentValues().apply {
+                put(android.provider.MediaStore.Images.Media.IS_PENDING, 0)
+            }
+            ctx.contentResolver.update(uri, update, null, null)
+            savedPath = "Pictures/Ofox/$filename"
+        } else {
+            @Suppress("DEPRECATION")
+            val dir = java.io.File(android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_PICTURES), "Ofox")
+            dir.mkdirs()
+            val file = java.io.File(dir, filename)
+            val buf = ByteArray(8192)
+            var downloaded = 0L
+            body.byteStream().use { input ->
+                file.outputStream().use { out ->
+                    var n: Int
+                    while (input.read(buf).also { n = it } != -1) {
+                        out.write(buf, 0, n)
+                        downloaded += n
+                        if (total > 0) onProgress((downloaded / total).coerceIn(0f, 0.99f))
+                    }
+                }
+            }
+            android.media.MediaScannerConnection.scanFile(ctx, arrayOf(file.absolutePath), arrayOf(mimeType), null)
+            savedPath = file.absolutePath
+        }
+
+        onProgress(1f)
+        onSavedPath(savedPath)
+    } catch (e: Exception) {
+        android.util.Log.e("ImageDownload", "Error", e)
         onError("Ошибка: ${e.message}")
     }
 }
